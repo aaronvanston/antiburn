@@ -179,7 +179,10 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // `ephemeral_5m_input_tokens`) into `Usage::cache_creation_1h_tokens`, so a
 // stored Claude session must reparse to price one-hour cache writes at the
 // correct rate (`records::parse_usage`).
-pub const PARSER_REVISION: i64 = 35;
+// +1 for Codex's `spawn_agent` launch tool: `is_subagent_launch_tool`
+// (`analysis::model`) now also matches `spawn_agent`, so every stored
+// Codex session must reparse to count launches in `subagent_launches`.
+pub const PARSER_REVISION: i64 = 36;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to

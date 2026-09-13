@@ -189,7 +189,7 @@
         "value": null
       },
       "ordering": "monotonic",
-      "parserRevision": 35,
+      "parserRevision": 36,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -2908,7 +2908,7 @@
         "model": "gpt-alpha",
         "secsSincePriorTurn": null,
         "speed": null,
-        "subagentLaunches": 0,
+        "subagentLaunches": 1,
         "subagentTokens": 0,
         "thinkingMode": "medium",
         "tokensIn": 0,

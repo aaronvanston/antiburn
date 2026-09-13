@@ -1684,6 +1684,20 @@ mod tests {
     }
 
     #[test]
+    fn turn_row_from_event_counts_codex_spawn_agent_calls_as_subagent_launches() {
+        let mut event = NormalizedEvent::new(Role::Assistant);
+        event.tools = vec![
+            ToolCall::new("spawn_agent"),
+            ToolCall::new("spawn_agent"),
+            ToolCall::new("wait_agent"),
+            ToolCall::new("send_message"),
+        ];
+
+        let row = turn_row_from_event(&event, "parent-1", 0);
+        assert_eq!(row.subagent_launches, 2);
+    }
+
+    #[test]
     fn turn_row_from_event_defaults_the_chart_signal_columns_without_tools() {
         let event = NormalizedEvent::new(Role::Assistant);
         let row = turn_row_from_event(&event, "parent-1", 0);
