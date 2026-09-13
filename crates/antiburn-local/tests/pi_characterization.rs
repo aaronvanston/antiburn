@@ -1116,6 +1116,10 @@ fn pi_badges_follow_the_merged_session_coverage_policy() {
             BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
             // Pi V3 does not identify which persisted input tokens repeat.
             BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            // Pi V3 carries no MCP, built-in tool, or skill inventory.
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
         ]
     );
 
@@ -1136,6 +1140,10 @@ fn pi_badges_follow_the_merged_session_coverage_policy() {
             // The reviewed production registry is non-empty, but the
             // same incomplete session coverage keeps this unassessed.
             BadgeStatus::NotAssessed(NotAssessedReason::IncompleteEvidence),
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            // Pi V3 carries no MCP, built-in tool, or skill inventory.
+            BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
             BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
             BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
         ]

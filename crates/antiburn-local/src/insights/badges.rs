@@ -13,16 +13,22 @@ pub enum BadgeId {
     ObsoleteModel,
     FastModeOveruse,
     ExcessCacheRehydration,
+    UnusedMcpServer,
+    UnusedBuiltInTool,
+    UnusedSkill,
 }
 
 impl BadgeId {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 9] = [
         Self::SessionOverdepth,
         Self::ModelOverthinking,
         Self::OverpoweredSubagents,
         Self::ObsoleteModel,
         Self::FastModeOveruse,
         Self::ExcessCacheRehydration,
+        Self::UnusedMcpServer,
+        Self::UnusedBuiltInTool,
+        Self::UnusedSkill,
     ];
 
     const fn detector(self) -> DetectorId {
@@ -33,6 +39,9 @@ impl BadgeId {
             Self::ObsoleteModel => DetectorId::OldModelUsage,
             Self::FastModeOveruse => DetectorId::OveruseOfFastMode,
             Self::ExcessCacheRehydration => DetectorId::CacheChurn,
+            Self::UnusedMcpServer => DetectorId::UnusedMcpServers,
+            Self::UnusedBuiltInTool => DetectorId::UnusedBuiltInTools,
+            Self::UnusedSkill => DetectorId::UnusedSkills,
         }
     }
 }
@@ -52,8 +61,8 @@ pub struct SessionBadge {
     pub status: BadgeStatus,
 }
 
-/// Reduces one session's stored evidence into the six v1 badges.
-pub fn session_badges(evidence: &SessionEvidence, catalogs: &ReportCatalogs) -> [SessionBadge; 6] {
+/// Reduces one session's stored evidence into the nine hygiene badges.
+pub fn session_badges(evidence: &SessionEvidence, catalogs: &ReportCatalogs) -> [SessionBadge; 9] {
     BadgeId::ALL.map(|id| SessionBadge {
         id,
         status: badge_status(id.detector(), evidence, catalogs),
@@ -98,10 +107,10 @@ mod tests {
 
     use crate::analysis::{
         ANALYZER_REVISION, ContextEvidence, CoverageReason, EVIDENCE_SCHEMA_REVISION,
-        EvidenceSource, EvidenceValue, ModelTokens, PARSER_REVISION, RelationConfidence,
-        RelationProvenance, RepeatedContext, RepeatedContextAccounting, SessionEvidence,
-        SessionEvidenceAccumulator, SourceCapabilities, SourceKind, SubagentChild, TurnCounts,
-        TurnFacts,
+        EvidenceSource, EvidenceValue, LoadedSource, ModelTokens, PARSER_REVISION,
+        RelationConfidence, RelationProvenance, RepeatedContext, RepeatedContextAccounting,
+        SessionEvidence, SessionEvidenceAccumulator, SourceCapabilities, SourceKind, SubagentChild,
+        ToolDefinition, TurnCounts, TurnFacts,
     };
     use crate::insights::detectors::test_support::claude_evidence;
     use crate::insights::{
@@ -237,6 +246,78 @@ mod tests {
                     evidence.cache = make_partial(evidence.cache);
                 }
             }
+            BadgeId::UnusedMcpServer => {
+                let EvidenceValue::Complete(eligibility) = &mut evidence.eligibility else {
+                    unreachable!()
+                };
+                eligibility.assistant_turns = 3;
+                let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                    unreachable!()
+                };
+                sources.mcp_servers.insert(
+                    "server-a".to_owned(),
+                    LoadedSource {
+                        description: None,
+                        configured: true,
+                        available: true,
+                        injected: true,
+                        invoked: false,
+                        token_count: Some(100),
+                        origin: EvidenceValue::Unsupported,
+                    },
+                );
+                sources.mcp_coverage = EvidenceValue::Complete(());
+                if partial {
+                    evidence.context_sources = make_partial(evidence.context_sources);
+                }
+            }
+            BadgeId::UnusedBuiltInTool => {
+                let EvidenceValue::Complete(eligibility) = &mut evidence.eligibility else {
+                    unreachable!()
+                };
+                eligibility.assistant_turns = 3;
+                let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                    unreachable!()
+                };
+                let mut definitions = BTreeMap::new();
+                definitions.insert(
+                    "bash".to_owned(),
+                    ToolDefinition {
+                        tokens: 100,
+                        invoked: false,
+                        deferred: false,
+                    },
+                );
+                sources.tool_definitions = EvidenceValue::Complete(definitions);
+                if partial {
+                    evidence.context_sources = make_partial(evidence.context_sources);
+                }
+            }
+            BadgeId::UnusedSkill => {
+                let EvidenceValue::Complete(eligibility) = &mut evidence.eligibility else {
+                    unreachable!()
+                };
+                eligibility.assistant_turns = 3;
+                let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                    unreachable!()
+                };
+                sources.skills.insert(
+                    "skill-a".to_owned(),
+                    LoadedSource {
+                        description: None,
+                        configured: true,
+                        available: true,
+                        injected: true,
+                        invoked: false,
+                        token_count: Some(100),
+                        origin: EvidenceValue::Unsupported,
+                    },
+                );
+                sources.skill_coverage = EvidenceValue::Complete(());
+                if partial {
+                    evidence.context_sources = make_partial(evidence.context_sources);
+                }
+            }
         }
         if partial {
             evidence.coverage = EvidenceCoverage::Partial(CoverageReason::MalformedRecord);
@@ -279,18 +360,28 @@ mod tests {
         }
     }
 
-    /// Two badges never carry the generic zero-turn expectation: Model
+    /// Some badges never carry the generic zero-turn expectation. Model
     /// Overthinking and Fast Mode Overuse report a missing signal,
     /// because the synthetic evidence carries zero eligible turns.
     /// Obsolete Model does not need an override: the reviewed
     /// production registry is non-empty, and zero observed models
     /// means no catalogued model can have run, so it reads clean like
-    /// the rest.
+    /// the rest. Unused MCP Server and Unused Skill report a missing
+    /// capability instead: the synthetic evidence carries no observed
+    /// server or skill at all, so `mcp_coverage`/`skill_coverage`
+    /// itself stays `Unsupported` (coverage applies only to observed
+    /// resources, not a full historical inventory). Unused Built-In
+    /// Tool resolves `tool_definitions` only when a harness version and
+    /// model are both observed, neither of which the synthetic
+    /// zero-turn evidence carries.
     fn zero_turn_override(id: BadgeId) -> Option<BadgeStatus> {
         match id {
             BadgeId::ModelOverthinking | BadgeId::FastModeOveruse => {
                 Some(BadgeStatus::NotAssessed(NotAssessedReason::SignalMissing))
             }
+            BadgeId::UnusedMcpServer | BadgeId::UnusedBuiltInTool | BadgeId::UnusedSkill => Some(
+                BadgeStatus::NotAssessed(NotAssessedReason::CapabilityMissing),
+            ),
             _ => None,
         }
     }
@@ -352,6 +443,9 @@ mod tests {
         capabilities.fast_tier = false;
         capabilities.subagent_models = false;
         capabilities.cache_write_tokens = false;
+        capabilities.mcp_inventory = false;
+        capabilities.skill_inventory = false;
+        capabilities.tool_definitions = false;
         let evidence = SessionEvidenceAccumulator::new(EvidenceSource {
             agent: "claude".to_owned(),
             session_id: "synthetic-capability".to_owned(),
@@ -414,6 +508,9 @@ mod tests {
             finding_evidence(BadgeId::ObsoleteModel, false),
             finding_evidence(BadgeId::FastModeOveruse, false),
             finding_evidence(BadgeId::ExcessCacheRehydration, false),
+            finding_evidence(BadgeId::UnusedMcpServer, false),
+            finding_evidence(BadgeId::UnusedBuiltInTool, false),
+            finding_evidence(BadgeId::UnusedSkill, false),
         ];
 
         for evidence in cohort {

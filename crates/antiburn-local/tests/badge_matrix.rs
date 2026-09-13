@@ -895,6 +895,9 @@ fn badge_detector(id: BadgeId) -> DetectorId {
         BadgeId::ObsoleteModel => DetectorId::OldModelUsage,
         BadgeId::FastModeOveruse => DetectorId::OveruseOfFastMode,
         BadgeId::ExcessCacheRehydration => DetectorId::CacheChurn,
+        BadgeId::UnusedMcpServer => DetectorId::UnusedMcpServers,
+        BadgeId::UnusedBuiltInTool => DetectorId::UnusedBuiltInTools,
+        BadgeId::UnusedSkill => DetectorId::UnusedSkills,
     }
 }
 
