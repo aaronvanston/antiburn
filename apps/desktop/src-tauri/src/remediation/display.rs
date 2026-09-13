@@ -61,7 +61,7 @@ pub(super) fn burn_check_display_facts(target: &CachedTarget) -> BurnCheckDispla
             safe_display_value(worker_model),
             None,
         ),
-        FindingCause::UnusedMcpServer { server } => (
+        FindingCause::UnusedMcpServer { server, .. } => (
             BurnCheckResourceKind::McpServer,
             safe_display_value(server),
             None,
@@ -73,7 +73,7 @@ pub(super) fn burn_check_display_facts(target: &CachedTarget) -> BurnCheckDispla
             None,
             None,
         ),
-        FindingCause::UnusedSkill { skill } => (
+        FindingCause::UnusedSkill { skill, .. } => (
             BurnCheckResourceKind::Skill,
             safe_display_value(skill),
             None,
@@ -249,21 +249,42 @@ pub(super) fn display_estimate_input(cause: &FindingCause) -> SavingsEstimateInp
                 pricing_revision: None,
             })
         }
-        FindingCause::UnusedMcpServer { .. } => SavingsEstimateInput::McpDefinitionExposure {
-            definition_tokens: None,
-            compatible_requests: None,
+        FindingCause::UnusedMcpServer {
+            tokens,
+            cost_usd,
+            pricing_revision,
+            ..
+        } => SavingsEstimateInput::McpDefinitionExposure {
+            // The replicated total is already summed; one compatible
+            // request of that exact size reproduces it unchanged.
+            definition_tokens: tokens.and_then(|value| u64::try_from(value).ok()),
+            compatible_requests: tokens.is_some().then_some(1),
+            replicated_cost_usd: *cost_usd,
+            pricing_revision: pricing_revision.clone(),
         },
-        FindingCause::UnusedBuiltInTool { tokens, .. } => {
-            SavingsEstimateInput::BuiltInDefinitionReplication {
-                replicated_tokens: match tokens {
-                    BuiltInToolTokens::Definition(_) => None,
-                    BuiltInToolTokens::Replicated(value) => u64::try_from(*value).ok(),
-                },
-            }
-        }
-        FindingCause::UnusedSkill { .. } => SavingsEstimateInput::InjectedSkillDocument {
-            document_tokens: None,
-            compatible_requests: None,
+        FindingCause::UnusedBuiltInTool {
+            tokens,
+            cost_usd,
+            pricing_revision,
+            ..
+        } => SavingsEstimateInput::BuiltInDefinitionReplication {
+            replicated_tokens: match tokens {
+                BuiltInToolTokens::Definition(_) => None,
+                BuiltInToolTokens::Replicated(value) => u64::try_from(*value).ok(),
+            },
+            replicated_cost_usd: *cost_usd,
+            pricing_revision: pricing_revision.clone(),
+        },
+        FindingCause::UnusedSkill {
+            tokens,
+            cost_usd,
+            pricing_revision,
+            ..
+        } => SavingsEstimateInput::InjectedSkillDocument {
+            document_tokens: tokens.and_then(|value| u64::try_from(value).ok()),
+            compatible_requests: tokens.is_some().then_some(1),
+            replicated_cost_usd: *cost_usd,
+            pricing_revision: pricing_revision.clone(),
         },
         FindingCause::OldModelUsage { .. } => {
             SavingsEstimateInput::OldModelPriceDifference(PriceComparisonInput {

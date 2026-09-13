@@ -808,6 +808,8 @@ fn display_opportunities_keep_known_values_and_omit_incomplete_evidence() {
     let replicated = FindingCause::UnusedBuiltInTool {
         tool: "Read".into(),
         tokens: antiburn_local::remediation::BuiltInToolTokens::Replicated(750),
+        cost_usd: None,
+        pricing_revision: None,
     };
     assert_eq!(
         display_cause_opportunity(&replicated, 100).unwrap().value,
@@ -816,8 +818,70 @@ fn display_opportunities_keep_known_values_and_omit_incomplete_evidence() {
     let unavailable = FindingCause::UnusedBuiltInTool {
         tool: "Read".into(),
         tokens: antiburn_local::remediation::BuiltInToolTokens::Definition(50),
+        cost_usd: None,
+        pricing_revision: None,
     };
     assert_eq!(display_cause_opportunity(&unavailable, 100), None);
+}
+
+#[test]
+fn display_opportunity_prefers_priced_cost_when_the_pricing_revision_is_valid() {
+    let priced = FindingCause::UnusedBuiltInTool {
+        tool: "Read".into(),
+        tokens: antiburn_local::remediation::BuiltInToolTokens::Replicated(750),
+        cost_usd: Some(0.045),
+        pricing_revision: Some("pricing-generation-4".to_owned()),
+    };
+    assert_eq!(
+        display_cause_opportunity(&priced, 100),
+        Some(SavingsValue {
+            unit: antiburn_local::remediation::SavingsUnit::ApiEquivalentUsd,
+            value: 0.045,
+        })
+    );
+
+    let mcp = FindingCause::UnusedMcpServer {
+        server: "server-a".into(),
+        tokens: Some(300),
+        cost_usd: Some(0.03),
+        pricing_revision: Some("pricing-generation-4".to_owned()),
+    };
+    assert_eq!(
+        display_cause_opportunity(&mcp, 100),
+        Some(SavingsValue {
+            unit: antiburn_local::remediation::SavingsUnit::ApiEquivalentUsd,
+            value: 0.03,
+        })
+    );
+
+    let skill = FindingCause::UnusedSkill {
+        skill: "skill-a".into(),
+        tokens: Some(150),
+        cost_usd: Some(0.015),
+        pricing_revision: Some("pricing-generation-4".to_owned()),
+    };
+    assert_eq!(
+        display_cause_opportunity(&skill, 100),
+        Some(SavingsValue {
+            unit: antiburn_local::remediation::SavingsUnit::ApiEquivalentUsd,
+            value: 0.015,
+        })
+    );
+
+    // A missing pricing revision falls back to the literal token count.
+    let stale = FindingCause::UnusedMcpServer {
+        server: "server-a".into(),
+        tokens: Some(300),
+        cost_usd: Some(0.03),
+        pricing_revision: None,
+    };
+    assert_eq!(
+        display_cause_opportunity(&stale, 100),
+        Some(SavingsValue {
+            unit: antiburn_local::remediation::SavingsUnit::LiteralInputTokens,
+            value: 300.0,
+        })
+    );
 }
 
 #[test]
