@@ -189,7 +189,7 @@
         "value": null
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4287,6 +4287,7 @@
         "tools": [],
         "tsMs": 1786356002000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4308,6 +4309,7 @@
         "tools": [],
         "tsMs": 1786356003000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 100,
           "inputTokens": 400,
@@ -4329,6 +4331,7 @@
         "tools": [],
         "tsMs": 1786356004000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4350,6 +4353,7 @@
         "tools": [],
         "tsMs": 1786356005000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 100,
           "inputTokens": 460,
@@ -4376,6 +4380,7 @@
         ],
         "tsMs": 1786356006000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4397,6 +4402,7 @@
         "tools": [],
         "tsMs": 1786356007000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4418,6 +4424,7 @@
         "tools": [],
         "tsMs": 1786356008000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,

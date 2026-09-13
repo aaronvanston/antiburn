@@ -853,6 +853,9 @@ impl ClaudeStreamState {
             cache_creation_tokens: current
                 .cache_creation_tokens
                 .saturating_sub(previous.cache_creation_tokens),
+            cache_creation_1h_tokens: current
+                .cache_creation_1h_tokens
+                .saturating_sub(previous.cache_creation_1h_tokens),
         };
         self.max_usage_by_message_id.insert(
             id,
@@ -863,6 +866,9 @@ impl ClaudeStreamState {
                 cache_creation_tokens: current
                     .cache_creation_tokens
                     .max(previous.cache_creation_tokens),
+                cache_creation_1h_tokens: current
+                    .cache_creation_1h_tokens
+                    .max(previous.cache_creation_1h_tokens),
             },
         );
     }

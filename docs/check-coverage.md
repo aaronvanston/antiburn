@@ -121,6 +121,13 @@ deny session-wide `Clean`, even when a nested observed-resource map is complete.
 A scoped finding requires complete coverage of that observed subset, calls, and
 eligible activity. An unrelated partial resource group does not block it.
 
+Report-time token estimates (`insights/report.rs::token_cost` and
+`TokenBurnTurnEvidence`), old-model remediation savings, and provider-limit
+attribution all read `turn.cache_write_1h_tokens` and price that subset at
+two times the input rate. These readers are report-time views of turn rows,
+not part of `SessionEvidence`, so the evidence schema revision does not
+change when this pricing split changes.
+
 Thread attribution retains at most 16,384 distinct UUIDs, each at most 256 bytes.
 An overflow or oversized UUID records `CapExceeded`, makes attribution
 incomplete, and blocks every clean result that needs complete affected evidence.

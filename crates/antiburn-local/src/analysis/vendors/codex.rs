@@ -2141,6 +2141,8 @@ fn codex_usage(u: &Map<String, Value>) -> Usage {
         output_tokens: get("output_tokens"),
         cache_read_tokens,
         cache_creation_tokens,
+        // Codex does not report a one-hour cache-write split.
+        cache_creation_1h_tokens: 0,
     }
 }
 
@@ -2361,7 +2363,9 @@ mod tests {
 
     #[test]
     fn record_to_event_changes_require_an_inertness_review() {
-        const EXPECTED_FINGERPRINT: u64 = 17_590_009_681_109_556_840;
+        // `codex_usage` now sets `cache_creation_1h_tokens: 0`: Codex never
+        // reports a one-hour cache-write split, so this reads no new key.
+        const EXPECTED_FINGERPRINT: u64 = 14_933_235_305_670_794_504;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();

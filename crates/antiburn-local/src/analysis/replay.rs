@@ -88,6 +88,7 @@ pub(crate) fn event_from_row(row: &TurnRow) -> NormalizedEvent {
         output_tokens: row.output_tokens,
         cache_read_tokens: row.cache_read_tokens,
         cache_creation_tokens: row.cache_write_tokens,
+        cache_creation_1h_tokens: row.cache_write_1h_tokens,
     };
     event.tools = synthesize_tools(row);
     event.model = row.model.clone();
@@ -457,6 +458,7 @@ mod tests {
             output_tokens: 6,
             cache_read_tokens: 7,
             cache_creation_tokens: 8,
+            cache_creation_1h_tokens: 3,
         };
         let row = turn_row_from_event(&event, "parent-1", 0);
 
@@ -481,6 +483,7 @@ mod tests {
         assert_eq!(rebuilt.usage.output_tokens, 6);
         assert_eq!(rebuilt.usage.cache_read_tokens, 7);
         assert_eq!(rebuilt.usage.cache_creation_tokens, 8);
+        assert_eq!(rebuilt.usage.cache_creation_1h_tokens, 3);
     }
 
     #[test]
@@ -496,6 +499,7 @@ mod tests {
                 output_tokens: 5,
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
+                cache_creation_1h_tokens: 0,
             };
             rows.push(turn_row_from_event(&event, "s1", index));
             live.record(NormalizedRecord::MetricsEvent(Box::new(event)));
