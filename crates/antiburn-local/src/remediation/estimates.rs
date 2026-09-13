@@ -92,13 +92,19 @@ pub enum SavingsEstimateInput {
     McpDefinitionExposure {
         definition_tokens: Option<u64>,
         compatible_requests: Option<u64>,
+        replicated_cost_usd: Option<f64>,
+        pricing_revision: Option<String>,
     },
     BuiltInDefinitionReplication {
         replicated_tokens: Option<u64>,
+        replicated_cost_usd: Option<f64>,
+        pricing_revision: Option<String>,
     },
     InjectedSkillDocument {
         document_tokens: Option<u64>,
         compatible_requests: Option<u64>,
+        replicated_cost_usd: Option<f64>,
+        pricing_revision: Option<String>,
     },
     OldModelPriceDifference(PriceComparisonInput),
     FastTierPricePremium(PriceComparisonInput),
@@ -189,16 +195,35 @@ pub fn estimate_savings(
         SavingsEstimateInput::McpDefinitionExposure {
             definition_tokens,
             compatible_requests,
+            replicated_cost_usd,
+            pricing_revision,
         }
         | SavingsEstimateInput::InjectedSkillDocument {
             document_tokens: definition_tokens,
             compatible_requests,
-        } => checked_product(*definition_tokens, *compatible_requests)
-            .and_then(|value| known_value(SavingsUnit::LiteralInputTokens, value as f64)),
-        SavingsEstimateInput::BuiltInDefinitionReplication { replicated_tokens } => {
-            replicated_tokens.map_or(Err(SavingsUnavailableReason::MissingEvidence), |value| {
-                known_value(SavingsUnit::LiteralInputTokens, value as f64)
-            })
+            replicated_cost_usd,
+            pricing_revision,
+        } => {
+            estimate.pricing_revision = valid_revision(pricing_revision.as_ref());
+            match (replicated_cost_usd, estimate.pricing_revision.is_some()) {
+                (Some(cost), true) => known_value(SavingsUnit::ApiEquivalentUsd, *cost),
+                _ => checked_product(*definition_tokens, *compatible_requests)
+                    .and_then(|value| known_value(SavingsUnit::LiteralInputTokens, value as f64)),
+            }
+        }
+        SavingsEstimateInput::BuiltInDefinitionReplication {
+            replicated_tokens,
+            replicated_cost_usd,
+            pricing_revision,
+        } => {
+            estimate.pricing_revision = valid_revision(pricing_revision.as_ref());
+            match (replicated_cost_usd, estimate.pricing_revision.is_some()) {
+                (Some(cost), true) => known_value(SavingsUnit::ApiEquivalentUsd, *cost),
+                _ => replicated_tokens
+                    .map_or(Err(SavingsUnavailableReason::MissingEvidence), |value| {
+                        known_value(SavingsUnit::LiteralInputTokens, value as f64)
+                    }),
+            }
         }
         SavingsEstimateInput::CacheRehydrationPriceDifference {
             repeated_paid_tokens,

@@ -437,6 +437,10 @@ pub(crate) fn built_in_source_assessable(
         DetectorId::UnusedBuiltInTools => {
             unused_built_in_tools::source_assessable(evidence, source_evidence)
         }
+        DetectorId::UnusedMcpServers => {
+            unused_mcp_servers::source_assessable(evidence, source_evidence)
+        }
+        DetectorId::UnusedSkills => unused_skills::source_assessable(evidence, source_evidence),
         _ => false,
     }
 }
@@ -454,6 +458,15 @@ pub(crate) fn evaluate_with_source_evidence(
                 source_evidence,
             ),
         },
+        DetectorId::UnusedMcpServers => DetectorEvaluation {
+            observation: unused_mcp_servers::evaluate_with_source_evidence(
+                evidence,
+                source_evidence,
+            ),
+        },
+        DetectorId::UnusedSkills => DetectorEvaluation {
+            observation: unused_skills::evaluate_with_source_evidence(evidence, source_evidence),
+        },
         _ => evaluate(detector, evidence, catalogs),
     }
 }
@@ -467,6 +480,12 @@ pub(crate) fn finding_causes_with_source_evidence(
     let causes = match detector {
         DetectorId::UnusedBuiltInTools => {
             unused_built_in_tools::finding_causes_with_source_evidence(evidence, source_evidence)
+        }
+        DetectorId::UnusedMcpServers => {
+            unused_mcp_servers::finding_causes_with_source_evidence(evidence, source_evidence)
+        }
+        DetectorId::UnusedSkills => {
+            unused_skills::finding_causes_with_source_evidence(evidence, source_evidence)
         }
         _ => finding_causes(detector, evidence, catalogs),
     };
@@ -822,6 +841,8 @@ mod tests {
             vec![FindingCause::UnusedBuiltInTool {
                 tool: "Read".to_owned(),
                 tokens: BuiltInToolTokens::Definition(73),
+                cost_usd: None,
+                pricing_revision: None,
             }]
         );
     }

@@ -45,6 +45,9 @@ fn canonical_identity_includes_source_format_and_exact_resource_scope() {
     let mut evidence = crate::insights::detectors::test_support::claude_evidence("session-a");
     let cause = FindingCause::UnusedSkill {
         skill: "review".to_owned(),
+        tokens: None,
+        cost_usd: None,
+        pricing_revision: None,
     };
     let first = finding(&evidence, cause.clone()).canonical_identity("project-a");
     evidence.capabilities.source_format = SourceFormat::OpenCodeJsonl;
@@ -129,37 +132,61 @@ fn all_checks_group_only_matching_target_policies() {
         (
             FindingCause::UnusedMcpServer {
                 server: "server-a".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedMcpServer {
                 server: "server-a".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedMcpServer {
                 server: "server-b".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
         ),
         (
             FindingCause::UnusedBuiltInTool {
                 tool: "tool-a".to_owned(),
                 tokens: BuiltInToolTokens::Definition(10),
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedBuiltInTool {
                 tool: "tool-a".to_owned(),
                 tokens: BuiltInToolTokens::Replicated(90),
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedBuiltInTool {
                 tool: "tool-b".to_owned(),
                 tokens: BuiltInToolTokens::Definition(10),
+                cost_usd: None,
+                pricing_revision: None,
             },
         ),
         (
             FindingCause::UnusedSkill {
                 skill: "skill-a".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedSkill {
                 skill: "skill-a".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
             FindingCause::UnusedSkill {
                 skill: "skill-b".to_owned(),
+                tokens: None,
+                cost_usd: None,
+                pricing_revision: None,
             },
         ),
         (
@@ -253,6 +280,9 @@ fn sensitive_labels_are_redacted_for_display() {
     ] {
         let cause = FindingCause::UnusedMcpServer {
             server: sensitive.to_owned(),
+            tokens: None,
+            cost_usd: None,
+            pricing_revision: None,
         };
         assert_eq!(display_facts(&cause).labels, ["[private value]"]);
     }

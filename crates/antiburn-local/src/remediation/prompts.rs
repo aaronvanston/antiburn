@@ -253,13 +253,13 @@ fn prompt_facts(
             facts.push(PromptFactRole::ParentModel, parent_model, true)?;
             facts.push(PromptFactRole::WorkerModel, worker_model, true)?;
         }
-        FindingCause::UnusedMcpServer { server } => {
+        FindingCause::UnusedMcpServer { server, .. } => {
             facts.push(PromptFactRole::Resource, server, true)?;
         }
         FindingCause::UnusedBuiltInTool { tool, .. } => {
             facts.push(PromptFactRole::Resource, tool, true)?;
         }
-        FindingCause::UnusedSkill { skill } => {
+        FindingCause::UnusedSkill { skill, .. } => {
             facts.push(PromptFactRole::Resource, skill, true)?;
         }
         FindingCause::OldModelUsage {

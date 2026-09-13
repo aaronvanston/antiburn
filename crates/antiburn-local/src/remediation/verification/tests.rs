@@ -217,6 +217,9 @@ fn supported_generic_verification_requires_a_clean_detector_assessment() {
                         &recurrence_evidence,
                         super::super::FindingCause::UnusedSkill {
                             skill: "resource".to_owned(),
+                            tokens: None,
+                            cost_usd: None,
+                            pricing_revision: None,
                         },
                     ),
                 ]),
