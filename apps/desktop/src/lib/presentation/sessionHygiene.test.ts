@@ -21,9 +21,6 @@ const PAYLOAD: SessionHygienePayload = {
     { id: "obsoleteModel", status: "clean", notAssessedReason: null },
     { id: "fastModeOveruse", status: "clean", notAssessedReason: null },
     { id: "excessCacheRehydration", status: "clean", notAssessedReason: null },
-    { id: "unusedMcpServer", status: "clean", notAssessedReason: null },
-    { id: "unusedBuiltInTool", status: "clean", notAssessedReason: null },
-    { id: "unusedSkill", status: "clean", notAssessedReason: null },
   ],
   evidenceState: "ready",
 }
@@ -43,9 +40,6 @@ describe("sessionHygieneChecks", () => {
         id: "excessCacheRehydration",
         title: "Cache rehydration under control",
       },
-      { id: "unusedMcpServer", title: "No unused MCP servers" },
-      { id: "unusedBuiltInTool", title: "No unused built-in tools" },
-      { id: "unusedSkill", title: "No unused skills" },
     ])
   })
 
@@ -57,9 +51,6 @@ describe("sessionHygieneChecks", () => {
       "Obsolete model",
       "Fast mode overuse",
       "Excess cache rehydration",
-      "Unused MCP servers",
-      "Unused built-in tools",
-      "Unused skills",
     ])
   })
 
@@ -156,9 +147,6 @@ describe("sessionHygieneChecks", () => {
       "system-green",
       "system-green",
       "system-green",
-      "system-green",
-      "system-green",
-      "system-green",
     ])
   })
 
@@ -208,19 +196,18 @@ describe("sessionHygieneChecks", () => {
   it("names one unused MCP server with its priced replication cost", () => {
     const payload: SessionHygienePayload = {
       ...PAYLOAD,
-      badges: PAYLOAD.badges.map((badge) =>
-        badge.id === "unusedMcpServer"
-          ? {
-              id: "unusedMcpServer" as const,
-              status: "finding" as const,
-              notAssessedReason: null,
-              findingEvidence: {
-                kind: "unusedMcpServer" as const,
-                servers: [{ name: "server-a", costUsd: 1.234 }],
-              },
-            }
-          : badge,
-      ),
+      badges: [
+        ...PAYLOAD.badges,
+        {
+          id: "unusedMcpServer" as const,
+          status: "finding" as const,
+          notAssessedReason: null,
+          findingEvidence: {
+            kind: "unusedMcpServer" as const,
+            servers: [{ name: "server-a", costUsd: 1.234 }],
+          },
+        },
+      ],
     }
     const check = sessionHygieneChecks(payload).find(
       (candidate) => candidate.id === "unusedMcpServer",
@@ -232,22 +219,21 @@ describe("sessionHygieneChecks", () => {
   it("joins more than one unused built-in tool into one detail line", () => {
     const payload: SessionHygienePayload = {
       ...PAYLOAD,
-      badges: PAYLOAD.badges.map((badge) =>
-        badge.id === "unusedBuiltInTool"
-          ? {
-              id: "unusedBuiltInTool" as const,
-              status: "finding" as const,
-              notAssessedReason: null,
-              findingEvidence: {
-                kind: "unusedBuiltInTool" as const,
-                tools: [
-                  { name: "Bash", costUsd: 8.2 },
-                  { name: "Grep", costUsd: 0.5 },
-                ],
-              },
-            }
-          : badge,
-      ),
+      badges: [
+        ...PAYLOAD.badges,
+        {
+          id: "unusedBuiltInTool" as const,
+          status: "finding" as const,
+          notAssessedReason: null,
+          findingEvidence: {
+            kind: "unusedBuiltInTool" as const,
+            tools: [
+              { name: "Bash", costUsd: 8.2 },
+              { name: "Grep", costUsd: 0.5 },
+            ],
+          },
+        },
+      ],
     }
     const check = sessionHygieneChecks(payload).find(
       (candidate) => candidate.id === "unusedBuiltInTool",
@@ -262,25 +248,61 @@ describe("sessionHygieneChecks", () => {
   it("names an unused skill without a price when no observed model resolves", () => {
     const payload: SessionHygienePayload = {
       ...PAYLOAD,
-      badges: PAYLOAD.badges.map((badge) =>
-        badge.id === "unusedSkill"
-          ? {
-              id: "unusedSkill" as const,
-              status: "finding" as const,
-              notAssessedReason: null,
-              findingEvidence: {
-                kind: "unusedSkill" as const,
-                skills: [{ name: "skill-a", costUsd: null }],
-              },
-            }
-          : badge,
-      ),
+      badges: [
+        ...PAYLOAD.badges,
+        {
+          id: "unusedSkill" as const,
+          status: "finding" as const,
+          notAssessedReason: null,
+          findingEvidence: {
+            kind: "unusedSkill" as const,
+            skills: [{ name: "skill-a", costUsd: null }],
+          },
+        },
+      ],
     }
     const check = sessionHygieneChecks(payload).find(
       (candidate) => candidate.id === "unusedSkill",
     )!
     expect(check.detail).toBe("skill-a")
     expect(sessionHygieneDocumentation(check).findingDetails).toEqual(["skill-a"])
+  })
+
+  describe("finding-only presentation", () => {
+    const FINDING_ONLY_IDS = ["unusedMcpServer", "unusedBuiltInTool", "unusedSkill"] as const
+
+    it("omits a finding-only check missing from the payload", () => {
+      for (const id of FINDING_ONLY_IDS) {
+        expect(sessionHygieneChecks(PAYLOAD).some((check) => check.id === id)).toBe(false)
+      }
+    })
+
+    it("omits a finding-only check that is not assessed", () => {
+      for (const id of FINDING_ONLY_IDS) {
+        const payload: SessionHygienePayload = {
+          ...PAYLOAD,
+          badges: [
+            ...PAYLOAD.badges,
+            { id, status: "notAssessed", notAssessedReason: "incompleteEvidence" },
+          ],
+        }
+        expect(sessionHygieneChecks(payload).some((check) => check.id === id)).toBe(false)
+      }
+    })
+
+    it("keeps a finding-only check when it is a finding", () => {
+      for (const id of FINDING_ONLY_IDS) {
+        const payload: SessionHygienePayload = {
+          ...PAYLOAD,
+          badges: [...PAYLOAD.badges, { id, status: "finding", notAssessedReason: null }],
+        }
+        expect(sessionHygieneChecks(payload).some((check) => check.id === id)).toBe(true)
+      }
+    })
+
+    it("yields exactly six checks for a payload with only the six original badges", () => {
+      expect(sessionHygieneChecks(PAYLOAD)).toHaveLength(6)
+    })
   })
 
   it("leaves detail null for a finding with no accounting, and for every non-finding check", () => {
@@ -301,9 +323,9 @@ describe("sessionHygieneChecks", () => {
     }
   })
 
-  it("starts every badge as not assessed while evidence is pending", () => {
+  it("starts every non-finding-only badge as not assessed while evidence is pending", () => {
     const checks = sessionHygieneChecks(INITIAL_SESSION_HYGIENE)
-    expect(checks).toHaveLength(9)
+    expect(checks).toHaveLength(6)
     expect(checks.every((check) => check.status === "notAssessed")).toBe(true)
     expect(sessionHygieneStateLabel(INITIAL_SESSION_HYGIENE.evidenceState)).toBe("Computing")
   })

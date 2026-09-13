@@ -763,9 +763,6 @@ describe("SessionList — rows", () => {
               { id: "obsoleteModel", status: "clean", notAssessedReason: null },
               { id: "fastModeOveruse", status: "clean", notAssessedReason: null },
               { id: "excessCacheRehydration", status: "clean", notAssessedReason: null },
-              { id: "unusedMcpServer", status: "clean", notAssessedReason: null },
-              { id: "unusedBuiltInTool", status: "clean", notAssessedReason: null },
-              { id: "unusedSkill", status: "clean", notAssessedReason: null },
             ],
           },
         ],
@@ -773,7 +770,35 @@ describe("SessionList — rows", () => {
     })
 
     expect(screen.getByLabelText(/Some Burn Checks failed/)).toHaveTextContent(
-      "1 failed·8 passed",
+      "1 failed·5 passed",
+    )
+  })
+
+  it("counts an unused-resource finding as failed alongside the six original checks", () => {
+    const session = entry({ sessionId: "synthetic-hygiene-unused-resource-finding" })
+    list({
+      entries: [session],
+      hygieneBySession: hygieneSnapshot([
+        [
+          session,
+          {
+            evidenceState: "ready",
+            badges: [
+              { id: "sessionOverdepth", status: "clean", notAssessedReason: null },
+              { id: "modelOverthinking", status: "clean", notAssessedReason: null },
+              { id: "overpoweredSubagents", status: "clean", notAssessedReason: null },
+              { id: "obsoleteModel", status: "clean", notAssessedReason: null },
+              { id: "fastModeOveruse", status: "clean", notAssessedReason: null },
+              { id: "excessCacheRehydration", status: "clean", notAssessedReason: null },
+              { id: "unusedMcpServer", status: "finding", notAssessedReason: null },
+            ],
+          },
+        ],
+      ]),
+    })
+
+    expect(screen.getByLabelText(/Some Burn Checks failed/)).toHaveTextContent(
+      "1 failed·6 passed",
     )
   })
 
@@ -793,9 +818,6 @@ describe("SessionList — rows", () => {
               "obsoleteModel",
               "fastModeOveruse",
               "excessCacheRehydration",
-              "unusedMcpServer",
-              "unusedBuiltInTool",
-              "unusedSkill",
             ].map((id) => ({
               id: id as SessionHygienePayload["badges"][number]["id"],
               status: "clean" as const,
@@ -807,8 +829,8 @@ describe("SessionList — rows", () => {
     })
 
     const verdict = screen.getByLabelText(/All Burn Checks passed/)
-    expect(verdict).toHaveTextContent("All 9 passed")
-    expect(screen.getByText("All 9 passed")).toHaveClass("text-burn-check-pass-fill")
+    expect(verdict).toHaveTextContent("All 6 passed")
+    expect(screen.getByText("All 6 passed")).toHaveClass("text-burn-check-pass-fill")
     expect(
       screen.getByText("Primary clean title").closest("[data-session-status-bar]"),
     ).toBeNull()
@@ -830,16 +852,13 @@ describe("SessionList — rows", () => {
               { id: "obsoleteModel", status: "clean", notAssessedReason: null },
               { id: "fastModeOveruse", status: "clean", notAssessedReason: null },
               { id: "excessCacheRehydration", status: "clean", notAssessedReason: null },
-              { id: "unusedMcpServer", status: "clean", notAssessedReason: null },
-              { id: "unusedBuiltInTool", status: "clean", notAssessedReason: null },
-              { id: "unusedSkill", status: "clean", notAssessedReason: null },
             ],
           },
         ],
       ]),
     })
 
-    expect(screen.getByLabelText(/Refreshing/)).toHaveTextContent("1 failed·8 passed")
+    expect(screen.getByLabelText(/Refreshing/)).toHaveTextContent("1 failed·5 passed")
     expect(screen.queryByText("Refreshing Burn Checks…")).toBeNull()
   })
 
@@ -1144,9 +1163,6 @@ describe("SessionList — shared tooltips", () => {
               { id: "obsoleteModel", status: "clean", notAssessedReason: null },
               { id: "fastModeOveruse", status: "clean", notAssessedReason: null },
               { id: "excessCacheRehydration", status: "clean", notAssessedReason: null },
-              { id: "unusedMcpServer", status: "clean", notAssessedReason: null },
-              { id: "unusedBuiltInTool", status: "clean", notAssessedReason: null },
-              { id: "unusedSkill", status: "clean", notAssessedReason: null },
             ],
           },
         ],
@@ -1228,7 +1244,7 @@ describe("SessionList — shared tooltips", () => {
     expect(repository).not.toHaveAttribute("data-state")
 
     fireEvent.focus(status)
-    expect(document.querySelector(".ui-tooltip")?.textContent).toContain("Not assessed · 9")
+    expect(document.querySelector(".ui-tooltip")?.textContent).toContain("Not assessed · 6")
     expect(document.querySelector(".ui-tooltip")?.textContent).toContain("Session depth")
     fireEvent.blur(status)
     expect(document.querySelector(".ui-tooltip")).toBeNull()

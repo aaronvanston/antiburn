@@ -181,6 +181,16 @@ const NOT_ASSESSED: SessionHygieneBadgePayload = {
   notAssessedReason: "incompleteEvidence",
 }
 
+/** Checks that the engine can report only as a finding. The engine
+ *  cannot prove a full historical resource inventory, so these checks
+ *  never read clean. A permanent not-assessed row would state the wrong
+ *  reason. */
+const FINDING_ONLY_CHECKS: ReadonlySet<SessionHygieneBadgeId> = new Set([
+  "unusedMcpServer",
+  "unusedBuiltInTool",
+  "unusedSkill",
+])
+
 /** Reader copy for an `excessCacheRehydration` finding, keyed by the
  *  vendor billing mechanism the badge payload names. */
 const ACCOUNTING_DETAIL: Record<
@@ -210,12 +220,17 @@ export function sessionHygieneExplainers(): Array<{
   return CHECKS.map(({ id, name, explainer }) => ({ id, name, explainer }))
 }
 
-/** Add reader copy and semantic ink to the engine badge identifiers. */
+/** Add reader copy and semantic ink to the engine badge identifiers.
+ *  Omits a finding-only check (see `FINDING_ONLY_CHECKS`) whose badge is
+ *  not a finding, including when the payload omits the badge entirely. */
 export function sessionHygieneChecks(payload: SessionHygienePayload): SessionHygieneCheck[] {
-  return CHECKS.map((definition) => {
+  return CHECKS.flatMap((definition) => {
     const badge = payload.badges.find((candidate) => candidate.id === definition.id) ?? {
       ...NOT_ASSESSED,
       id: definition.id,
+    }
+    if (FINDING_ONLY_CHECKS.has(definition.id) && badge.status !== "finding") {
+      return []
     }
     const detail =
       badge.status === "finding"
@@ -223,31 +238,33 @@ export function sessionHygieneChecks(payload: SessionHygienePayload): SessionHyg
           ? ACCOUNTING_DETAIL[badge.accounting]
           : unusedResourceDetail(badge.findingEvidence)
         : null
+    let check: SessionHygieneCheck
     if (badge.status === "finding") {
-      return {
+      check = {
         ...badge,
         title: definition.findingTitle,
         name: definition.name,
         detail,
-        ink: "system-red-text" as const,
+        ink: "system-red-text",
       }
-    }
-    if (badge.status === "clean") {
-      return {
+    } else if (badge.status === "clean") {
+      check = {
         ...badge,
         title: definition.cleanTitle,
         name: definition.name,
         detail,
-        ink: "system-green" as const,
+        ink: "system-green",
+      }
+    } else {
+      check = {
+        ...badge,
+        title: definition.notAssessedTitle,
+        name: definition.name,
+        detail,
+        ink: "label-tertiary",
       }
     }
-    return {
-      ...badge,
-      title: definition.notAssessedTitle,
-      name: definition.name,
-      detail,
-      ink: "label-tertiary" as const,
-    }
+    return [check]
   })
 }
 
