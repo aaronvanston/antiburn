@@ -405,6 +405,30 @@ mod tests {
         );
     }
 
+    /// Mirrors the `Agent` test above for Codex's `spawn_agent` tool: the
+    /// last tool call is a `spawn_agent` launch, so it already counts
+    /// toward `subagent_launches`.
+    #[test]
+    fn synthesize_tools_does_not_double_count_when_the_last_tool_is_itself_a_spawn_agent_launch() {
+        let mut row = base_row();
+        row.last_tool = Some("spawn_agent".to_owned());
+        row.subagent_launches = 1;
+
+        let tools = synthesize_tools(&row);
+        assert_eq!(tools.len(), 1);
+        assert_eq!(
+            tools.last().map(|tool| tool.name.as_str()),
+            Some("spawn_agent")
+        );
+        assert_eq!(
+            tools
+                .iter()
+                .filter(|tool| is_subagent_launch_tool(&tool.name))
+                .count(),
+            1
+        );
+    }
+
     /// The row's `last_tool` can carry a different case than the generic
     /// synthesized calls (e.g. a vendor that logs `"task"` lowercase); the
     /// exact string still must survive so the accumulator's interned

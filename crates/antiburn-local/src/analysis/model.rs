@@ -188,10 +188,13 @@ pub fn is_test_command(cmd: &str) -> bool {
 }
 
 /// True for a tool name that launches a subagent: `Task` (Claude Code's
-/// original name) or `Agent` (its rename). The match is case-insensitive so
-/// a vendor's own casing still counts.
+/// original name), `Agent` (its rename), or `spawn_agent` (Codex's launch
+/// tool). The match is case-insensitive so a vendor's own casing still
+/// counts.
 pub(crate) fn is_subagent_launch_tool(name: &str) -> bool {
-    name.eq_ignore_ascii_case("task") || name.eq_ignore_ascii_case("agent")
+    name.eq_ignore_ascii_case("task")
+        || name.eq_ignore_ascii_case("agent")
+        || name.eq_ignore_ascii_case("spawn_agent")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
