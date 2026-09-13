@@ -397,6 +397,17 @@ export type SessionHygieneBadgeId =
   | "obsoleteModel"
   | "fastModeOveruse"
   | "excessCacheRehydration"
+  | "unusedMcpServer"
+  | "unusedBuiltInTool"
+  | "unusedSkill"
+
+/** One unused resource an engine detector named, with its priced
+ *  replication cost. `costUsd` is absent when no observed model resolves
+ *  in the live pricing table. */
+export interface HygieneUnusedResource {
+  name: string
+  costUsd: number | null
+}
 
 export type SessionHygieneFindingEvidence =
   | {
@@ -433,6 +444,18 @@ export type SessionHygieneFindingEvidence =
       repeatedTokens: number
       paidTokens: number
       thresholdMultiple: number
+    }
+  | {
+      kind: "unusedMcpServer"
+      servers: HygieneUnusedResource[]
+    }
+  | {
+      kind: "unusedBuiltInTool"
+      tools: HygieneUnusedResource[]
+    }
+  | {
+      kind: "unusedSkill"
+      skills: HygieneUnusedResource[]
     }
 
 export interface SessionHygieneBadgePayload {

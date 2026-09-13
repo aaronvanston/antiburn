@@ -1,10 +1,12 @@
 import type {
+  HygieneUnusedResource,
   InsightsNotAssessedReason,
   SessionHygieneBadgeId,
   SessionHygieneBadgePayload,
   SessionHygieneEvidenceState,
   SessionHygienePayload,
 } from "../insightsIpc"
+import { formatApiEquivalentUsd } from "./checks"
 import { modelShortName } from "./models"
 
 type SessionHygieneInk = "system-green" | "system-red-text" | "label-tertiary"
@@ -21,9 +23,11 @@ export interface SessionHygieneCheck {
    */
   name: string
   /**
-   * Accounting-specific remediation copy for a finding, when the badge
-   * payload names the mechanism. Null for every other status, and for a
-   * finding with no `accounting` (old evidence).
+   * Remediation copy for a finding, when the badge payload names it: the
+   * cache-accounting mechanism for `excessCacheRehydration`, or the
+   * priced unused resource(s) — joined when there is more than one — for
+   * `unusedMcpServer`, `unusedBuiltInTool`, and `unusedSkill`. Null for
+   * every other status, and for a finding with neither (old evidence).
    */
   detail: string | null
   ink: SessionHygieneInk
@@ -127,6 +131,42 @@ const CHECKS: readonly HygieneCheckDefinition[] = [
     explainer:
       "This estimates paid context beyond context growth. Cache expiry, context changes, and provider evictions can contribute; the estimate does not establish the cause.",
   },
+  {
+    id: "unusedMcpServer",
+    name: "Unused MCP servers",
+    cleanTitle: "No unused MCP servers",
+    findingTitle: "Unused MCP servers found",
+    notAssessedTitle: "MCP server usage not assessed",
+    summary:
+      "A loaded MCP server resends its tool definitions on every request, sub-agent requests included, whether or not the session ever calls it.",
+    guidance: ["Remove the unused server from this agent's configuration."],
+    explainer:
+      "An unused MCP server's definitions repeat on every request, including sub-agent requests, at full cache-read price.",
+  },
+  {
+    id: "unusedBuiltInTool",
+    name: "Unused built-in tools",
+    cleanTitle: "No unused built-in tools",
+    findingTitle: "Unused built-in tools found",
+    notAssessedTitle: "Built-in tool usage not assessed",
+    summary:
+      "A built-in tool definition resends on every request, sub-agent requests included, whether or not the session ever calls it.",
+    guidance: ["Disable the unused tool where the harness allows it."],
+    explainer:
+      "An unused built-in tool's definition repeats on every request, including sub-agent requests, at full cache-read price.",
+  },
+  {
+    id: "unusedSkill",
+    name: "Unused skills",
+    cleanTitle: "No unused skills",
+    findingTitle: "Unused skills found",
+    notAssessedTitle: "Skill usage not assessed",
+    summary:
+      "A loaded skill document resends on every request, sub-agent requests included, whether or not the session ever uses it.",
+    guidance: ["Remove the unused skill from this agent's configuration."],
+    explainer:
+      "An unused skill's document repeats on every request, including sub-agent requests, at full cache-read price.",
+  },
 ]
 
 export interface SessionHygieneDocumentation {
@@ -178,8 +218,10 @@ export function sessionHygieneChecks(payload: SessionHygienePayload): SessionHyg
       id: definition.id,
     }
     const detail =
-      badge.status === "finding" && badge.accounting
-        ? ACCOUNTING_DETAIL[badge.accounting]
+      badge.status === "finding"
+        ? badge.accounting
+          ? ACCOUNTING_DETAIL[badge.accounting]
+          : unusedResourceDetail(badge.findingEvidence)
         : null
     if (badge.status === "finding") {
       return {
@@ -273,6 +315,37 @@ function sessionHygieneFindingDetails(check: SessionHygieneCheck): string[] {
         `${evidence.repeatedTokens.toLocaleString()} of ${evidence.paidTokens.toLocaleString()} paid context tokens repeated. This raised paid context to ${observedMultiple.toLocaleString(undefined, { maximumFractionDigits: 2 })}× the unique context; the finding threshold is ${evidence.thresholdMultiple.toLocaleString()}×.`,
       ]
     }
+    case "unusedMcpServer":
+      return evidence.servers.map(unusedResourceLine)
+    case "unusedBuiltInTool":
+      return evidence.tools.map(unusedResourceLine)
+    case "unusedSkill":
+      return evidence.skills.map(unusedResourceLine)
+  }
+}
+
+/** One resource's finding line: its name, and its priced replication
+ *  cost when the live pricing table resolves it. */
+function unusedResourceLine({ name, costUsd }: HygieneUnusedResource): string {
+  return costUsd == null ? name : `${name} — ${formatApiEquivalentUsd(costUsd)}`
+}
+
+/** Join every unused resource named by one finding into the single
+ *  string `SessionHygieneCheck.detail` carries, or null when the badge's
+ *  evidence is not one of the three unused-resource kinds. */
+function unusedResourceDetail(
+  evidence: SessionHygieneBadgePayload["findingEvidence"],
+): string | null {
+  if (!evidence) return null
+  switch (evidence.kind) {
+    case "unusedMcpServer":
+      return evidence.servers.map(unusedResourceLine).join(", ") || null
+    case "unusedBuiltInTool":
+      return evidence.tools.map(unusedResourceLine).join(", ") || null
+    case "unusedSkill":
+      return evidence.skills.map(unusedResourceLine).join(", ") || null
+    default:
+      return null
   }
 }
 
