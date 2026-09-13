@@ -535,6 +535,14 @@ describe("MainActivitySession", () => {
   })
 
   it("orders navigation like the list and excludes non-opening rows", async () => {
+    // Set explicit, distinct timestamps here. The default fixture stamps
+    // both entries with `new Date()` at call time. The two calls can land in
+    // the same millisecond or in different ones, and that changes the sort
+    // order, so this test needs its own unambiguous times.
+    mocks.listRecentSessions.mockResolvedValue([
+      entry("one", { timestamp: "2026-01-01T00:00:02.000Z" }),
+      entry("two", { timestamp: "2026-01-01T00:00:01.000Z" }),
+    ])
     const { session } = start()
     await ready(session)
     expect(orderedActivityEntries(session.getSnapshot()).map((item) => item.sessionId)).toEqual(
