@@ -164,7 +164,7 @@
         "state": "unsupported"
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4235,6 +4235,7 @@
         "tools": [],
         "tsMs": 1767225600000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 4,
           "cacheReadTokens": 3,
           "inputTokens": 1,

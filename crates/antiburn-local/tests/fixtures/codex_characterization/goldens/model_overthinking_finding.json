@@ -184,7 +184,7 @@
         "value": null
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4265,6 +4265,7 @@
         "tools": [],
         "tsMs": 1786615502000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 500,

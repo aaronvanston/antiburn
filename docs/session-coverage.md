@@ -55,6 +55,23 @@ request pairing, and full-denominator accounting. Reviewed passive alternatives
 include increasing the time limit and adjusting thresholds; neither repairs
 all three accounting errors. Per-session thresholds remain unchanged.
 
+Claude JSONL usage parses a nested `cache_creation` breakdown
+(`ephemeral_1h_input_tokens`, `ephemeral_5m_input_tokens`) into
+`cache_write_1h_tokens`, the subset of cache-creation tokens Anthropic bills
+at the one-hour premium rate instead of the catalogue's default (five-minute)
+rate. The flat `cache_creation_input_tokens` total takes the larger of itself
+and the breakdown's sum; the one-hour count never exceeds that total. A
+record with no nested breakdown reports zero one-hour tokens; only an
+explicit breakdown classifies any tokens as one-hour writes.
+
+Maintainer confirmation (2026-09-13): parse the nested `cache_creation`
+breakdown into `cache_write_1h_tokens` and price it at 2x the input rate.
+Reviewed passive alternative: classify every legacy (no-breakdown) cache
+write as one-hour, mirroring the cadence parser's own default for sessions
+that predate the breakdown; rejected because it would reprice every stored
+Claude session's historical cache writes without an explicit signal that
+they were one-hour writes.
+
 Inline materialized sources use a fingerprint of the full bounded content, not
 only a head region. The content is already materialized and size-bounded before
 this fingerprint is calculated. OpenCode SQLite fingerprints stream every
@@ -83,7 +100,7 @@ Newly discovered repositories remain enabled by default.
 
 | `SourceFormat`                 | Agent         | Native source                                                              | Discovery and framing                                                                                                                                          | Parsed facts                                                                                                                                                                  | State                                                                                             |
 | ------------------------------ | ------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ClaudeJsonl`                  | Claude Code   | `~/.claude/projects/<workspace>/*.jsonl`                                   | Native discovery; bounded JSONL with source claims; resume supported                                                                                           | Usage, token classes, time, models, request controls/routes, calls, observed resource injection, thread links, compactions, exact Task/Agent child pairing                    | Characterized accepted core; observed resources are not full inventories                          |
+| `ClaudeJsonl`                  | Claude Code   | `~/.claude/projects/<workspace>/*.jsonl`                                   | Native discovery; bounded JSONL with source claims; resume supported                                                                                           | Usage (including the nested one-hour/five-minute cache-write split), token classes, time, models, request controls/routes, calls, observed resource injection, thread links, compactions, exact Task/Agent child pairing                    | Characterized accepted core; observed resources are not full inventories                          |
 | `CodexRolloutJsonl`            | Codex         | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`                             | Native discovery with child rollouts; bounded JSONL; resume supported; paired `token_usage_record`/`token_count` usage dedupe                                                       | Per-response usage and context window, time, models, provider/control inheritance, service tier, tools, harness version, spawn records, selected skill documents, exact tool-search MCP exposure, compactions | Characterized accepted core; resource subsets only                                                |
 | `OpenCodeJsonl`                | OpenCode      | Legacy exported session JSONL                                              | Native or WSL export discovery; bounded JSONL with validated history wrappers/order                                                                            | Usage, time, models, provider/API fields where saved, raw variants, task proof, selected skills, tools, compactions, session/message identities                               | Characterized accepted export; no historical effort map or resource inventory                     |
 | `OpenCodeSqliteV2`             | OpenCode      | `~/.local/share/opencode/opencode.db` or platform equivalent               | Read-only snapshot of the root and descendant `session`, `message`, `part` cluster; row-streamed content fingerprint; validated creation-time/message-ID order | Native messages and parts, task metadata joined to child models, selected skills, usage, provider/API fields, compactions, identities                                         | Characterized table contract; not CoreV2 `session_message`                                        |

@@ -194,7 +194,7 @@
         "value": null
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4270,6 +4270,7 @@
         "tools": [],
         "tsMs": 1787220002000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 2000,
@@ -4291,6 +4292,7 @@
         "tools": [],
         "tsMs": 1787220003000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 58000,
           "inputTokens": 2000,
@@ -4312,6 +4314,7 @@
         "tools": [],
         "tsMs": 1787220603000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 60000,

@@ -208,7 +208,7 @@
         "value": null
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4300,6 +4300,7 @@
         "tools": [],
         "tsMs": 1785578402000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4321,6 +4322,7 @@
         "tools": [],
         "tsMs": 1785578403000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4342,6 +4344,7 @@
         "tools": [],
         "tsMs": 1785578404000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4368,6 +4371,7 @@
         ],
         "tsMs": 1785578405000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4389,6 +4393,7 @@
         "tools": [],
         "tsMs": 1785578406000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4415,6 +4420,7 @@
         ],
         "tsMs": 1785578407000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,
@@ -4436,6 +4442,7 @@
         "tools": [],
         "tsMs": 1785578408000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 600,
           "inputTokens": 400,
@@ -4457,6 +4464,7 @@
         "tools": [],
         "tsMs": 1785578409000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
           "inputTokens": 0,

@@ -101,8 +101,8 @@ pub use rows::{
     MemoryTurnRowStore, ResumeRevisions, SESSION_COVERAGE_SCHEMA_SQL, SOURCE_RESUME_SCHEMA_SQL,
     StoredResume, TURN_MIGRATIONS, TURN_ROW_BATCH_SIZE, TURN_SCHEMA_SQL, TURN_SCHEMA_V2_SQL,
     TURN_SCHEMA_V3_SQL, TURN_SCHEMA_V4_SQL, TURN_SCHEMA_V5_SQL, TURN_SCHEMA_V6_SQL,
-    TURN_SCHEMA_V7_SQL, TurnRow, TurnRowError, TurnRowSink, TurnRowStore, TurnScope,
-    TurnSessionKey, count_turn_content_rows, count_turn_rows, delete_source_resume,
+    TURN_SCHEMA_V7_SQL, TURN_SCHEMA_V8_SQL, TurnRow, TurnRowError, TurnRowSink, TurnRowStore,
+    TurnScope, TurnSessionKey, count_turn_content_rows, count_turn_rows, delete_source_resume,
     delete_source_rows_at_fence, delete_stale_source_resume, delete_turn_rows,
     delete_turn_rows_except_fence, delete_turn_rows_for_fence, insert_coverage_record,
     insert_source_resume, insert_turn_rows, query_coverage_record, query_source_resume,
@@ -174,7 +174,12 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // +1 for Pi assistant request-start timestamps: token and context buckets now
 // use `message.timestamp` while event ordering keeps the outer row timestamp.
 // Deduplicate delayed exact Codex usage copies.
-pub const PARSER_REVISION: i64 = 34;
+// +1 for the one-hour cache-write premium: `parse_usage` now reads the
+// nested `cache_creation` breakdown (`ephemeral_1h_input_tokens`,
+// `ephemeral_5m_input_tokens`) into `Usage::cache_creation_1h_tokens`, so a
+// stored Claude session must reparse to price one-hour cache writes at the
+// correct rate (`records::parse_usage`).
+pub const PARSER_REVISION: i64 = 35;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to

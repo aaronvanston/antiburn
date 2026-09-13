@@ -1078,6 +1078,7 @@ mod tests {
                     input_tokens: 10,
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
+                    cache_write_1h_tokens: 0,
                     output_tokens: 5,
                     is_compaction_boundary: false,
                     message_id: None,

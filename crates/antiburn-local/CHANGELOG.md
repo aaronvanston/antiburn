@@ -17,6 +17,14 @@ version and refuses the release if there is none.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Usage` gains `cache_creation_1h_tokens`, the subset of cache-creation
+  tokens Claude reports as one-hour writes via a nested `cache_creation`
+  breakdown. The efficiency reducer and turn rows now price those tokens at
+  2x the input rate instead of the default cache-write rate. Advance parser
+  revision to 35 so prior sessions reparse and reprice.
+
 ## [0.7.1] - 2026-09-10
 
 ### Fixed

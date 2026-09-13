@@ -143,7 +143,7 @@
         "state": "unsupported"
       },
       "ordering": "monotonic",
-      "parserRevision": 34,
+      "parserRevision": 35,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
@@ -4209,6 +4209,7 @@
         "tools": [],
         "tsMs": 1767225601000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 7,
           "cacheReadTokens": 5,
           "inputTokens": 2,
@@ -4233,6 +4234,7 @@
         "tools": [],
         "tsMs": 1767225602000,
         "usage": {
+          "cacheCreation1hTokens": 0,
           "cacheCreationTokens": 2,
           "cacheReadTokens": 11,
           "inputTokens": 3,

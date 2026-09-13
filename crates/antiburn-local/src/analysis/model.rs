@@ -19,6 +19,11 @@ pub struct Usage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_creation_tokens: u64,
+    /// The subset of `cache_creation_tokens` written with a one-hour TTL.
+    /// Anthropic bills a one-hour cache write at 2x the input rate, versus
+    /// 1.25x for the default five-minute write. Non-Claude vendors always
+    /// report `0` here.
+    pub cache_creation_1h_tokens: u64,
 }
 
 impl Usage {
@@ -48,6 +53,9 @@ impl Usage {
             cache_creation_tokens: self
                 .cache_creation_tokens
                 .saturating_add(other.cache_creation_tokens),
+            cache_creation_1h_tokens: self
+                .cache_creation_1h_tokens
+                .saturating_add(other.cache_creation_1h_tokens),
         }
     }
 }

@@ -13,7 +13,7 @@
 //! layout. [`RecordShape::Generic`] keeps the full historical fallback set for the
 //! vendors without a bespoke adapter (see [`super::vendors::generic_jsonl`]).
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -1030,6 +1030,13 @@ pub(crate) fn parse_usage(value: Option<&Value>) -> Usage {
         // Pi's disjoint camelCase shape; its buckets never overlap, so no subtraction.
         (None, None) => get(&["input"]),
     };
+    let reported_cache_creation_tokens = get(&[
+        "cache_creation_input_tokens",
+        "cache_creation_tokens",
+        "cacheWrite",
+    ]);
+    let (cache_creation_tokens, cache_creation_1h_tokens) =
+        claude_cache_creation_split(obj, reported_cache_creation_tokens);
     Usage {
         input_tokens,
         output_tokens: get(&["output_tokens", "completion_tokens", "output"]),
@@ -1039,12 +1046,34 @@ pub(crate) fn parse_usage(value: Option<&Value>) -> Usage {
             "cache_read_tokens",
             "cacheRead",
         ]),
-        cache_creation_tokens: get(&[
-            "cache_creation_input_tokens",
-            "cache_creation_tokens",
-            "cacheWrite",
-        ]),
+        cache_creation_tokens,
+        cache_creation_1h_tokens,
     }
+}
+
+/// Splits a flat cache-creation total into the total and its one-hour
+/// subset, using Claude's nested `cache_creation` breakdown when the
+/// record carries one.
+///
+/// Mirrors the cadence parser rule (`claude_cache_creation_usage` in
+/// `note_parser.rs`): the total is `max(reported_total, one_hour +
+/// five_minute)`, and `one_hour` is clamped to that total. A record with
+/// no nested breakdown reports no one-hour tokens; only an explicit
+/// breakdown classifies any tokens as one-hour writes.
+fn claude_cache_creation_split(obj: &Map<String, Value>, reported_total: u64) -> (u64, u64) {
+    let Some(breakdown) = obj.get("cache_creation").and_then(Value::as_object) else {
+        return (reported_total, 0);
+    };
+    let one_hour = breakdown
+        .get("ephemeral_1h_input_tokens")
+        .and_then(as_u64)
+        .unwrap_or(0);
+    let five_minute = breakdown
+        .get("ephemeral_5m_input_tokens")
+        .and_then(as_u64)
+        .unwrap_or(0);
+    let total = reported_total.max(one_hour.saturating_add(five_minute));
+    (total, one_hour.min(total))
 }
 
 fn as_u64(v: &Value) -> Option<u64> {
@@ -1090,12 +1119,12 @@ mod tests {
 
     #[test]
     fn parse_record_changes_require_an_inertness_review() {
-        // Seam 4f: `parse_record` now reads Pi's own `id` / `parentId` pair
-        // into `ev.uuid` / `ev.parent_uuid` for `RecordShape::Pi`, mirroring
-        // Claude's `uuid` / `parentUuid` read. This is an addition, not a
-        // change to any inertness-reviewed key, so `INERTNESS_MIRROR_CASES`
-        // needs no update.
-        const EXPECTED_FINGERPRINT: u64 = 12_239_640_525_636_906_098;
+        // `parse_usage` now reads a nested `cache_creation` object
+        // (`ephemeral_1h_input_tokens`, `ephemeral_5m_input_tokens`) inside
+        // the existing `usage` value. `is_inert_record` already rejects any
+        // object that carries a `usage` key at all, so this new nested read
+        // adds no gap: `INERTNESS_MIRROR_CASES` needs no update.
+        const EXPECTED_FINGERPRINT: u64 = 15_084_001_525_904_785_191;
         let source = include_str!("records.rs").replace("\r\n", "\n");
         let start = source.find("pub(crate) fn parse_record").unwrap();
         let end = source[start..].find("\n#[cfg(test)]\nmod tests").unwrap() + start;
@@ -1385,6 +1414,76 @@ mod tests {
         assert_eq!(parsed.output_tokens, 50);
         assert_eq!(parsed.cache_read_tokens, 5000);
         assert_eq!(parsed.cache_creation_tokens, 700);
+        assert_eq!(parsed.cache_creation_1h_tokens, 0);
+    }
+
+    #[test]
+    fn nested_cache_creation_with_one_hour_only_reports_it() {
+        let usage = json!({
+            "cache_creation_input_tokens": 1222,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 1222
+            }
+        });
+
+        let parsed = parse_usage(Some(&usage));
+        assert_eq!(parsed.cache_creation_tokens, 1222);
+        assert_eq!(parsed.cache_creation_1h_tokens, 1222);
+    }
+
+    #[test]
+    fn nested_cache_creation_with_both_ttls_splits_the_total() {
+        let usage = json!({
+            "cache_creation_input_tokens": 900,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": 300,
+                "ephemeral_1h_input_tokens": 600
+            }
+        });
+
+        let parsed = parse_usage(Some(&usage));
+        assert_eq!(parsed.cache_creation_tokens, 900);
+        assert_eq!(parsed.cache_creation_1h_tokens, 600);
+    }
+
+    #[test]
+    fn missing_nested_cache_creation_reports_no_one_hour_tokens() {
+        let usage = json!({"cache_creation_input_tokens": 500});
+
+        let parsed = parse_usage(Some(&usage));
+        assert_eq!(parsed.cache_creation_tokens, 500);
+        assert_eq!(parsed.cache_creation_1h_tokens, 0);
+    }
+
+    #[test]
+    fn nested_cache_creation_sum_larger_than_flat_total_wins() {
+        let usage = json!({
+            "cache_creation_input_tokens": 100,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": 50,
+                "ephemeral_1h_input_tokens": 200
+            }
+        });
+
+        let parsed = parse_usage(Some(&usage));
+        assert_eq!(parsed.cache_creation_tokens, 250);
+        assert_eq!(parsed.cache_creation_1h_tokens, 200);
+    }
+
+    #[test]
+    fn one_hour_tokens_larger_than_the_flat_total_still_stay_within_it() {
+        let usage = json!({
+            "cache_creation_input_tokens": 400,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 900
+            }
+        });
+
+        let parsed = parse_usage(Some(&usage));
+        assert_eq!(parsed.cache_creation_tokens, 900);
+        assert_eq!(parsed.cache_creation_1h_tokens, 900);
     }
 
     #[test]
