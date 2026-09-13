@@ -434,3 +434,49 @@ Recorded during implementation, smallest faithful choice in each case:
    and gets the summed cost line, and the popover's call site simply omits
    the argument and gets `costLine: null`, with no new fetch added to the
    popover's lighter surface.
+
+## Deviations during PR 2
+
+Recorded during implementation, smallest faithful choice in each case:
+
+1. **The three new `badges.rs` tests are the existing generic table, not
+   three new bespoke test functions.** `report::clean_facts_complete`
+   already excludes `UnusedMcpServers | UnusedBuiltInTools |
+   UnusedBuiltInTools` from ever reading `Clean` ("no current reader
+   proves a full historical resource inventory"), so a genuine
+   Finding/Clean/NotAssessed trio is not reachable for these three
+   badges — Clean is structurally impossible. Extending `finding_evidence`
+   (the match table `partial_evidence_follows_each_badges_finding_policy`,
+   `complete_evidence_without_a_signal_reads_clean`,
+   `a_missing_capability_is_not_assessed`, and the report-fold
+   cross-check already iterate) exercises Finding and every NotAssessed
+   path for all three new badges through the same infrastructure the six
+   existing badges use, rather than duplicating it in three new functions
+   that would need to assert the same unreachable-Clean fact by hand.
+2. **The zero-turn default for the three new badges is
+   `NotAssessed(CapabilityMissing)`, confirmed by running the suite, not
+   derived from the plan text.** A session with no observed MCP server,
+   skill, or built-in-tool-catalogue resolution leaves
+   `mcp_coverage`/`skill_coverage`/`tool_definitions` at `Unsupported`
+   (coverage applies only to observed resources, not a full historical
+   inventory), which reads as a missing capability rather than
+   incomplete evidence. `zero_turn_override` and the
+   `a_missing_capability_is_not_assessed` test's disabled-capability list
+   were extended to match.
+3. **`SessionHygieneCheck.detail` joins every named resource into one
+   string with `", "` between entries**, since the field stays
+   `string | null` (singular) rather than becoming a list. The plan's
+   "`resource — ~$X.XX` per entry in the existing detail slot" specifies
+   the per-entry format but not how multiple entries share one string
+   field; joining keeps the existing `SessionHygieneCheck.detail` shape
+   and its one consumer (`sessionHygieneDocumentation`'s guidance list,
+   which prepends `detail` as one bullet) unchanged. Each entry still
+   gets its own line in `documentation.findingDetails`
+   (`sessionHygieneFindingDetails`), the same per-entry treatment
+   `modelOverthinking` and `obsoleteModel` already use.
+4. **`HygieneUnusedResourcePayload.cost_usd` has no
+   `skip_serializing_if`**, so its TypeScript mirror
+   (`HygieneUnusedResource.costUsd`) is `number | null`, not an optional
+   field. This matches the plan's Rust struct exactly (a plain
+   `Option<f64>` field) and keeps the wire shape explicit about "priced
+   nothing" versus "field absent."
