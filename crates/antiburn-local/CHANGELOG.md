@@ -27,7 +27,8 @@ version and refuses the release if there is none.
   since it has run with one-hour caching configured throughout. The
   efficiency reducer and turn rows now price that subset at 2x the input
   rate instead of the default cache-write rate. Advance parser revision to
-  35 so prior sessions reparse and reprice.
+  35 so prior sessions reparse and reprice. `TokenBurnTurnEvidence`'s
+  report-time token estimates price the same subset at the same rate.
 
 ## [0.7.1] - 2026-09-10
 

@@ -456,6 +456,8 @@ pub struct TokenBurnTurnEvidence {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    /// The subset of `cache_write_tokens` that the provider keeps for one hour.
+    pub cache_write_1h_tokens: u64,
 }
 
 impl TokenBurnTurnEvidence {
@@ -788,7 +790,11 @@ fn token_cost(tokens: &TokenBurnTurnEvidence, pricing: &ModelPricing) -> f64 {
     tokens.input_tokens as f64 * pricing.input_cost_per_token
         + tokens.output_tokens as f64 * pricing.output_cost_per_token
         + tokens.cache_read_tokens as f64 * pricing.cache_read_cost_per_token
-        + tokens.cache_write_tokens as f64 * pricing.cache_write_cost_per_token
+        + tokens
+            .cache_write_tokens
+            .saturating_sub(tokens.cache_write_1h_tokens) as f64
+            * pricing.cache_write_cost_per_token
+        + tokens.cache_write_1h_tokens as f64 * pricing.input_cost_per_token * 2.0
 }
 
 fn cost_saving_tokens(
@@ -1865,6 +1871,7 @@ mod tests {
             output_tokens,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
+            cache_write_1h_tokens: 0,
         }
     }
 
@@ -1879,6 +1886,33 @@ mod tests {
         let mut evidence = SessionTokenBurnEvidence::default();
         accumulator.finish_into(&mut evidence);
         evidence
+    }
+
+    #[test]
+    fn token_cost_prices_one_hour_cache_writes_at_double_the_input_rate() {
+        let pricing = ModelPricing {
+            input_cost_per_token: 0.000_003,
+            output_cost_per_token: 0.000_015,
+            cache_read_cost_per_token: 0.000_000_3,
+            cache_write_cost_per_token: 0.000_003_75,
+        };
+        let mut default_rate_turn = token_turn("main", "claude-sonnet-5", None, None, 0);
+        default_rate_turn.cache_write_tokens = 1_000;
+        default_rate_turn.cache_write_1h_tokens = 0;
+        let mut one_hour_turn = token_turn("main", "claude-sonnet-5", None, None, 0);
+        one_hour_turn.cache_write_tokens = 1_000;
+        one_hour_turn.cache_write_1h_tokens = 1_000;
+
+        let default_rate_cost = token_cost(&default_rate_turn, &pricing);
+        let one_hour_cost = token_cost(&one_hour_turn, &pricing);
+
+        let expected_delta =
+            1_000.0 * (pricing.input_cost_per_token * 2.0 - pricing.cache_write_cost_per_token);
+        assert!(
+            (one_hour_cost - default_rate_cost - expected_delta).abs() < 1e-12,
+            "expected cost delta {expected_delta}, got {}",
+            one_hour_cost - default_rate_cost
+        );
     }
 
     #[test]
