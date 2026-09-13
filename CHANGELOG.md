@@ -26,7 +26,8 @@ CI changes, and documentation that no user acts on stay out — see
   of the default five-minute rate, since Claude Code has run with one-hour
   caching configured throughout. A transcript that carries the explicit
   five-minute/one-hour split uses it instead. Previously analyzed sessions
-  are reprocessed.
+  are reprocessed. Insights savings estimates, old-model remediation savings,
+  and provider-limit factor learning now use the same one-hour rate.
 
 ## [0.5.2] - 2026-09-10
 

@@ -121,11 +121,12 @@ deny session-wide `Clean`, even when a nested observed-resource map is complete.
 A scoped finding requires complete coverage of that observed subset, calls, and
 eligible activity. An unrelated partial resource group does not block it.
 
-`insights/report.rs::token_cost` and `TokenBurnTurnEvidence` price every
-cache-write token at the flat catalogue rate, including the one-hour subset
-that `Usage::cache_creation_1h_tokens` now carries elsewhere in the pipeline.
-Carrying that split into O (old-model price) and C (cache churn) evidence is a
-follow-up; it needs an `EVIDENCE_SCHEMA_REVISION` bump.
+Report-time token estimates (`insights/report.rs::token_cost` and
+`TokenBurnTurnEvidence`), old-model remediation savings, and provider-limit
+attribution all read `turn.cache_write_1h_tokens` and price that subset at
+two times the input rate. These readers are report-time views of turn rows,
+not part of `SessionEvidence`, so the evidence schema revision does not
+change when this pricing split changes.
 
 Thread attribution retains at most 16,384 distinct UUIDs, each at most 256 bytes.
 An overflow or oversized UUID records `CapExceeded`, makes attribution

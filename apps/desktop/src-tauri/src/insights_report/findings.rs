@@ -149,7 +149,7 @@ pub(crate) fn old_model_remediation_evidence(
                 t.output_tokens, t.cache_read_tokens, t.cache_write_tokens,
                 s.session_id, s.started_at_epoch, s.cwd, e.published_fence,
                 e.effective_model_target_hash, e.effective_model_scope,
-                e.effective_model
+                e.effective_model, t.cache_write_1h_tokens
            FROM turn t
            JOIN session s USING (environment_key, agent, session_id)
            JOIN session_evidence e USING (environment_key, agent, session_id)
@@ -295,6 +295,7 @@ pub(crate) fn add_tokens(
         row.get(6)?,
         row.get(7)?,
         row.get(8)?,
+        row.get(16)?,
     ))
 }
 
@@ -304,6 +305,7 @@ pub(crate) fn checked_add_tokens(
     output: u64,
     cache_read: u64,
     cache_creation: u64,
+    cache_creation_1h: u64,
 ) -> bool {
     let Some(input_tokens) = target.input_tokens.checked_add(input) else {
         return false;
@@ -318,12 +320,18 @@ pub(crate) fn checked_add_tokens(
     else {
         return false;
     };
+    let Some(cache_creation_1h_tokens) = target
+        .cache_creation_1h_tokens
+        .checked_add(cache_creation_1h)
+    else {
+        return false;
+    };
     *target = ModelTokens {
         input_tokens,
         output_tokens,
         cache_read_tokens,
         cache_creation_tokens,
-        ..target.clone()
+        cache_creation_1h_tokens,
     };
     true
 }

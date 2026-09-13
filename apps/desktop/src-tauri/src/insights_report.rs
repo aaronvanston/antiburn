@@ -99,7 +99,7 @@ SELECT e.evidence_json, s.agent, s.session_id, e.published_fence, a.initial_cont
 
 const TOKEN_BURN_TURNS_SQL: &str = "
 SELECT scope, model, effort, speed, ts_ms, input_tokens, output_tokens,
-       cache_read_tokens, cache_write_tokens
+       cache_read_tokens, cache_write_tokens, cache_write_1h_tokens
   FROM turn
  WHERE environment_key = ?1
    AND agent = ?2
@@ -421,6 +421,7 @@ fn token_burn_evidence(
         let output_tokens = u64::try_from(row.get::<_, i64>(6)?)?;
         let cache_read_tokens = u64::try_from(row.get::<_, i64>(7)?)?;
         let cache_write_tokens = u64::try_from(row.get::<_, i64>(8)?)?;
+        let cache_write_1h_tokens = u64::try_from(row.get::<_, i64>(9)?)?;
         let Some(model) = model.filter(|model| !model.trim().is_empty()) else {
             has_unattributed_assistant_turn = true;
             continue;
@@ -435,6 +436,7 @@ fn token_burn_evidence(
             output_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            cache_write_1h_tokens,
         };
         let input = u128::from(input_tokens);
         let output = u128::from(output_tokens);
@@ -793,7 +795,7 @@ mod tests {
             ..ModelTokens::default()
         };
         let before = tokens.clone();
-        assert!(!checked_add_tokens(&mut tokens, 1, 0, 0, 0));
+        assert!(!checked_add_tokens(&mut tokens, 1, 0, 0, 0, 0));
         assert_eq!(tokens, before);
     }
 
@@ -1491,6 +1493,123 @@ mod tests {
             assert_eq!(recurred.recurrence_ms, Some(103_000), "{agent:?}");
             assert_eq!(recurred.replacement_tokens.unwrap().input_tokens, 10);
         }
+    }
+
+    #[test]
+    fn old_model_remediation_evidence_prices_one_hour_cache_writes_in_replacement_tokens() {
+        let data_dir = TempDir::new().unwrap();
+        let store = Store::open(data_dir.path()).unwrap();
+        let rows: u64 = 2;
+        publish_attributed_model_turn(
+            data_dir.path(),
+            &store,
+            "replacement-one",
+            101,
+            101_000,
+            "claude-opus-5",
+        );
+        publish_attributed_model_turn(
+            data_dir.path(),
+            &store,
+            "replacement-two",
+            102,
+            102_000,
+            "claude-opus-5",
+        );
+        // Isolate the cache-write component: zero the input tokens so only
+        // the one-hour cache-write subset contributes to the saving.
+        rusqlite::Connection::open(crate::store::database_path(data_dir.path()))
+            .unwrap()
+            .execute(
+                "UPDATE turn SET input_tokens = 0, cache_write_tokens = 40,
+                    cache_write_1h_tokens = 40
+                  WHERE environment_key = 'native' AND agent = 'claude-code'",
+                [],
+            )
+            .unwrap();
+        let definition = WatchDefinition {
+            version: 1,
+            detector: "old_model_usage".into(),
+            canonical_identity: "identity".into(),
+            source_format: "ClaudeJsonl".into(),
+            workspace_key: None,
+            workspace_relative_cwd: None,
+            provider: Some("anthropic".into()),
+            api: Some("messages".into()),
+            old_model: Some("claude-opus-4-8".into()),
+            replacement: Some("claude-opus-5".into()),
+            resource: None,
+            physical_target_key: Some("physical".into()),
+            config_setting: Some("model".into()),
+            config_expected_value: Some("claude-opus-4-8".into()),
+            config_proposed_value: Some("claude-opus-5".into()),
+            verification_method_revision: 1,
+            remediation_policy_revision: Some(1),
+            savings_method_revision: 1,
+            pricing_revision: Some("test-pricing".into()),
+            old_pricing: Some(antiburn_local::pricing::ModelPricing {
+                input_cost_per_token: 3.0,
+                output_cost_per_token: 0.0,
+                cache_read_cost_per_token: 0.0,
+                cache_write_cost_per_token: 0.0,
+            }),
+            replacement_pricing: Some(antiburn_local::pricing::ModelPricing {
+                input_cost_per_token: 1.0,
+                output_cost_per_token: 0.0,
+                cache_read_cost_per_token: 0.0,
+                cache_write_cost_per_token: 0.0,
+            }),
+            catalog_revision: Some(ReportCatalogs::default().revision),
+            target_model: None,
+            target_control: None,
+        };
+        let record = crate::store::RemediationRecord {
+            remediation_id: "watch".into(),
+            target_key: "target".into(),
+            environment_key: "native".into(),
+            agent: "claude-code".into(),
+            scope_kind: "global".into(),
+            scope_key: "physical".into(),
+            state: crate::store::RemediationState::Watching,
+            dirty_revision: 1,
+            evaluated_revision: 0,
+            definition_json: serde_json::to_string(&definition).unwrap(),
+            result_json: r#"{"version":1}"#.into(),
+            created_at_epoch: 100,
+            updated_at_epoch: 100,
+            effective_boundary_ms: Some(100_000),
+            verified_at_epoch: None,
+            recurred_at_epoch: None,
+            action_joined_at_ms: None,
+        };
+        let replacement =
+            old_model_remediation_evidence(data_dir.path(), &record, &definition, 100_000, None)
+                .unwrap();
+        let replacement_tokens = replacement.replacement_tokens.clone().unwrap();
+        assert_eq!(replacement_tokens.cache_creation_1h_tokens, 40 * rows);
+
+        let savings = antiburn_local::remediation::estimate_old_model_savings(
+            &antiburn_local::remediation::OldModelSavingsInput {
+                interval: antiburn_local::remediation::SavingsInterval {
+                    boundary_ms: 100_000,
+                    measured_through_ms: 102_000,
+                    recurrence_ms: None,
+                },
+                tokens: Some(replacement_tokens),
+                old_pricing: definition.old_pricing.clone(),
+                replacement_pricing: definition.replacement_pricing.clone(),
+                pricing_revision: definition.pricing_revision.clone(),
+            },
+        );
+        let antiburn_local::remediation::OldModelSavingsEstimate::Known(savings) = savings else {
+            panic!("replacement savings must be known");
+        };
+        let input_rate_delta = 2.0;
+        let expected_cache_write_saving = (40 * rows) as f64 * input_rate_delta * 2.0;
+        assert_eq!(
+            savings.api_equivalent_cost_avoided_usd,
+            expected_cache_write_saving
+        );
     }
 
     #[cfg(not(windows))]
