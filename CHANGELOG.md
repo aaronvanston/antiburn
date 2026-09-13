@@ -22,10 +22,11 @@ CI changes, and documentation that no user acts on stay out — see
 
 ### Fixed
 
-- Claude Code sessions that report a one-hour prompt-cache write now price it
-  at the correct 2x-input rate instead of the default five-minute rate, so
-  cache-write cost is no longer understated. Previously analyzed sessions are
-  reprocessed.
+- Claude Code cache writes now price at the one-hour rate (2x input) instead
+  of the default five-minute rate, since Claude Code has run with one-hour
+  caching configured throughout. A transcript that carries the explicit
+  five-minute/one-hour split uses it instead. Previously analyzed sessions
+  are reprocessed.
 
 ## [0.5.2] - 2026-09-10
 

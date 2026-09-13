@@ -643,7 +643,16 @@ pub(crate) fn parse_record(value: &Value, shape: RecordShape) -> Option<Normaliz
             .and_then(|m| m.get("usage"))
             .or_else(|| obj.get("usage")),
     };
-    ev.usage = parse_usage(usage_value);
+    // Claude Code has run with one-hour prompt caching configured
+    // throughout. A Claude record with no nested `cache_creation` breakdown
+    // therefore classifies its whole cache-creation total as one-hour
+    // writes; a present breakdown always wins over this default. Every
+    // other shape keeps the generic rule: an absent breakdown reports no
+    // one-hour tokens.
+    ev.usage = match shape {
+        RecordShape::Claude => claude_usage(usage_value),
+        _ => parse_usage(usage_value),
+    };
 
     // The response speed (Claude's "standard"/"fast" fast-mode signal): only
     // Claude and the generic fallback ever carry it, as message.usage.speed
@@ -1051,6 +1060,27 @@ pub(crate) fn parse_usage(value: Option<&Value>) -> Usage {
     }
 }
 
+/// Parses a Claude usage object, then applies the legacy one-hour default.
+///
+/// Mirrors the cadence parser rule (`claude_cache_creation_usage` in
+/// `note_parser.rs`): Claude Code has run with one-hour prompt caching
+/// configured throughout, so a record with no nested `cache_creation`
+/// breakdown classifies its whole cache-creation total as one-hour writes.
+/// A present breakdown always wins, through [`parse_usage`]'s own
+/// max/clamp rule.
+fn claude_usage(value: Option<&Value>) -> Usage {
+    let mut usage = parse_usage(value);
+    let has_breakdown = value
+        .and_then(Value::as_object)
+        .and_then(|obj| obj.get("cache_creation"))
+        .and_then(Value::as_object)
+        .is_some();
+    if !has_breakdown {
+        usage.cache_creation_1h_tokens = usage.cache_creation_tokens;
+    }
+    usage
+}
+
 /// Splits a flat cache-creation total into the total and its one-hour
 /// subset, using Claude's nested `cache_creation` breakdown when the
 /// record carries one.
@@ -1058,8 +1088,8 @@ pub(crate) fn parse_usage(value: Option<&Value>) -> Usage {
 /// Mirrors the cadence parser rule (`claude_cache_creation_usage` in
 /// `note_parser.rs`): the total is `max(reported_total, one_hour +
 /// five_minute)`, and `one_hour` is clamped to that total. A record with
-/// no nested breakdown reports no one-hour tokens; only an explicit
-/// breakdown classifies any tokens as one-hour writes.
+/// no nested breakdown reports no one-hour tokens here; [`claude_usage`]
+/// layers the Claude-specific legacy default on top of this generic rule.
 fn claude_cache_creation_split(obj: &Map<String, Value>, reported_total: u64) -> (u64, u64) {
     let Some(breakdown) = obj.get("cache_creation").and_then(Value::as_object) else {
         return (reported_total, 0);
@@ -1119,12 +1149,15 @@ mod tests {
 
     #[test]
     fn parse_record_changes_require_an_inertness_review() {
-        // `parse_usage` now reads a nested `cache_creation` object
+        // `parse_record` now dispatches Claude usage through `claude_usage`,
+        // which reads a nested `cache_creation` object
         // (`ephemeral_1h_input_tokens`, `ephemeral_5m_input_tokens`) inside
-        // the existing `usage` value. `is_inert_record` already rejects any
-        // object that carries a `usage` key at all, so this new nested read
-        // adds no gap: `INERTNESS_MIRROR_CASES` needs no update.
-        const EXPECTED_FINGERPRINT: u64 = 15_084_001_525_904_785_191;
+        // the existing `usage` value, and defaults a record with no
+        // breakdown to counting its whole cache-creation total as one-hour
+        // writes. `is_inert_record` already rejects any object that carries
+        // a `usage` key at all, so this new read and default add no gap:
+        // `INERTNESS_MIRROR_CASES` needs no update.
+        const EXPECTED_FINGERPRINT: u64 = 8_860_304_008_540_700_823;
         let source = include_str!("records.rs").replace("\r\n", "\n");
         let start = source.find("pub(crate) fn parse_record").unwrap();
         let end = source[start..].find("\n#[cfg(test)]\nmod tests").unwrap() + start;
@@ -1454,6 +1487,42 @@ mod tests {
         let parsed = parse_usage(Some(&usage));
         assert_eq!(parsed.cache_creation_tokens, 500);
         assert_eq!(parsed.cache_creation_1h_tokens, 0);
+    }
+
+    #[test]
+    fn a_legacy_claude_record_with_no_breakdown_counts_its_whole_total_as_one_hour() {
+        let record = json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "usage": {"cache_creation_input_tokens": 500}
+            }
+        });
+
+        let event = parse_record(&record, RecordShape::Claude).unwrap();
+        assert_eq!(event.usage.cache_creation_tokens, 500);
+        assert_eq!(event.usage.cache_creation_1h_tokens, 500);
+    }
+
+    #[test]
+    fn a_claude_record_with_a_five_minute_breakdown_overrides_the_legacy_default() {
+        let record = json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "usage": {
+                    "cache_creation_input_tokens": 500,
+                    "cache_creation": {
+                        "ephemeral_5m_input_tokens": 500,
+                        "ephemeral_1h_input_tokens": 0
+                    }
+                }
+            }
+        });
+
+        let event = parse_record(&record, RecordShape::Claude).unwrap();
+        assert_eq!(event.usage.cache_creation_tokens, 500);
+        assert_eq!(event.usage.cache_creation_1h_tokens, 0);
     }
 
     #[test]

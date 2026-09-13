@@ -142,7 +142,10 @@ ALTER TABLE turn ADD COLUMN api TEXT;
 ///
 /// This is a subset of the existing `cache_write_tokens` column. Existing
 /// rows default to `0` until a full parse replaces them with the parsed
-/// split (`records::parse_usage`).
+/// split (`records::parse_record`). A Claude record with no nested
+/// `cache_creation` breakdown counts its whole cache-write total as
+/// one-hour writes, since Claude Code has run with one-hour caching
+/// configured throughout; a present breakdown reports the exact split.
 pub const TURN_SCHEMA_V8_SQL: &str = r#"
 ALTER TABLE turn ADD COLUMN cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0;
 "#;

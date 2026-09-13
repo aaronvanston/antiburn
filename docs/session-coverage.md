@@ -61,16 +61,12 @@ Claude JSONL usage parses a nested `cache_creation` breakdown
 at the one-hour premium rate instead of the catalogue's default (five-minute)
 rate. The flat `cache_creation_input_tokens` total takes the larger of itself
 and the breakdown's sum; the one-hour count never exceeds that total. A
-record with no nested breakdown reports zero one-hour tokens; only an
-explicit breakdown classifies any tokens as one-hour writes.
-
-Maintainer confirmation (2026-09-13): parse the nested `cache_creation`
-breakdown into `cache_write_1h_tokens` and price it at 2x the input rate.
-Reviewed passive alternative: classify every legacy (no-breakdown) cache
-write as one-hour, mirroring the cadence parser's own default for sessions
-that predate the breakdown; rejected because it would reprice every stored
-Claude session's historical cache writes without an explicit signal that
-they were one-hour writes.
+present breakdown always wins. Claude Code has run with one-hour caching
+configured throughout, so a Claude record with no nested breakdown
+classifies its whole cache-creation total as one-hour writes instead,
+mirroring the cadence parser's own default for sessions that predate the
+breakdown. Non-Claude sources carry no such default: an absent breakdown
+there reports zero one-hour tokens.
 
 Inline materialized sources use a fingerprint of the full bounded content, not
 only a head region. The content is already materialized and size-bounded before

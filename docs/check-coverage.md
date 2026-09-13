@@ -121,6 +121,12 @@ deny session-wide `Clean`, even when a nested observed-resource map is complete.
 A scoped finding requires complete coverage of that observed subset, calls, and
 eligible activity. An unrelated partial resource group does not block it.
 
+`insights/report.rs::token_cost` and `TokenBurnTurnEvidence` price every
+cache-write token at the flat catalogue rate, including the one-hour subset
+that `Usage::cache_creation_1h_tokens` now carries elsewhere in the pipeline.
+Carrying that split into O (old-model price) and C (cache churn) evidence is a
+follow-up; it needs an `EVIDENCE_SCHEMA_REVISION` bump.
+
 Thread attribution retains at most 16,384 distinct UUIDs, each at most 256 bytes.
 An overflow or oversized UUID records `CapExceeded`, makes attribution
 incomplete, and blocks every clean result that needs complete affected evidence.
@@ -389,7 +395,6 @@ inheriting a native format's contract.
 | 2026-09-08 | Antigravity             | T (overthinking), S (subagents), M (MCP), B (built-ins), K (skills), F (fast mode), C (cache churn) | Unsupported. Installed 2.11.0 descriptors, native conversation databases, brain/cascade data, and adapter protobuf research provide no alternative native proof for these checks. See [adapter research][antigravity-adapter].                                      |
 | 2026-09-08 | Claude, Codex, OpenCode | M/B/K where observed evidence exists                                                                | Approved scoped observed-resource findings only. Complete observed subset plus calls is required; no session-wide clean without full inventory. Codex exact server exposure and selected documents are covered by [rollout/protocol/skills research][codex-source]. |
 | 2026-09-08 | Pi                      | T, S                                                                                                | T is explicitly agent-selected policy on reviewed routes. S is limited to persisted official example-extension nested results and actual models, finding-only. See [core/session and examples/extensions/subagent][pi-source].                                      |
-| 2026-09-13 | Claude                  | O (old-model price), C (cache churn)                                                                | Confirmed unaffected by the one-hour cache-write premium split. `Usage::cache_creation_1h_tokens` (`records::parse_usage`) and the turn row's `cache_write_1h_tokens` column feed `SessionMetrics.cost` and the desktop display breakdown only. `insights/report.rs::token_cost` and `TokenBurnTurnEvidence` still price every cache-write token at the flat catalogue rate for O and C; giving those checks the same split needs an `EVIDENCE_SCHEMA_REVISION` bump and is a follow-up, not part of this change. |
 
 [opencode-v1]: https://github.com/anomalyco/opencode/tree/ffc000de8e446c63d41a2e352d119d9ff43530d0
 [opencode-core]: https://github.com/anomalyco/opencode/tree/ecbc6ccac85b3e8087b6445e584318419b9e2b34

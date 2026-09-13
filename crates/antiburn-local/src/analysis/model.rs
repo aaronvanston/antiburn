@@ -21,8 +21,11 @@ pub struct Usage {
     pub cache_creation_tokens: u64,
     /// The subset of `cache_creation_tokens` written with a one-hour TTL.
     /// Anthropic bills a one-hour cache write at 2x the input rate, versus
-    /// 1.25x for the default five-minute write. Non-Claude vendors always
-    /// report `0` here.
+    /// 1.25x for the default five-minute write. Claude Code has run with
+    /// one-hour caching configured throughout, so a Claude record with no
+    /// nested cache-creation breakdown counts its whole cache-creation
+    /// total here; a record that does carry a breakdown reports the exact
+    /// split instead. Non-Claude vendors always report `0` here.
     pub cache_creation_1h_tokens: u64,
 }
 
