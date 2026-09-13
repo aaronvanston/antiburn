@@ -617,7 +617,10 @@ pub(crate) fn assess_current_detector(
     cancel: &AtomicBool,
     turn_probe: &mut dyn FnMut(),
 ) -> Result<FindingAssessment> {
-    if detector != DetectorId::UnusedBuiltInTools {
+    if !matches!(
+        detector,
+        DetectorId::UnusedBuiltInTools | DetectorId::UnusedMcpServers | DetectorId::UnusedSkills
+    ) {
         return Ok(antiburn_local::remediation::assess_detector(
             detector,
             &session.evidence,

@@ -126,7 +126,7 @@ fn verify_old_model_outcome(
 }
 
 /// One detector assessment for an exact canonical target.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TargetAssessment {
     pub observed_at_ms: i64,
     pub identity: String,

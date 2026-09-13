@@ -431,7 +431,7 @@ pub struct EfficiencyReport {
     pub detector_estimated_token_burn_basis_points: [Option<u16>; DetectorId::COUNT],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenBurnSourceEvidence {
     // Collectors omit source groups when deferred loading prevents token attribution.
     /// The agent and installation scope used for window-level grouping.
@@ -442,6 +442,10 @@ pub struct TokenBurnSourceEvidence {
     pub replicated_tokens: u128,
     /// Whether this session invoked the source after loading it.
     pub invoked: bool,
+    /// The priced cost of `replicated_tokens`, at the cache-read rate for
+    /// each contributing turn's model. `None` when no contributing turn's
+    /// model has a resolvable price; tokens and cost fail independently.
+    pub replicated_cost_usd: Option<f64>,
 }
 
 /// One attributed assistant turn used only for report-time token estimates.
@@ -719,7 +723,7 @@ fn checked_accumulate(total: Option<u128>, value: Option<u128>) -> Option<u128> 
     total?.checked_add(value?)
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SessionTokenBurnEvidence {
     /// All attributed input, output, cache-read, and cache-write tokens.
     pub total_tokens: Option<u128>,
@@ -734,6 +738,10 @@ pub struct SessionTokenBurnEvidence {
     pub mcp_sources: Option<Vec<TokenBurnSourceEvidence>>,
     pub built_in_tool_sources: Option<Vec<TokenBurnSourceEvidence>>,
     pub skill_sources: Option<Vec<TokenBurnSourceEvidence>>,
+    /// The pricing table generation active while this report ran, stamped
+    /// once regardless of whether any source priced. `None` before the
+    /// report-time pricing pass runs.
+    pub pricing_revision: Option<String>,
 }
 
 impl SessionTokenBurnEvidence {
@@ -1615,6 +1623,7 @@ mod tests {
                     name: "read".to_owned(),
                     replicated_tokens: 100,
                     invoked: false,
+                    replicated_cost_usd: None,
                 }]),
                 ..SessionTokenBurnEvidence::default()
             },
@@ -1690,6 +1699,7 @@ mod tests {
                         name: name.to_owned(),
                         replicated_tokens: tokens,
                         invoked: false,
+                        replicated_cost_usd: None,
                     }]),
                     ..SessionTokenBurnEvidence::default()
                 },
@@ -1936,18 +1946,21 @@ mod tests {
             name: "server".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_evidence.built_in_tool_sources = Some(vec![TokenBurnSourceEvidence {
             scope: "agent:bundled".to_owned(),
             name: "tool".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_evidence.skill_sources = Some(vec![TokenBurnSourceEvidence {
             scope: "agent:user".to_owned(),
             name: "skill".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_burn.observe(token_evidence, [true; DetectorId::COUNT], [true; 3]);
         let (combined, estimates) = token_burn.finish(&finding_statuses(&all_findings));
@@ -1992,18 +2005,21 @@ mod tests {
             name: "server".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_evidence.built_in_tool_sources = Some(vec![TokenBurnSourceEvidence {
             scope: "agent:bundled".to_owned(),
             name: "tool".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_evidence.skill_sources = Some(vec![TokenBurnSourceEvidence {
             scope: "agent:user".to_owned(),
             name: "skill".to_owned(),
             replicated_tokens: 100,
             invoked: false,
+            replicated_cost_usd: None,
         }]);
         token_burn.observe(token_evidence, [true; DetectorId::COUNT], [true; 3]);
 
@@ -2042,12 +2058,14 @@ mod tests {
                         name: "tool".to_owned(),
                         replicated_tokens: u128::MAX,
                         invoked: false,
+                        replicated_cost_usd: None,
                     },
                     TokenBurnSourceEvidence {
                         scope: "agent:bundled".to_owned(),
                         name: "tool".to_owned(),
                         replicated_tokens: 1,
                         invoked: false,
+                        replicated_cost_usd: None,
                     },
                 ]),
                 ..SessionTokenBurnEvidence::default()
@@ -2464,6 +2482,7 @@ mod tests {
                         name: "server-a".to_owned(),
                         replicated_tokens: 100,
                         invoked: index == 4,
+                        replicated_cost_usd: None,
                     }]),
                     ..SessionTokenBurnEvidence::default()
                 },
@@ -2500,6 +2519,7 @@ mod tests {
                         name: "server".to_owned(),
                         replicated_tokens: 100,
                         invoked: false,
+                        replicated_cost_usd: None,
                     }]),
                     ..SessionTokenBurnEvidence::default()
                 },
@@ -2532,6 +2552,7 @@ mod tests {
                     name: "server-a".to_owned(),
                     replicated_tokens: 100,
                     invoked: false,
+                    replicated_cost_usd: None,
                 }]),
                 ..SessionTokenBurnEvidence::default()
             },
@@ -2700,12 +2721,14 @@ mod tests {
                         name: "server-a".to_owned(),
                         replicated_tokens: 100,
                         invoked: false,
+                        replicated_cost_usd: None,
                     }]),
                     skill_sources: Some(vec![TokenBurnSourceEvidence {
                         scope: "claude:user".to_owned(),
                         name: "review".to_owned(),
                         replicated_tokens: 50,
                         invoked: false,
+                        replicated_cost_usd: None,
                     }]),
                     ..SessionTokenBurnEvidence::default()
                 },
@@ -3194,6 +3217,7 @@ mod tests {
                         name: "read".to_owned(),
                         replicated_tokens: 100,
                         invoked,
+                        replicated_cost_usd: None,
                     }]),
                     ..SessionTokenBurnEvidence::default()
                 },
