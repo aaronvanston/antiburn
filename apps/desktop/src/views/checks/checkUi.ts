@@ -10,9 +10,14 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import type { BurnCheckDetectorId, ChecksCategoryPayload } from "../../lib/insightsIpc"
+import type {
+  BurnCheckDetectorId,
+  BurnCheckTargetPayload,
+  ChecksCategoryPayload,
+} from "../../lib/insightsIpc"
 import {
   CHECK_LABELS,
+  formatApiEquivalentUsd,
   formatTokenBurnPercent,
   tokenBurnTone,
 } from "../../lib/presentation/checks"
@@ -90,7 +95,25 @@ function tokenBurnLabel(category: ChecksCategoryPayload): string | null {
     : `${formatTokenBurnPercent(category.estimatedTokenBurnBasisPoints)} token burn`
 }
 
-export function checkRowPresentation(category: ChecksCategoryPayload) {
+/** Sums `estimatedOpportunity` across every loaded target, the way
+ * `display_opportunity` sums per target: all-or-nothing across the list, and
+ * only when every present figure shares the same unit. Returns null when the
+ * target list has not loaded yet, is empty, or does not price to dollars. */
+function summedCostLine(targets: readonly BurnCheckTargetPayload[] | undefined): string | null {
+  if (!targets || targets.length === 0) return null
+  let total = 0
+  for (const target of targets) {
+    const opportunity = target.display.estimatedOpportunity
+    if (!opportunity || opportunity.unit !== "apiEquivalentUsd") return null
+    total += opportunity.value
+  }
+  return formatApiEquivalentUsd(total)
+}
+
+export function checkRowPresentation(
+  category: ChecksCategoryPayload,
+  targets?: readonly BurnCheckTargetPayload[],
+) {
   const failed = category.finding > 0
   const metric = failed ? tokenBurnLabel(category) : null
   return {
@@ -98,6 +121,7 @@ export function checkRowPresentation(category: ChecksCategoryPayload) {
     label: CHECK_LABELS[category.id],
     summary: failed ? failedSessionSummary(category) : `${category.clean} passed`,
     metric,
+    costLine: failed ? summedCostLine(targets) : null,
     iconTone: failed
       ? "bg-system-red/10 text-system-red-text"
       : "bg-system-green/10 text-system-green",

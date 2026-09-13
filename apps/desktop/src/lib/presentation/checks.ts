@@ -97,3 +97,9 @@ export function tokenBurnTone(basisPoints: number): string {
   if (basisPoints === 0) return "text-system-green"
   return basisPoints < 500 ? "text-system-yellow" : "text-system-red-text"
 }
+
+/** Formats an API-equivalent dollar figure as `~$X.XX`, matching `costTotal`
+ * in `BurnChecksSavings.tsx`. */
+export function formatApiEquivalentUsd(value: number): string {
+  return `${value < 0 ? "-" : ""}~$${Math.abs(value).toFixed(2)}`
+}

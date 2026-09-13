@@ -68,10 +68,10 @@ function CheckRow({
   const [deliberateOpen, setDeliberateOpen] = useState(false)
   const bodyId = useId()
   const passed = check.finding === 0 && check.clean > 0
-  const presentation = checkRowPresentation(check)
-  const { Icon } = presentation
   const detector = check.id
   const targets = state.targets[detector]
+  const presentation = checkRowPresentation(check, targets?.data?.targets)
+  const { Icon } = presentation
   const trackVisibility = useCallback(
     (node: HTMLDivElement | null) =>
       session.setTargetsVisible(detector, node !== null, deliberateOpen),
@@ -109,14 +109,21 @@ function CheckRow({
           </span>
         </span>
         {presentation.metric ? (
-          <span className="inline-flex items-baseline gap-1.5 type-body tabular-nums text-label-secondary">
-            {presentation.metric.startsWith("<") && (
-              <span className="text-label-secondary">Under</span>
-            )}{" "}
-            <span className="font-mono">
-              {presentation.metric.replace("<", "").replace(" token burn", "")}
-            </span>{" "}
-            <span className="text-label-secondary">burn</span>
+          <span className="flex flex-col items-end">
+            <span className="inline-flex items-baseline gap-1.5 type-body tabular-nums text-label-secondary">
+              {presentation.metric.startsWith("<") && (
+                <span className="text-label-secondary">Under</span>
+              )}{" "}
+              <span className="font-mono">
+                {presentation.metric.replace("<", "").replace(" token burn", "")}
+              </span>{" "}
+              <span className="text-label-secondary">burn</span>
+            </span>
+            {presentation.costLine && (
+              <span className="type-footnote tabular-nums text-label-tertiary">
+                {presentation.costLine} wasted
+              </span>
+            )}
           </span>
         ) : (
           <span />
