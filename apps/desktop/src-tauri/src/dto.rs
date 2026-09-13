@@ -10,9 +10,11 @@
 //! around them belongs to the views — so these payloads carry values and facts,
 //! never labels.
 
+use antiburn_local::analysis::tool_catalog::{comparable_tool_name, situational_tools};
 use antiburn_local::analysis::{
-    ActiveSessionsSummary, EfficiencyTotals, EvidenceValue, FAST_SPEED_KEY, ModelRun,
-    QuotaLimitKind, RepeatedContextAccounting, SessionCost, SessionEvidence, SourceFormat,
+    ActiveSessionsSummary, EfficiencyTotals, EvidenceValue, FAST_SPEED_KEY, LoadedSource,
+    ModelEvidence, ModelRun, QuotaLimitKind, RepeatedContextAccounting, SessionCost,
+    SessionEvidence, SourceFormat, ToolDefinition, lookup_pricing,
 };
 use antiburn_local::insights::{
     BadgeId, BadgeStatus, DetectorId, DetectorStatus, EfficiencyReport, NotAssessedReason,
@@ -20,7 +22,7 @@ use antiburn_local::insights::{
 };
 use antiburn_local::pricing::canonical_model_key;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One row of the popover's activity list.
 ///
@@ -1207,6 +1209,25 @@ pub enum SessionHygieneFindingEvidencePayload {
         paid_tokens: u64,
         threshold_multiple: f64,
     },
+    UnusedMcpServer {
+        servers: Vec<HygieneUnusedResourcePayload>,
+    },
+    UnusedBuiltInTool {
+        tools: Vec<HygieneUnusedResourcePayload>,
+    },
+    UnusedSkill {
+        skills: Vec<HygieneUnusedResourcePayload>,
+    },
+}
+
+/// One unused resource named by a prefix-burn hygiene badge, with its
+/// priced replication cost. `cost_usd` is absent when no observed model
+/// resolves in the live pricing table.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HygieneUnusedResourcePayload {
+    pub name: String,
+    pub cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1276,6 +1297,9 @@ pub(crate) fn badge_id_str(id: BadgeId) -> &'static str {
         BadgeId::ObsoleteModel => "obsoleteModel",
         BadgeId::FastModeOveruse => "fastModeOveruse",
         BadgeId::ExcessCacheRehydration => "excessCacheRehydration",
+        BadgeId::UnusedMcpServer => "unusedMcpServer",
+        BadgeId::UnusedBuiltInTool => "unusedBuiltInTool",
+        BadgeId::UnusedSkill => "unusedSkill",
     }
 }
 
@@ -1445,7 +1469,92 @@ fn finding_evidence(
                 },
             )
         }
+        BadgeId::UnusedMcpServer => {
+            let sources = observed(&evidence.context_sources)?;
+            let models = observed(&evidence.models);
+            Some(SessionHygieneFindingEvidencePayload::UnusedMcpServer {
+                servers: unused_loaded_source_payloads(&sources.mcp_servers, models),
+            })
+        }
+        BadgeId::UnusedBuiltInTool => {
+            let sources = observed(&evidence.context_sources)?;
+            let definitions = observed(&sources.tool_definitions)?;
+            let models = observed(&evidence.models);
+            Some(SessionHygieneFindingEvidencePayload::UnusedBuiltInTool {
+                tools: unused_built_in_tool_payloads(&evidence.identity.agent, definitions, models),
+            })
+        }
+        BadgeId::UnusedSkill => {
+            let sources = observed(&evidence.context_sources)?;
+            let models = observed(&evidence.models);
+            Some(SessionHygieneFindingEvidencePayload::UnusedSkill {
+                skills: unused_loaded_source_payloads(&sources.skills, models),
+            })
+        }
     }
+}
+
+/// Sums one resource's replication cost across every observed model:
+/// `token_count * turns * cache_read_cost_per_token`, per model in
+/// `models.by_model`. `None` when no observed model resolves in the
+/// live pricing table, even though the resource still names itself.
+fn unused_resource_cost_usd(token_count: u64, models: Option<&ModelEvidence>) -> Option<f64> {
+    let models = models?;
+    let mut total_usd = 0.0;
+    let mut priced_any = false;
+    for (model, tokens) in &models.by_model {
+        let Some(pricing) = lookup_pricing(model) else {
+            continue;
+        };
+        total_usd += token_count as f64 * tokens.turns as f64 * pricing.cache_read_cost_per_token;
+        priced_any = true;
+    }
+    priced_any.then_some(total_usd)
+}
+
+/// Builds one payload entry per injected, never-invoked MCP server or
+/// skill, matching `unused_mcp_servers`/`unused_skills`'s own `evaluate`.
+fn unused_loaded_source_payloads(
+    sources: &BTreeMap<String, LoadedSource>,
+    models: Option<&ModelEvidence>,
+) -> Vec<HygieneUnusedResourcePayload> {
+    sources
+        .iter()
+        .filter(|(_, source)| source.injected && !source.invoked)
+        .map(|(name, source)| HygieneUnusedResourcePayload {
+            name: name.clone(),
+            cost_usd: source
+                .token_count
+                .and_then(|tokens| unused_resource_cost_usd(tokens, models)),
+        })
+        .collect()
+}
+
+/// Builds one payload entry per unused built-in tool definition, matching
+/// `unused_built_in_tools::has_unused_definition`: a real, non-deferred,
+/// never-invoked, non-situational definition.
+fn unused_built_in_tool_payloads(
+    agent: &str,
+    definitions: &BTreeMap<String, ToolDefinition>,
+    models: Option<&ModelEvidence>,
+) -> Vec<HygieneUnusedResourcePayload> {
+    let situational: Vec<String> = situational_tools(agent)
+        .iter()
+        .map(|name| comparable_tool_name(name))
+        .collect();
+    definitions
+        .iter()
+        .filter(|(name, definition)| {
+            definition.tokens > 0
+                && !definition.deferred
+                && !definition.invoked
+                && !situational.contains(&comparable_tool_name(name))
+        })
+        .map(|(name, definition)| HygieneUnusedResourcePayload {
+            name: name.clone(),
+            cost_usd: unused_resource_cost_usd(u64::from(definition.tokens), models),
+        })
+        .collect()
 }
 
 /// Reads the accounting `Cache Churn` used for this session's
@@ -1471,7 +1580,7 @@ fn repeated_context_accounting_str(evidence: &SessionEvidence) -> Option<&'stati
 
 impl SessionHygienePayload {
     pub fn from_badges(
-        badges: [SessionBadge; 6],
+        badges: [SessionBadge; 9],
         accounting: Option<&'static str>,
         evidence_state: &'static str,
     ) -> Self {
@@ -1485,7 +1594,7 @@ impl SessionHygienePayload {
     }
 
     pub fn for_evidence(
-        badges: [SessionBadge; 6],
+        badges: [SessionBadge; 9],
         evidence: &SessionEvidence,
         catalogs: &ReportCatalogs,
         evidence_state: &'static str,
@@ -2374,9 +2483,9 @@ mod tests {
         use std::collections::{BTreeMap, BTreeSet};
 
         use antiburn_local::analysis::{
-            ContextEvidence, EvidenceSource, ModelControlObservation, ModelTokens,
+            ContextEvidence, EvidenceSource, LoadedSource, ModelControlObservation, ModelTokens,
             RelationConfidence, RelationProvenance, RepeatedContext, SessionEvidenceAccumulator,
-            SourceCapabilities, SourceKind, SubagentChild, TurnCounts, TurnFacts,
+            SourceCapabilities, SourceKind, SubagentChild, ToolDefinition, TurnCounts, TurnFacts,
         };
         use antiburn_local::insights::{
             CoverageCounts, DetectorCounts, DetectorFindings, EfficiencyReportAccumulator,
@@ -2826,6 +2935,18 @@ mod tests {
                         id: BadgeId::ExcessCacheRehydration,
                         status: BadgeStatus::Clean,
                     },
+                    SessionBadge {
+                        id: BadgeId::UnusedMcpServer,
+                        status: BadgeStatus::Clean,
+                    },
+                    SessionBadge {
+                        id: BadgeId::UnusedBuiltInTool,
+                        status: BadgeStatus::Clean,
+                    },
+                    SessionBadge {
+                        id: BadgeId::UnusedSkill,
+                        status: BadgeStatus::Clean,
+                    },
                 ],
                 None,
                 "ready",
@@ -2844,7 +2965,10 @@ mod tests {
                         },
                         {"id": "obsoleteModel", "status": "clean", "notAssessedReason": null},
                         {"id": "fastModeOveruse", "status": "clean", "notAssessedReason": null},
-                        {"id": "excessCacheRehydration", "status": "clean", "notAssessedReason": null}
+                        {"id": "excessCacheRehydration", "status": "clean", "notAssessedReason": null},
+                        {"id": "unusedMcpServer", "status": "clean", "notAssessedReason": null},
+                        {"id": "unusedBuiltInTool", "status": "clean", "notAssessedReason": null},
+                        {"id": "unusedSkill", "status": "clean", "notAssessedReason": null}
                     ],
                     "evidenceState": "ready"
                 })
@@ -2990,6 +3114,184 @@ mod tests {
                     "repeatedTokens": 135,
                     "paidTokens": 235,
                     "thresholdMultiple": 2.35
+                })
+            );
+        }
+
+        /// Two models at different cache-read rates, both turning up in
+        /// `models.by_model`, must sum into one priced figure per unused
+        /// resource: `token_count * (turns_a * rate_a + turns_b * rate_b)`.
+        fn priced_evidence(session_id: &str) -> SessionEvidence {
+            let mut evidence = SessionEvidenceAccumulator::new(EvidenceSource {
+                agent: "claude-code".to_owned(),
+                session_id: session_id.to_owned(),
+                kind: SourceKind::File,
+                capabilities: SourceCapabilities::claude(),
+            })
+            .evidence(&TurnFacts::default());
+            let EvidenceValue::Complete(models) = &mut evidence.models else {
+                panic!("synthetic model evidence must be complete");
+            };
+            models.by_model.insert(
+                "claude-sonnet-5".to_owned(),
+                ModelTokens {
+                    turns: 2,
+                    ..ModelTokens::default()
+                },
+            );
+            models.by_model.insert(
+                "claude-opus-5".to_owned(),
+                ModelTokens {
+                    turns: 3,
+                    ..ModelTokens::default()
+                },
+            );
+            evidence
+        }
+
+        #[test]
+        fn unused_mcp_server_finding_evidence_sums_cost_across_models() {
+            let mut evidence = priced_evidence("unused-mcp-server");
+            let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                panic!("synthetic context source evidence must be complete");
+            };
+            sources.mcp_servers.insert(
+                "server-a".to_owned(),
+                LoadedSource {
+                    description: None,
+                    configured: true,
+                    available: true,
+                    injected: true,
+                    invoked: false,
+                    token_count: Some(100),
+                    origin: EvidenceValue::Unsupported,
+                },
+            );
+
+            let payload = finding_evidence(
+                BadgeId::UnusedMcpServer,
+                &evidence,
+                &ReportCatalogs::default(),
+            )
+            .expect("an injected, never-invoked server must report evidence");
+            assert_eq!(
+                serde_json::to_value(payload).unwrap(),
+                serde_json::json!({
+                    "kind": "unusedMcpServer",
+                    "servers": [{"name": "server-a", "costUsd": 100.0 * (2.0 * 0.3e-6 + 3.0 * 0.4e-6)}]
+                })
+            );
+        }
+
+        #[test]
+        fn unused_built_in_tool_finding_evidence_sums_cost_across_models() {
+            let mut evidence = priced_evidence("unused-built-in-tool");
+            let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                panic!("synthetic context source evidence must be complete");
+            };
+            let mut definitions = BTreeMap::new();
+            definitions.insert(
+                "bash".to_owned(),
+                ToolDefinition {
+                    tokens: 50,
+                    invoked: false,
+                    deferred: false,
+                },
+            );
+            sources.tool_definitions = EvidenceValue::Complete(definitions);
+
+            let payload = finding_evidence(
+                BadgeId::UnusedBuiltInTool,
+                &evidence,
+                &ReportCatalogs::default(),
+            )
+            .expect("an unused, non-deferred definition must report evidence");
+            assert_eq!(
+                serde_json::to_value(payload).unwrap(),
+                serde_json::json!({
+                    "kind": "unusedBuiltInTool",
+                    "tools": [{"name": "bash", "costUsd": 50.0 * (2.0 * 0.3e-6 + 3.0 * 0.4e-6)}]
+                })
+            );
+        }
+
+        #[test]
+        fn unused_skill_finding_evidence_sums_cost_across_models() {
+            let mut evidence = priced_evidence("unused-skill");
+            let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                panic!("synthetic context source evidence must be complete");
+            };
+            sources.skills.insert(
+                "skill-a".to_owned(),
+                LoadedSource {
+                    description: None,
+                    configured: true,
+                    available: true,
+                    injected: true,
+                    invoked: false,
+                    token_count: Some(80),
+                    origin: EvidenceValue::Unsupported,
+                },
+            );
+
+            let payload =
+                finding_evidence(BadgeId::UnusedSkill, &evidence, &ReportCatalogs::default())
+                    .expect("an injected, never-invoked skill must report evidence");
+            assert_eq!(
+                serde_json::to_value(payload).unwrap(),
+                serde_json::json!({
+                    "kind": "unusedSkill",
+                    "skills": [{"name": "skill-a", "costUsd": 80.0 * (2.0 * 0.3e-6 + 3.0 * 0.4e-6)}]
+                })
+            );
+        }
+
+        /// A resource whose only observed model never resolves in the
+        /// pricing table still reports its name, with `cost_usd` absent
+        /// rather than a false zero.
+        #[test]
+        fn unused_resource_finding_evidence_reports_a_name_without_a_price_when_unresolvable() {
+            let mut evidence = SessionEvidenceAccumulator::new(EvidenceSource {
+                agent: "claude-code".to_owned(),
+                session_id: "unresolvable-pricing".to_owned(),
+                kind: SourceKind::File,
+                capabilities: SourceCapabilities::claude(),
+            })
+            .evidence(&TurnFacts::default());
+            let EvidenceValue::Complete(models) = &mut evidence.models else {
+                panic!("synthetic model evidence must be complete");
+            };
+            models.by_model.insert(
+                "an-unpriced-model".to_owned(),
+                ModelTokens {
+                    turns: 5,
+                    ..ModelTokens::default()
+                },
+            );
+            let EvidenceValue::Complete(sources) = &mut evidence.context_sources else {
+                panic!("synthetic context source evidence must be complete");
+            };
+            sources.skills.insert(
+                "skill-a".to_owned(),
+                LoadedSource {
+                    description: None,
+                    configured: true,
+                    available: true,
+                    injected: true,
+                    invoked: false,
+                    token_count: Some(80),
+                    origin: EvidenceValue::Unsupported,
+                },
+            );
+
+            let payload =
+                finding_evidence(BadgeId::UnusedSkill, &evidence, &ReportCatalogs::default())
+                    .expect("an injected, never-invoked skill must report evidence");
+            assert_eq!(
+                serde_json::to_value(payload).unwrap(),
+                serde_json::json!({
+                    "kind": "unusedSkill",
+                    "skills": [{"name": "skill-a", "costUsd": null}]
                 })
             );
         }

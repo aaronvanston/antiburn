@@ -3039,13 +3039,19 @@ mod tests {
         assert!(payload.badges.iter().all(|badge| {
             // Model Overthinking / Fast Mode Overuse report a missing
             // signal, because the synthetic evidence carries zero
-            // eligible turns. Every other badge — Obsolete Model
-            // included, since the reviewed production registry is
-            // non-empty and its own rule falls through to the
-            // session-wide coverage check — reports the session-wide
-            // partial coverage from the accepted-prefix outcome.
+            // eligible turns. The three unused-resource badges report a
+            // missing capability instead: the synthetic evidence
+            // observes no MCP server, skill, or built-in tool at all,
+            // so their coverage markers stay `Unsupported` regardless
+            // of the session-wide partial coverage. Every other badge —
+            // Obsolete Model included, since the reviewed production
+            // registry is non-empty and its own rule falls through to
+            // the session-wide coverage check — reports the
+            // session-wide partial coverage from the accepted-prefix
+            // outcome.
             let expected_reason = match badge.id {
                 "modelOverthinking" | "fastModeOveruse" => "signalMissing",
+                "unusedMcpServer" | "unusedBuiltInTool" | "unusedSkill" => "capabilityMissing",
                 _ => "incompleteEvidence",
             };
             matches!(badge.status, crate::dto::SessionHygieneStatus::NotAssessed)
