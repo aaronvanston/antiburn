@@ -441,7 +441,7 @@ Recorded during implementation, smallest faithful choice in each case:
 
 1. **The three new `badges.rs` tests are the existing generic table, not
    three new bespoke test functions.** `report::clean_facts_complete`
-   already excludes `UnusedMcpServers | UnusedBuiltInTools |
+   already excludes `UnusedSkills | UnusedMcpServers |
    UnusedBuiltInTools` from ever reading `Clean` ("no current reader
    proves a full historical resource inventory"), so a genuine
    Finding/Clean/NotAssessed trio is not reachable for these three
@@ -480,3 +480,19 @@ Recorded during implementation, smallest faithful choice in each case:
    field. This matches the plan's Rust struct exactly (a plain
    `Option<f64>` field) and keeps the wire shape explicit about "priced
    nothing" versus "field absent."
+5. **`sessionHygieneChecks` presents `unusedMcpServer`, `unusedBuiltInTool`,
+   and `unusedSkill` only when the badge is a finding**, omitting the
+   check when the badge reads `notAssessed` or is missing from the
+   payload (old evidence). Deviation 1 above establishes that these three
+   badges never reach `Clean`; without this change, every session shows a
+   permanent "not assessed" row for all three, and the reader copy for
+   that not-assessed reason ("couldn't read the whole session log")
+   misstates why — the log was read in full, but the inventory policy
+   forbids a clean claim. A permanent not-assessed row also keeps
+   `evidenceComplete` false for every session, so no session can ever
+   reach "All Burn Checks passed." The alternative not taken: letting
+   M/B/K read `Clean` per session when a session's observed resources are
+   all used. That would change `report::clean_facts_complete`'s coverage
+   contract (and the aggregate report's clean counts) to claim a
+   per-session inventory the engine cannot prove, which is a maintainer
+   decision, not an implementation detail of the presentation layer.
