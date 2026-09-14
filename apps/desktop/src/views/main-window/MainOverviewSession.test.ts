@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import type { ChecksReportPayload } from "../../lib/insightsIpc"
+import type { ActivityEntryPayload } from "../../lib/ipc"
 import type {
   LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
@@ -20,6 +22,29 @@ const liveUsage = (generatedAt: string): LiveUsageSummaryPayload => ({
   generatedAt,
 })
 
+const report = (pendingEvidence: number): ChecksReportPayload => ({
+  evidenceSettled: pendingEvidence === 0,
+  pendingEvidence,
+  estimatedTokenBurnBasisPoints: null,
+  categories: [],
+})
+
+const entry = (sessionId: string, timestamp: string): ActivityEntryPayload => ({
+  agent: "claude",
+  sessionId,
+  repo: "antiburn",
+  timestamp,
+  isActive: false,
+  surface: "cli",
+  wslDistro: null,
+  title: sessionId,
+  hasForkParent: false,
+  forkChildCount: 0,
+  cost: null,
+  models: [],
+  modelRuns: [],
+})
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason: unknown) => void
@@ -35,9 +60,21 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
   let scanFinished: () => void = () => undefined
   let invalidated: () => void = () => undefined
   let liveChanged: (value: LiveUsageSummaryPayload) => void = () => undefined
+  let reportChanged: () => void = () => undefined
+  let entryChanged: () => void = () => undefined
   const adapter: MainOverviewAdapter = {
     getUsage: vi.fn().mockResolvedValue(usage("first")),
     getLiveUsage: vi.fn().mockResolvedValue(liveUsage("live-first")),
+    getChecksReport: vi.fn().mockResolvedValue(report(0)),
+    cancelChecksReport: vi.fn().mockResolvedValue(undefined),
+    listRecentSessions: vi
+      .fn()
+      .mockResolvedValue([
+        entry("b", "2026-09-13T10:00:00Z"),
+        entry("d", "2026-09-14T08:00:00Z"),
+        entry("a", "2026-09-12T10:00:00Z"),
+        entry("c", "2026-09-14T06:00:00Z"),
+      ]),
     getVisible: vi.fn().mockResolvedValue(visibleInitially),
     onVisible: vi.fn(async (handler) => {
       visible = handler
@@ -47,8 +84,16 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
       liveChanged = handler
       return vi.fn()
     }),
+    onChecksReportChanged: vi.fn(async (handler) => {
+      reportChanged = handler
+      return vi.fn()
+    }),
     onSessionsInvalidated: vi.fn(async (handler) => {
       invalidated = handler
+      return vi.fn()
+    }),
+    onSessionEntryChanged: vi.fn(async (handler) => {
+      entryChanged = handler
       return vi.fn()
     }),
     onScanFinished: vi.fn(async (handler) => {
@@ -65,6 +110,8 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
     scanFinished: () => scanFinished(),
     invalidated: () => invalidated(),
     liveChanged: (value: LiveUsageSummaryPayload) => liveChanged(value),
+    reportChanged: () => reportChanged(),
+    entryChanged: () => entryChanged(),
   }
 }
 
@@ -140,6 +187,45 @@ describe("MainOverviewSession", () => {
     liveChanged(liveUsage("live-pushed"))
     expect(session.getSnapshot().liveUsage?.generatedAt).toBe("live-pushed")
     await vi.waitFor(() => expect(adapter.getUsage).toHaveBeenCalledTimes(3))
+    stop()
+  })
+
+  it("reads the checks report under its own consumer and releases it when inactive", async () => {
+    const { adapter, session, setVisible, reportChanged } = setup()
+    sessions.push(session)
+    const stop = session.subscribe(() => undefined)
+    await vi.waitFor(() => expect(session.getSnapshot().report).not.toBeNull())
+    const consumerId = vi.mocked(adapter.getChecksReport).mock.calls[0]?.[0]
+    expect(consumerId).toMatch(/^main-home-\d+$/)
+    vi.mocked(adapter.getChecksReport).mockResolvedValueOnce(report(2))
+    reportChanged()
+    await vi.waitFor(() => expect(session.getSnapshot().report?.pendingEvidence).toBe(2))
+    expect(adapter.getUsage).toHaveBeenCalledOnce()
+    setVisible(false)
+    expect(adapter.cancelChecksReport).toHaveBeenCalledWith(consumerId)
+    stop()
+  })
+
+  it("keeps the three newest sessions and re-reads them when an entry changes", async () => {
+    const { adapter, session, entryChanged } = setup()
+    sessions.push(session)
+    const stop = session.subscribe(() => undefined)
+    await vi.waitFor(() => expect(session.getSnapshot().recentSessions).not.toBeNull())
+    expect(session.getSnapshot().recentSessions?.map((item) => item.sessionId)).toEqual([
+      "d",
+      "c",
+      "b",
+    ])
+    vi.mocked(adapter.listRecentSessions).mockResolvedValueOnce([
+      entry("e", "2026-09-14T09:00:00Z"),
+    ])
+    entryChanged()
+    await vi.waitFor(() =>
+      expect(session.getSnapshot().recentSessions?.map((item) => item.sessionId)).toEqual([
+        "e",
+      ]),
+    )
+    expect(adapter.getUsage).toHaveBeenCalledOnce()
     stop()
   })
 })
