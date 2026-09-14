@@ -37,6 +37,7 @@ const MISSING_SAMPLE_TITLE: &str = "Untitled session";
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MainWindowSection {
+    Overview,
     Activity,
     BurnChecks,
 }
@@ -2016,12 +2017,28 @@ mod tests {
     #[test]
     fn section_target_keeps_only_the_latest_request() {
         let state = state();
+        state.request_section_target(MainWindowSection::Overview);
         state.request_section_target(MainWindowSection::BurnChecks);
         let latest = state.request_section_target(MainWindowSection::Activity);
 
-        assert_eq!(latest.revision, 2);
+        assert_eq!(latest.revision, 3);
         assert_eq!(state.take_section_target(), Some(latest));
         assert_eq!(state.take_section_target(), None);
+    }
+
+    #[test]
+    fn section_names_match_the_renderer_ids() {
+        for (section, id) in [
+            (MainWindowSection::Overview, "\"overview\""),
+            (MainWindowSection::Activity, "\"activity\""),
+            (MainWindowSection::BurnChecks, "\"burnChecks\""),
+        ] {
+            assert_eq!(serde_json::to_string(&section).unwrap(), id);
+            assert_eq!(
+                serde_json::from_str::<MainWindowSection>(id).unwrap(),
+                section
+            );
+        }
     }
 
     #[test]

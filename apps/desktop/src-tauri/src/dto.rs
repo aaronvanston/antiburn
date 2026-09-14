@@ -412,6 +412,16 @@ pub struct ProviderUsage {
     pub last_activity_at: Option<String>,
 }
 
+/// Totals for one local calendar day, across every attributed provider.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderUsageDay {
+    /// The reader's calendar date, `YYYY-MM-DD`.
+    pub local_date: String,
+    #[serde(flatten)]
+    pub usage: ProviderUsageWindow,
+}
+
 /// Local provider usage, as one snapshot.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -423,6 +433,13 @@ pub struct ProviderUsageSummary {
     pub totals: ProviderUsageWindows,
     /// Totals per source agent across every attributed provider and account.
     pub agents: Vec<ProviderAgentUsage>,
+    /// One entry per day of the trailing thirty, oldest first, today last.
+    /// Days with no session are present and empty. The sum equals
+    /// `totals.last_30_days`.
+    pub days: Vec<ProviderUsageDay>,
+    /// The thirty days before `days`, in the same shape. They feed no total
+    /// and no provider row: they exist so a view can compare like with like.
+    pub previous_days: Vec<ProviderUsageDay>,
     /// ISO-8601 stamp of the moment this snapshot was computed.
     pub generated_at: String,
 }

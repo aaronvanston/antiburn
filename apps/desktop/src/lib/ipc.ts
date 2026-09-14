@@ -226,7 +226,7 @@ export interface MainWindowSessionRequest {
   target: SessionIdentityPayload
 }
 
-export type MainWindowSectionId = "activity" | "burnChecks"
+export type MainWindowSectionId = "overview" | "activity" | "burnChecks"
 
 /** One revisioned request to select a retained main-window section. */
 export interface MainWindowSectionRequest {
@@ -954,6 +954,8 @@ export const EMPTY_PROVIDER_USAGE: ProviderUsageSummaryPayload = {
     },
   },
   agents: [],
+  days: [],
+  previousDays: [],
   generatedAt: "",
 }
 
