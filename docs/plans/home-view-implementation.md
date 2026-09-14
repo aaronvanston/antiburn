@@ -314,6 +314,6 @@ switch.
 | Design prototypes v1–v7 reviewed by Keith | v1–v6 done (2026-09-14, discuss); v7 open |
 | Slice 1 — navigation shell | done (2026-09-14) |
 | Slice 2 — totals and daily chart | done (2026-09-14) |
-| Slice 3 — provider limits | not started |
+| Slice 3 — provider limits | done (2026-09-14) |
 | Slice 4 — burn checks and recent sessions | not started |
 | Slice 5 — polish, design review, Keith's test | not started |
