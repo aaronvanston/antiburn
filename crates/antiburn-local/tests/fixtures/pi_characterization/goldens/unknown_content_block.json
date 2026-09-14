@@ -38,6 +38,7 @@
       "linearRecordOrder": false,
       "mcpInventory": false,
       "modelIdentity": true,
+      "providerIncidents": false,
       "quotaIncidents": false,
       "reasoningEffortTier": true,
       "recordIdentity": true,
@@ -159,7 +160,7 @@
     },
     "provenance": {
       "analyzerRevision": 24,
-      "evidenceSchemaRevision": 18,
+      "evidenceSchemaRevision": 19,
       "harnessVersion": {
         "state": "unsupported"
       },
@@ -168,10 +169,13 @@
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
+    "providerIncidents": {
+      "state": "unsupported"
+    },
     "quotaIncidents": {
       "state": "unsupported"
     },
-    "schemaRevision": 18,
+    "schemaRevision": 19,
     "subagents": {
       "state": "unsupported"
     },

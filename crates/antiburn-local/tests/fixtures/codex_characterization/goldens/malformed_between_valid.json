@@ -48,6 +48,7 @@
       "linearRecordOrder": true,
       "mcpInventory": false,
       "modelIdentity": true,
+      "providerIncidents": true,
       "quotaIncidents": true,
       "reasoningEffortTier": true,
       "recordIdentity": false,
@@ -203,7 +204,7 @@
     },
     "provenance": {
       "analyzerRevision": 24,
-      "evidenceSchemaRevision": 18,
+      "evidenceSchemaRevision": 19,
       "harnessVersion": {
         "state": "unsupported"
       },
@@ -211,6 +212,15 @@
       "parserRevision": 37,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
+    },
+    "providerIncidents": {
+      "state": "partial",
+      "value": {
+        "observed": {
+          "incidents": []
+        },
+        "reason": "malformed_record"
+      }
     },
     "quotaIncidents": {
       "state": "partial",
@@ -221,7 +231,7 @@
         "reason": "malformed_record"
       }
     },
-    "schemaRevision": 18,
+    "schemaRevision": 19,
     "subagents": {
       "state": "partial",
       "value": {

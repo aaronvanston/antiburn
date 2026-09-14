@@ -42,6 +42,7 @@
       "linearRecordOrder": true,
       "mcpInventory": false,
       "modelIdentity": true,
+      "providerIncidents": true,
       "quotaIncidents": true,
       "reasoningEffortTier": true,
       "recordIdentity": false,
@@ -202,7 +203,7 @@
     },
     "provenance": {
       "analyzerRevision": 24,
-      "evidenceSchemaRevision": 18,
+      "evidenceSchemaRevision": 19,
       "harnessVersion": {
         "state": "complete",
         "value": null
@@ -212,13 +213,19 @@
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
+    "providerIncidents": {
+      "state": "complete",
+      "value": {
+        "incidents": []
+      }
+    },
     "quotaIncidents": {
       "state": "complete",
       "value": {
         "incidents": []
       }
     },
-    "schemaRevision": 18,
+    "schemaRevision": 19,
     "subagents": {
       "state": "complete",
       "value": {
