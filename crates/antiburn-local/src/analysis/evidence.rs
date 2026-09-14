@@ -18,6 +18,7 @@ pub const MAX_SUBAGENT_CHILDREN: usize = 64;
 pub const MAX_SUBAGENT_MODELS: usize = 32;
 pub const MAX_MODEL_TRANSITIONS: usize = 64;
 pub const MAX_COMPACTION_BOUNDARIES: usize = 64;
+pub const MAX_QUOTA_INCIDENTS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvidenceValue<T> {
@@ -423,6 +424,10 @@ pub enum QuotaLimitKind {
     ModelSpecific,
     WeightedUsage,
     RateLimit,
+    /// A plan usage limit. The source does not name the limit's window.
+    UsageLimit,
+    /// The provider refused the request because the model or server was at capacity.
+    ProviderCapacity,
 }
 
 /// Distinguishes a hard limit hit from an advance warning.
@@ -583,6 +588,10 @@ impl SourceCapabilities {
     /// trusts only the reported token count. `evidence_sink` still pins
     /// Codex to uncached-input accounting for repeated context, as its
     /// source capability contract documents.
+    ///
+    /// `quota_incidents` is set: the reader maps a `task_complete` event's
+    /// non-null `error` object to a quota incident for the three reviewed
+    /// `codex_error_info` codes.
     pub fn codex() -> Self {
         Self {
             source_format: SourceFormat::CodexRolloutJsonl,
@@ -604,7 +613,7 @@ impl SourceCapabilities {
             thread_identity: true,
             record_identity: false,
             linear_record_order: true,
-            quota_incidents: false,
+            quota_incidents: true,
             harness_version: true,
             repeated_context_accounting: Some(RepeatedContextAccounting::UncachedInput),
         }
@@ -1077,6 +1086,15 @@ pub struct SessionCoverageRecord {
     pub deferred_tools: BTreeSet<String>,
     pub summary_observed: bool,
     pub child_loss_reason: Option<CoverageReason>,
+    /// Transcript-observed quota incidents. Old persisted evidence has no
+    /// field here, so it deserializes as empty.
+    #[serde(default)]
+    pub quota_incidents: Vec<QuotaIncident>,
+    /// True when a bounded pass dropped an incident past
+    /// [`MAX_QUOTA_INCIDENTS`]. Old persisted evidence has no field here,
+    /// so it deserializes as `false`.
+    #[serde(default)]
+    pub quota_incidents_capped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1153,7 +1171,7 @@ mod tests {
             },
             "coverage": coverage,
             "provenance": {
-                "parserRevision": 36,
+                "parserRevision": 37,
                 "analyzerRevision": 24,
                 "evidenceSchemaRevision": 18,
                 "sourceKind": "file",

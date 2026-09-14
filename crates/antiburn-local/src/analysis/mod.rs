@@ -182,7 +182,11 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // +1 for Codex's `spawn_agent` launch tool: `is_subagent_launch_tool`
 // (`analysis::model`) now also matches `spawn_agent`, so every stored
 // Codex session must reparse to count launches in `subagent_launches`.
-pub const PARSER_REVISION: i64 = 36;
+// +1 for Codex quota incidents: a `task_complete` event with a non-null
+// `error` object now maps to a `QuotaIncident` for the three reviewed
+// `codex_error_info` codes, so a stored Codex session must reparse to
+// collect them (`vendors::codex::task_complete_incident`).
+pub const PARSER_REVISION: i64 = 37;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to
@@ -267,7 +271,8 @@ pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
 // +1 for source format and repeated-context accounting capabilities.
 // +1 for dedicated source-surface capability contracts.
 // +1 for nested resources, paired subagent models, and incomplete linkage state.
-pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
+// +1 for Codex quota incidents and their bounded-collection cap flag.
+pub const COVERAGE_SCHEMA_REVISION: i64 = 5;
 /// Versions [`resume::StreamSnapshot`]'s own shape. [`resume::StreamSnapshot::is_current`]
 /// rejects a persisted snapshot stamped with an older revision.
 ///
@@ -285,7 +290,8 @@ pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
 // This batch also changes retained nested resource and paired subagent state.
 // +1 for the bounded Codex cross-format usage matcher in adapter snapshots.
 // Reject snapshots that can retain duplicate usage totals.
-pub const RESUME_SNAPSHOT_REVISION: i64 = 8;
+// +1 because the evidence sink now carries Codex quota incidents.
+pub const RESUME_SNAPSHOT_REVISION: i64 = 9;
 
 /// Normalize and analyze a batch of live sessions into one averaged summary.
 ///

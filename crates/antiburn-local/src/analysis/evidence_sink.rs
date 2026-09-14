@@ -7,13 +7,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::analysis::evidence::{
     CacheEvidence, ChurnCounts, CompactionEvidence, ContextEvidence, ContextSourceEvidence,
     CoverageReason, EVIDENCE_STRING_CAP, EvidenceCoverage, EvidenceSource, EvidenceValue,
-    LoadedSource, MAX_CONTEXT_SOURCES, MAX_EVIDENCE_EXAMPLES, MAX_SUBAGENT_CHILDREN,
-    MAX_TOOL_NAMES, MAX_UNRECOGNIZED_TYPES, ModelControlObservation, ModelEvidence,
-    OrderingObservation, ParseDiagnostics, RelationConfidence, RepeatedContext,
-    RepeatedContextAccounting, SessionCoverageRecord, SessionEvidence, SessionEvidenceIdentity,
-    SessionProvenance, SourceAcceptance, SourceCapabilities, SourceKind, SubagentChild,
-    SubagentEvidence, SubagentExample, ToolClass, ToolDefinition, ToolEvidence, ToolUse,
-    cap_string, insert_diagnostic_field, record_diagnostic_set_cap,
+    LoadedSource, MAX_CONTEXT_SOURCES, MAX_EVIDENCE_EXAMPLES, MAX_QUOTA_INCIDENTS,
+    MAX_SUBAGENT_CHILDREN, MAX_TOOL_NAMES, MAX_UNRECOGNIZED_TYPES, ModelControlObservation,
+    ModelEvidence, OrderingObservation, ParseDiagnostics, QuotaIncident, RelationConfidence,
+    RepeatedContext, RepeatedContextAccounting, SessionCoverageRecord, SessionEvidence,
+    SessionEvidenceIdentity, SessionProvenance, SessionQuotaEvidence, SourceAcceptance,
+    SourceCapabilities, SourceKind, SubagentChild, SubagentEvidence, SubagentExample, ToolClass,
+    ToolDefinition, ToolEvidence, ToolUse, cap_string, insert_diagnostic_field,
+    record_diagnostic_set_cap,
 };
 use crate::analysis::evidence_query::TurnFacts;
 use crate::analysis::initial_context::{InitialContextTokenSource, SourceOrigin};
@@ -147,6 +148,12 @@ pub struct SessionEvidenceAccumulator {
     /// by [`Self::observe_child_coverage`]. `None` when every streamed
     /// child (if any) reported none.
     child_loss_reason: Option<CoverageReason>,
+    /// Transcript-observed quota incidents, from a `QuotaIncident`
+    /// observation. Bounded by [`MAX_QUOTA_INCIDENTS`].
+    quota_incidents: Vec<QuotaIncident>,
+    /// True when a `QuotaIncident` observation overflowed
+    /// [`MAX_QUOTA_INCIDENTS`].
+    quota_incidents_capped: bool,
 }
 
 impl SessionEvidenceAccumulator {
@@ -183,6 +190,8 @@ impl SessionEvidenceAccumulator {
             deferred_tools: BTreeSet::new(),
             summary_observed: false,
             child_loss_reason: None,
+            quota_incidents: Vec::new(),
+            quota_incidents_capped: false,
         }
     }
 
@@ -439,6 +448,14 @@ impl SessionEvidenceAccumulator {
             }
             EvidenceObservation::DeferredTool { name } => {
                 self.deferred_tools.insert(name.clone());
+            }
+            EvidenceObservation::QuotaIncident(incident) => {
+                if self.quota_incidents.len() < MAX_QUOTA_INCIDENTS {
+                    self.quota_incidents.push(incident.clone());
+                } else {
+                    self.quota_incidents_capped = true;
+                    self.note_collection_cap("quota_incidents.incidents");
+                }
             }
             EvidenceObservation::UnrecognizedType {
                 discriminator,
@@ -911,6 +928,8 @@ impl SessionEvidenceAccumulator {
             deferred_tools: self.deferred_tools.clone(),
             summary_observed: self.summary_observed,
             child_loss_reason: self.child_loss_reason,
+            quota_incidents: self.quota_incidents.clone(),
+            quota_incidents_capped: self.quota_incidents_capped,
         }
     }
 
@@ -988,6 +1007,8 @@ impl SessionEvidenceAccumulator {
             deferred_tools: record.deferred_tools,
             summary_observed: record.summary_observed,
             child_loss_reason: record.child_loss_reason,
+            quota_incidents: record.quota_incidents,
+            quota_incidents_capped: record.quota_incidents_capped,
         }
     }
 
@@ -1358,7 +1379,14 @@ impl SessionEvidenceAccumulator {
                 child_dependent_partial,
                 facts.compactions_capped,
             ),
-            quota_incidents: EvidenceValue::Unsupported,
+            quota_incidents: self.supported_value(
+                SessionQuotaEvidence {
+                    incidents: self.quota_incidents.clone(),
+                },
+                self.capabilities.quota_incidents,
+                child_dependent_partial,
+                self.quota_incidents_capped,
+            ),
         }
     }
 
@@ -1945,6 +1973,29 @@ mod tests {
             }),
             turn_rows,
         )
+    }
+
+    #[test]
+    fn quota_incidents_stay_unsupported_when_the_source_capability_is_false() {
+        use crate::analysis::evidence::{QuotaConfidence, QuotaHitSeverity, QuotaLimitKind};
+
+        // Claude does not claim `quota_incidents`, so a pushed incident
+        // must not leak into a supported group.
+        let mut accumulator = accumulator(true);
+        accumulator.observe_observation(&EvidenceObservation::QuotaIncident(QuotaIncident {
+            ts_ms: 100,
+            limit_kind: QuotaLimitKind::RateLimit,
+            severity: QuotaHitSeverity::HardHit,
+            model: None,
+            reset_ts_ms: None,
+            utilization_pct: None,
+            confidence: QuotaConfidence::Observed,
+        }));
+        let evidence = accumulator.evidence(&TurnFacts::default());
+        assert!(matches!(
+            evidence.quota_incidents,
+            EvidenceValue::Unsupported
+        ));
     }
 
     #[test]

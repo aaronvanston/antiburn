@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::analysis::evidence::SourceCapabilities;
+use crate::analysis::evidence::{QuotaIncident, SourceCapabilities};
 use crate::analysis::framing::PartialReason;
 use crate::analysis::initial_context::InitialContextBreakdown;
 use crate::analysis::model::{NormalizedEvent, NormalizedSession, ToolCall};
@@ -179,6 +179,8 @@ pub enum EvidenceObservation {
     DeferredTool {
         name: String,
     },
+    /// One transcript-observed quota or capacity incident.
+    QuotaIncident(QuotaIncident),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

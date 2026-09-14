@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::read_source;
+use crate::analysis::evidence::{QuotaConfidence, QuotaHitSeverity, QuotaIncident, QuotaLimitKind};
 use crate::analysis::framing::{BoundedJsonlReader, FramedRecord, PartialReason, RecordSkip};
 use crate::analysis::initial_context::CodexContextAccumulator;
 use crate::analysis::interface::{
@@ -569,6 +570,11 @@ impl CodexStreamState {
                     },
                 )));
             }
+            if let Some(incident) = task_complete_incident(&value, self.current_model.as_deref()) {
+                sink.record(NormalizedRecord::Observation(Box::new(
+                    EvidenceObservation::QuotaIncident(incident),
+                )));
+            }
         }
 
         if is_usage_record {
@@ -982,6 +988,50 @@ fn is_recognized_eventless(record_type: Option<&str>, payload_type: Option<&str>
     )
 }
 
+/// Maps one `event_msg`/`task_complete` record's non-null `error` object to
+/// a quota incident, for the three reviewed `codex_error_info` codes.
+///
+/// `codex_error_info` is the pinned `openai/codex` `CodexErrorInfo` enum's
+/// serde form: a unit variant serializes as a bare string
+/// (`"server_overloaded"`); a struct variant serializes as a single-key
+/// object (`{"http_connection_failed":{"http_status_code":503}}`). Every
+/// other code, an absent or non-object `error`, or a missing top-level
+/// `timestamp` returns `None`; the record stays allowlisted-eventless with
+/// no diagnostic. The incident never carries the error's `message` text.
+fn task_complete_incident(value: &Value, model: Option<&str>) -> Option<QuotaIncident> {
+    if value.get("type").and_then(Value::as_str) != Some("event_msg") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("type").and_then(Value::as_str) != Some("task_complete") {
+        return None;
+    }
+    let error = payload.get("error")?.as_object()?;
+    let code = match error.get("codex_error_info")? {
+        Value::String(code) => code.as_str(),
+        Value::Object(fields) if fields.len() == 1 => fields.keys().next()?.as_str(),
+        _ => return None,
+    };
+    let limit_kind = match code {
+        "server_overloaded" => QuotaLimitKind::ProviderCapacity,
+        "rate_limit_exceeded" => QuotaLimitKind::RateLimit,
+        "usage_limit_exceeded" => QuotaLimitKind::UsageLimit,
+        _ => return None,
+    };
+    let ts_ms = value.get("timestamp").and_then(parse_ts)?;
+    // `task_complete` with a non-null error means the turn terminated, so
+    // every mapped code is a hard hit, never an advance warning.
+    Some(QuotaIncident {
+        ts_ms,
+        limit_kind,
+        severity: QuotaHitSeverity::HardHit,
+        model: model.map(ToOwned::to_owned),
+        reset_ts_ms: None,
+        utilization_pct: None,
+        confidence: QuotaConfidence::Observed,
+    })
+}
+
 /// The subset of `is_recognized_eventless` names that must still pass the
 /// light structural check (`is_inert_codex_record`'s `reject_nested = false`
 /// pass) before an unrecognized-record observation is skipped. See
@@ -1326,9 +1376,11 @@ fn codex_fork_owned_offset(content: &str) -> Option<usize> {
 }
 
 /// Map one rollout envelope record to a normalized event, or `None` for framing
-/// / bookkeeping records that carry no analyzable signal (`session_meta`,
+/// / bookkeeping records that carry no cost or usage signal (`session_meta`,
 /// `turn_context`, `task_started`, and the `user_message` / `agent_message` UI
-/// echoes of `response_item` turns).
+/// echoes of `response_item` turns). `task_complete` also returns `None` here,
+/// but [`task_complete_incident`] reads its `error` object separately, for the
+/// `QuotaIncident` observation.
 fn record_to_event(record: &Value) -> Option<NormalizedEvent> {
     let obj = record.as_object()?;
     let ts = obj.get("timestamp").and_then(parse_ts);
@@ -2365,7 +2417,11 @@ mod tests {
     fn record_to_event_changes_require_an_inertness_review() {
         // `codex_usage` now sets `cache_creation_1h_tokens: 0`: Codex never
         // reports a one-hour cache-write split, so this reads no new key.
-        const EXPECTED_FINGERPRINT: u64 = 14_933_235_305_670_794_504;
+        // `task_complete_incident` now reads a `task_complete` event's
+        // `error` object and `process_value` emits the mapped incident;
+        // `is_recognized_eventless` still allowlists `task_complete` as
+        // eventless, so coverage and diagnostics are unchanged.
+        const EXPECTED_FINGERPRINT: u64 = 13_315_919_023_062_932_214;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();
