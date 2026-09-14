@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use antiburn_local::analysis::{
     ANALYZER_REVISION, EVIDENCE_SCHEMA_REVISION, InitialContextBreakdown, METRICS_SCHEMA_REVISION,
-    PARSER_REVISION, SessionEvidence, SourceOrigin,
+    PARSER_REVISION, SessionEvidence, SourceOrigin, lookup_turn_pricing, pricing_generation,
 };
 use antiburn_local::insights::{
     CoverageBucket, CoverageCounts, DetectorId, EfficiencyReport, EfficiencyReportAccumulator,
@@ -13,13 +13,15 @@ use antiburn_local::insights::{
     TokenBurnTurnAccumulator, TokenBurnTurnEvidence,
 };
 use antiburn_local::model_catalog::ModelCatalog;
-use antiburn_local::pricing::ModelTokens;
+use antiburn_local::pricing::{ModelTokens, canonical_model_key};
 use antiburn_local::remediation::{Finding, FindingAssessment, ModelVerificationObservation};
 use anyhow::{Context, Result, ensure};
 use rusqlite::{OptionalExtension, params};
 
 use crate::remediation::WatchDefinition;
 use crate::store::{RemediationRecord, open_read_only};
+#[cfg(test)]
+use antiburn_local::remediation::SAVINGS_METHOD_REVISION;
 
 mod findings;
 
@@ -99,7 +101,7 @@ SELECT e.evidence_json, s.agent, s.session_id, e.published_fence, a.initial_cont
 
 const TOKEN_BURN_TURNS_SQL: &str = "
 SELECT scope, model, effort, speed, ts_ms, input_tokens, output_tokens,
-       cache_read_tokens, cache_write_tokens
+       cache_read_tokens, cache_write_tokens, cache_write_1h_tokens
   FROM turn
  WHERE environment_key = ?1
    AND agent = ?2
@@ -184,7 +186,7 @@ pub struct CurrentFindingsRequest {
 }
 
 /// One trusted finding and the exact projection version that produced it.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 pub struct CurrentFinding {
     pub finding: Finding,
     pub environment_key: String,
@@ -218,7 +220,7 @@ impl CurrentFinding {
 }
 
 /// One bounded set of current findings in newest-session order.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 pub struct CurrentFindingsPage {
     pub findings: Vec<CurrentFinding>,
     pub truncated: bool,
@@ -421,6 +423,7 @@ fn token_burn_evidence(
         let output_tokens = u64::try_from(row.get::<_, i64>(6)?)?;
         let cache_read_tokens = u64::try_from(row.get::<_, i64>(7)?)?;
         let cache_write_tokens = u64::try_from(row.get::<_, i64>(8)?)?;
+        let cache_write_1h_tokens = u64::try_from(row.get::<_, i64>(9)?)?;
         let Some(model) = model.filter(|model| !model.trim().is_empty()) else {
             has_unattributed_assistant_turn = true;
             continue;
@@ -435,6 +438,7 @@ fn token_burn_evidence(
             output_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            cache_write_1h_tokens,
         };
         let input = u128::from(input_tokens);
         let output = u128::from(output_tokens);
@@ -463,15 +467,18 @@ fn token_burn_evidence(
                 )
                 .context("overdepth token total overflowed")?;
         }
-        if scope == "main"
+        // A delegated worker re-reads the same definitions its parent
+        // loaded, so its turns replicate the definition too.
+        if (scope == "main" || scope == "delegated")
             && let Some(groups) = &mut source_groups
         {
-            observe_main_context(groups, context)?;
+            observe_main_context(groups, context, &turn.model, turn.speed.as_deref())?;
         }
         turn_accumulator.observe(turn);
     }
 
     let mut result = SessionTokenBurnEvidence::from_session(evidence);
+    result.pricing_revision = Some(format!("pricing-generation-{}", pricing_generation()));
     if raw_total_tokens > 0 {
         result.total_tokens = Some(raw_total_tokens);
     }
@@ -542,6 +549,7 @@ fn source_token_counters(
                     name,
                     replicated_tokens: 0,
                     invoked: source.use_count > 0,
+                    replicated_cost_usd: None,
                 },
                 definition_tokens: u128::from(source.token_count),
             })
@@ -549,10 +557,20 @@ fn source_token_counters(
         .collect()
 }
 
+/// Adds `context_tokens` to every source whose definition it already
+/// carries. Prices the addition at `model`'s cache-read rate when the
+/// pricing table resolves it; an unresolvable model still adds tokens,
+/// since token and dollar evidence fail independently.
 fn observe_main_context(
     groups: &mut [Option<Vec<SourceTokenCounter>>; 3],
     context_tokens: u128,
+    model: &str,
+    speed: Option<&str>,
 ) -> Result<()> {
+    let canonical_model = canonical_model_key(model);
+    let cache_read_cost_per_token = lookup_turn_pricing(model, speed)
+        .or_else(|| lookup_turn_pricing(&canonical_model, speed))
+        .map(|pricing| pricing.cache_read_cost_per_token);
     for sources in groups.iter_mut().flatten() {
         for source in sources {
             if context_tokens >= source.definition_tokens {
@@ -561,6 +579,11 @@ fn observe_main_context(
                     .replicated_tokens
                     .checked_add(source.definition_tokens)
                     .context("source replicated token total overflowed")?;
+                if let Some(rate) = cache_read_cost_per_token {
+                    let contribution = source.definition_tokens as f64 * rate;
+                    source.evidence.replicated_cost_usd =
+                        Some(source.evidence.replicated_cost_usd.unwrap_or(0.0) + contribution);
+                }
             }
         }
     }
@@ -584,15 +607,15 @@ fn source_token_evidence(
     source_kind: &str,
     agent: &str,
     skill_cwd: Option<&str>,
-    main_context_capacities: &[u128],
+    main_context_turns: &[(u128, &str)],
 ) -> Option<Vec<TokenBurnSourceEvidence>> {
     let mut groups = [
         source_token_counters(initial_context, source_kind, agent, skill_cwd),
         None,
         None,
     ];
-    for capacity in main_context_capacities {
-        observe_main_context(&mut groups, *capacity).ok()?;
+    for (capacity, model) in main_context_turns {
+        observe_main_context(&mut groups, *capacity, model, None).ok()?;
     }
     finish_source_counters(groups[0].take())
 }
@@ -793,7 +816,7 @@ mod tests {
             ..ModelTokens::default()
         };
         let before = tokens.clone();
-        assert!(!checked_add_tokens(&mut tokens, 1, 0, 0, 0));
+        assert!(!checked_add_tokens(&mut tokens, 1, 0, 0, 0, 0));
         assert_eq!(tokens, before);
     }
 
@@ -820,7 +843,11 @@ mod tests {
             "skill_instructions",
             "claude",
             None,
-            &[199, 200, 800],
+            &[
+                (199, "claude-sonnet-5"),
+                (200, "claude-sonnet-5"),
+                (800, "claude-sonnet-5"),
+            ],
         )
         .unwrap();
 
@@ -831,8 +858,137 @@ mod tests {
                 name: "review".to_owned(),
                 replicated_tokens: 400,
                 invoked: false,
+                replicated_cost_usd: Some(400.0 * 0.3e-6),
             }]
         );
+    }
+
+    #[test]
+    fn source_estimates_price_only_turns_with_a_resolvable_model() {
+        let initial_context: InitialContextBreakdown = serde_json::from_str(
+            r#"{"sources":[{"source":"skill_instructions","sourceName":"Review","tokenCount":200,"useCount":0,"origin":"user"}]}"#,
+        )
+        .unwrap();
+
+        let sources = source_token_evidence(
+            &initial_context,
+            "skill_instructions",
+            "claude",
+            None,
+            &[(200, "unpriced-model"), (200, "claude-sonnet-5")],
+        )
+        .unwrap();
+
+        // Both turns still count toward replicated_tokens; only the
+        // resolvable turn's model adds to replicated_cost_usd.
+        assert_eq!(
+            sources,
+            vec![TokenBurnSourceEvidence {
+                scope: "claude:user".to_owned(),
+                name: "review".to_owned(),
+                replicated_tokens: 400,
+                invoked: false,
+                replicated_cost_usd: Some(200.0 * 0.3e-6),
+            }]
+        );
+    }
+
+    #[test]
+    fn token_burn_evidence_sums_cost_across_models_and_includes_delegated_scope() {
+        let data_dir = TempDir::new().unwrap();
+        let store = Store::open(data_dir.path()).unwrap();
+        let session_id = "pricing-mix";
+        let fingerprint = format!("sv1:{session_id}");
+        let session = session_for("claude-code", session_id, 120, &fingerprint);
+        store
+            .upsert_sessions(std::slice::from_ref(&session), &["claude-code"])
+            .unwrap();
+        let claim = store
+            .claim_next_evidence(&["claude-code"], 10, 60)
+            .unwrap()
+            .unwrap();
+        let writer = FencedTurnRowStore::new(store.clone(), session.key.clone(), claim.claim_fence);
+        let turn = |index: u64, scope: TurnScope, model: &str| TurnRow {
+            source_key: "synthetic".to_owned(),
+            thread_id: "synthetic".to_owned(),
+            turn_index: index,
+            scope,
+            child_id: None,
+            role: "assistant",
+            ts_ms: Some(1_000 + index as i64),
+            model: Some(model.to_owned()),
+            provider: None,
+            api: None,
+            effort: None,
+            speed: None,
+            input_tokens: 300,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            cache_write_1h_tokens: 0,
+            output_tokens: 5,
+            is_compaction_boundary: false,
+            message_id: None,
+            uuid: None,
+            parent_uuid: None,
+            compaction_trigger: None,
+            compaction_pre_tokens: None,
+            compaction_post_tokens: None,
+            has_thinking: false,
+            last_tool: None,
+            subagent_launches: 0,
+            content: Vec::new(),
+        };
+        // A main turn on one model and a delegated turn on another: both
+        // scopes count, and each turn's cost prices at its own model's rate.
+        writer
+            .write_turn_rows(&[
+                turn(0, TurnScope::Main, "claude-sonnet-5"),
+                turn(1, TurnScope::Delegated, "claude-opus-5"),
+            ])
+            .unwrap();
+
+        let initial_context: InitialContextBreakdown = serde_json::from_str(
+            r#"{"sources":[{"source":"builtin_tool","sourceName":"Bash","tokenCount":200,"useCount":0,"origin":"bundled"}]}"#,
+        )
+        .unwrap();
+        let evidence = SessionEvidenceAccumulator::new(EvidenceSource {
+            agent: "claude-code".to_owned(),
+            session_id: session_id.to_owned(),
+            kind: SourceKind::File,
+            capabilities: SourceCapabilities::claude(),
+        })
+        .evidence(&TurnFacts::default());
+
+        let connection = open_read_only(data_dir.path(), REPORT_BUSY_TIMEOUT).unwrap();
+        let catalogs = ReportCatalogs::default();
+        let result = token_burn_evidence(
+            &connection,
+            TokenBurnSessionKey {
+                environment_key: "native",
+                agent: "claude-code",
+                session_id,
+                published_fence: claim.claim_fence,
+                cwd: None,
+            },
+            Some(&initial_context),
+            &evidence,
+            &TokenBurnReportContext {
+                depth_cap: u128::from(catalogs.depth_cap_tokens),
+                catalogs: &catalogs,
+            },
+            &AtomicBool::new(false),
+            &mut || {},
+        )
+        .unwrap();
+
+        let sources = result.built_in_tool_sources.unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].replicated_tokens, 400);
+        assert_eq!(
+            sources[0].replicated_cost_usd,
+            Some(200.0 * 0.3e-6 + 200.0 * 0.4e-6)
+        );
+        assert!(result.pricing_revision.is_some());
     }
 
     #[test]
@@ -862,11 +1018,35 @@ mod tests {
                     "skill_instructions",
                     "claude",
                     None,
-                    &[500]
+                    &[(500, "unpriced-model")]
                 )
                 .is_none()
             );
         }
+    }
+
+    #[test]
+    fn a_deferred_source_never_adds_tokens_or_cost_for_its_whole_group() {
+        // A deferred tool's short name line never enters the request
+        // prefix at full size, so the group that carries it must never
+        // price a replicated cost, even for a sibling non-deferred tool.
+        let initial_context: InitialContextBreakdown = serde_json::from_str(
+            r#"{"sources":[
+                {"source":"builtin_tool","sourceName":"Bash","tokenCount":200,"useCount":0,"origin":"bundled"},
+                {"source":"builtin_tool","sourceName":"Read","tokenCount":5,"useCount":0,"origin":"bundled","deferred":true}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(
+            source_token_evidence(
+                &initial_context,
+                "builtin_tool",
+                "claude",
+                None,
+                &[(500, "claude-sonnet-5")]
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -881,7 +1061,7 @@ mod tests {
             "skill_instructions",
             "claude",
             Some("/projects/one"),
-            &[500],
+            &[(500, "unpriced-model")],
         )
         .unwrap();
 
@@ -892,7 +1072,7 @@ mod tests {
                 "skill_instructions",
                 "claude",
                 None,
-                &[500]
+                &[(500, "unpriced-model")]
             )
             .is_none()
         );
@@ -910,7 +1090,7 @@ mod tests {
             "skill_instructions",
             "claude",
             Some("/projects/one"),
-            &[500],
+            &[(500, "unpriced-model")],
         )
         .unwrap();
 
@@ -921,7 +1101,7 @@ mod tests {
                 "skill_instructions",
                 "claude",
                 None,
-                &[500]
+                &[(500, "unpriced-model")]
             )
             .is_none()
         );
@@ -1078,6 +1258,7 @@ mod tests {
                     input_tokens: 10,
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
+                    cache_write_1h_tokens: 0,
                     output_tokens: 5,
                     is_compaction_boundary: false,
                     message_id: None,
@@ -1492,6 +1673,123 @@ mod tests {
         }
     }
 
+    #[test]
+    fn old_model_remediation_evidence_prices_one_hour_cache_writes_in_replacement_tokens() {
+        let data_dir = TempDir::new().unwrap();
+        let store = Store::open(data_dir.path()).unwrap();
+        let rows: u64 = 2;
+        publish_attributed_model_turn(
+            data_dir.path(),
+            &store,
+            "replacement-one",
+            101,
+            101_000,
+            "claude-opus-5",
+        );
+        publish_attributed_model_turn(
+            data_dir.path(),
+            &store,
+            "replacement-two",
+            102,
+            102_000,
+            "claude-opus-5",
+        );
+        // Isolate the cache-write component: zero the input tokens so only
+        // the one-hour cache-write subset contributes to the saving.
+        rusqlite::Connection::open(crate::store::database_path(data_dir.path()))
+            .unwrap()
+            .execute(
+                "UPDATE turn SET input_tokens = 0, cache_write_tokens = 40,
+                    cache_write_1h_tokens = 40
+                  WHERE environment_key = 'native' AND agent = 'claude-code'",
+                [],
+            )
+            .unwrap();
+        let definition = WatchDefinition {
+            version: 1,
+            detector: "old_model_usage".into(),
+            canonical_identity: "identity".into(),
+            source_format: "ClaudeJsonl".into(),
+            workspace_key: None,
+            workspace_relative_cwd: None,
+            provider: Some("anthropic".into()),
+            api: Some("messages".into()),
+            old_model: Some("claude-opus-4-8".into()),
+            replacement: Some("claude-opus-5".into()),
+            resource: None,
+            physical_target_key: Some("physical".into()),
+            config_setting: Some("model".into()),
+            config_expected_value: Some("claude-opus-4-8".into()),
+            config_proposed_value: Some("claude-opus-5".into()),
+            verification_method_revision: 1,
+            remediation_policy_revision: Some(1),
+            savings_method_revision: 1,
+            pricing_revision: Some("test-pricing".into()),
+            old_pricing: Some(antiburn_local::pricing::ModelPricing {
+                input_cost_per_token: 3.0,
+                output_cost_per_token: 0.0,
+                cache_read_cost_per_token: 0.0,
+                cache_write_cost_per_token: 0.0,
+            }),
+            replacement_pricing: Some(antiburn_local::pricing::ModelPricing {
+                input_cost_per_token: 1.0,
+                output_cost_per_token: 0.0,
+                cache_read_cost_per_token: 0.0,
+                cache_write_cost_per_token: 0.0,
+            }),
+            catalog_revision: Some(ReportCatalogs::default().revision),
+            target_model: None,
+            target_control: None,
+        };
+        let record = crate::store::RemediationRecord {
+            remediation_id: "watch".into(),
+            target_key: "target".into(),
+            environment_key: "native".into(),
+            agent: "claude-code".into(),
+            scope_kind: "global".into(),
+            scope_key: "physical".into(),
+            state: crate::store::RemediationState::Watching,
+            dirty_revision: 1,
+            evaluated_revision: 0,
+            definition_json: serde_json::to_string(&definition).unwrap(),
+            result_json: r#"{"version":1}"#.into(),
+            created_at_epoch: 100,
+            updated_at_epoch: 100,
+            effective_boundary_ms: Some(100_000),
+            verified_at_epoch: None,
+            recurred_at_epoch: None,
+            action_joined_at_ms: None,
+        };
+        let replacement =
+            old_model_remediation_evidence(data_dir.path(), &record, &definition, 100_000, None)
+                .unwrap();
+        let replacement_tokens = replacement.replacement_tokens.clone().unwrap();
+        assert_eq!(replacement_tokens.cache_creation_1h_tokens, 40 * rows);
+
+        let savings = antiburn_local::remediation::estimate_old_model_savings(
+            &antiburn_local::remediation::OldModelSavingsInput {
+                interval: antiburn_local::remediation::SavingsInterval {
+                    boundary_ms: 100_000,
+                    measured_through_ms: 102_000,
+                    recurrence_ms: None,
+                },
+                tokens: Some(replacement_tokens),
+                old_pricing: definition.old_pricing.clone(),
+                replacement_pricing: definition.replacement_pricing.clone(),
+                pricing_revision: definition.pricing_revision.clone(),
+            },
+        );
+        let antiburn_local::remediation::OldModelSavingsEstimate::Known(savings) = savings else {
+            panic!("replacement savings must be known");
+        };
+        let input_rate_delta = 2.0;
+        let expected_cache_write_saving = (40 * rows) as f64 * input_rate_delta * 2.0;
+        assert_eq!(
+            savings.api_equivalent_cost_avoided_usd,
+            expected_cache_write_saving
+        );
+    }
+
     #[cfg(not(windows))]
     #[test]
     fn opencode_and_pi_old_model_controller_applies_once_to_temporary_configs() {
@@ -1640,7 +1938,7 @@ mod tests {
             config_proposed_value: Some("claude-opus-5".into()),
             verification_method_revision: 1,
             remediation_policy_revision: Some(1),
-            savings_method_revision: 1,
+            savings_method_revision: SAVINGS_METHOD_REVISION,
             pricing_revision: Some("test-pricing".into()),
             old_pricing: Some(antiburn_local::pricing::ModelPricing {
                 input_cost_per_token: 2.0,
@@ -2623,18 +2921,22 @@ mod tests {
         }
         publish_mcp_findings(&store, "older-finding", 110, &["server-a"]);
         let mut first_scan_count = 0;
+        // Unused MCP Servers now consults per-turn source evidence (PR 1),
+        // so every scanned session probes turn evidence at least once.
+        let mut turn_probes = 0;
 
         let first = list_current_findings_on_snapshot(
             data_dir.path(),
             finding_request(),
             &mut || first_scan_count += 1,
-            &mut || panic!("the MCP detector must not load turn evidence"),
+            &mut || turn_probes += 1,
         )
         .unwrap();
 
         assert!(first.findings.is_empty());
         assert_eq!(first_scan_count, CURRENT_FINDING_SESSION_SCAN_BUDGET + 1);
         assert!(first.truncated);
+        assert!(turn_probes > 0);
 
         let controller = crate::remediation::RemediationController::new(data_dir.path().to_owned());
         let fallback = controller
@@ -2694,14 +2996,31 @@ mod tests {
 
     #[test]
     fn non_token_detector_skips_turn_evidence_during_listing_and_revalidation() {
+        // Unused MCP Servers, Unused Built-In Tools, and Unused Skills now
+        // consult per-turn source evidence (see the request below for a
+        // detector that still does not). Model Overthinking never reads a
+        // session's initial-context breakdown, so its turn probe must stay
+        // at zero.
         let data_dir = TempDir::new().unwrap();
         let store = Store::open(data_dir.path()).unwrap();
-        publish_mcp_findings(&store, "target", 120, &["target-server"]);
+        publish_reasoning_at_cwd(
+            &store,
+            "target",
+            120,
+            120_000,
+            Path::new("/synthetic/project"),
+            "max",
+        );
         let mut turn_probes = 0;
+        let overthinking_request = CurrentFindingsRequest {
+            environment_key: "native".to_owned(),
+            window: request().window,
+            detector: DetectorId::ModelOverthinking,
+        };
 
         let page = list_current_findings_on_snapshot(
             data_dir.path(),
-            finding_request(),
+            overthinking_request,
             &mut || {},
             &mut || turn_probes += 1,
         )
@@ -2716,6 +3035,36 @@ mod tests {
             .unwrap()
         );
         assert_eq!(turn_probes, 0);
+    }
+
+    #[test]
+    fn token_detectors_now_consult_turn_evidence_during_listing_and_revalidation() {
+        // Decision 1/PR 1 widened the token-burn source-evidence path to
+        // the three prefix-burn detectors, so listing and revalidation now
+        // probe turn evidence for Unused MCP Servers too.
+        let data_dir = TempDir::new().unwrap();
+        let store = Store::open(data_dir.path()).unwrap();
+        publish_mcp_findings(&store, "target", 120, &["target-server"]);
+        let mut turn_probes = 0;
+
+        let page = list_current_findings_on_snapshot(
+            data_dir.path(),
+            finding_request(),
+            &mut || {},
+            &mut || turn_probes += 1,
+        )
+        .unwrap();
+        assert_eq!(page.findings.len(), 1);
+        assert!(turn_probes > 0);
+
+        turn_probes = 0;
+        assert!(
+            revalidate_current_finding_on_snapshot(data_dir.path(), &page.findings[0], &mut || {
+                turn_probes += 1
+            },)
+            .unwrap()
+        );
+        assert!(turn_probes > 0);
     }
 
     #[test]

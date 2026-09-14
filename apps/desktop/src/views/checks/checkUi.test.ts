@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { ChecksCategoryPayload } from "../../lib/insightsIpc"
+import type { BurnCheckTargetPayload, ChecksCategoryPayload } from "../../lib/insightsIpc"
 import { CHECK_UI, checkRowPresentation } from "./checkUi"
 
 function category(overrides: Partial<ChecksCategoryPayload> = {}): ChecksCategoryPayload {
@@ -12,6 +12,14 @@ function category(overrides: Partial<ChecksCategoryPayload> = {}): ChecksCategor
     estimatedTokenBurnBasisPoints: 800,
     ...overrides,
   }
+}
+
+function target(
+  estimatedOpportunity: BurnCheckTargetPayload["display"]["estimatedOpportunity"],
+) {
+  return {
+    display: { estimatedOpportunity },
+  } as BurnCheckTargetPayload
 }
 
 describe("check row presentation", () => {
@@ -65,5 +73,37 @@ describe("check row presentation", () => {
         metric,
       )
     }
+  })
+
+  it("sums the priced opportunity across every loaded target", () => {
+    const targets = [
+      target({ value: 8.2, unit: "apiEquivalentUsd" }),
+      target({ value: 1.8, unit: "apiEquivalentUsd" }),
+    ]
+    expect(checkRowPresentation(category(), targets).costLine).toBe("~$10.00")
+  })
+
+  it("has no cost line when the target list has not loaded", () => {
+    expect(checkRowPresentation(category()).costLine).toBeNull()
+  })
+
+  it("has no cost line when the check has no findings, even with priced targets", () => {
+    const targets = [target({ value: 8.2, unit: "apiEquivalentUsd" })]
+    expect(
+      checkRowPresentation(category({ finding: 0, clean: 5 }), targets).costLine,
+    ).toBeNull()
+  })
+
+  it("has no cost line when any target's estimate did not price to dollars", () => {
+    const targets = [
+      target({ value: 8.2, unit: "apiEquivalentUsd" }),
+      target({ value: 400, unit: "literalInputTokens" }),
+    ]
+    expect(checkRowPresentation(category(), targets).costLine).toBeNull()
+  })
+
+  it("has no cost line when a target has no estimate at all", () => {
+    const targets = [target({ value: 8.2, unit: "apiEquivalentUsd" }), target(null)]
+    expect(checkRowPresentation(category(), targets).costLine).toBeNull()
   })
 })

@@ -157,13 +157,19 @@ fn all_nine_estimate_methods_keep_their_reviewed_units() {
         SavingsEstimateInput::McpDefinitionExposure {
             definition_tokens: Some(10),
             compatible_requests: Some(2),
+            replicated_cost_usd: None,
+            pricing_revision: None,
         },
         SavingsEstimateInput::BuiltInDefinitionReplication {
             replicated_tokens: Some(30),
+            replicated_cost_usd: None,
+            pricing_revision: None,
         },
         SavingsEstimateInput::InjectedSkillDocument {
             document_tokens: Some(20),
             compatible_requests: Some(2),
+            replicated_cost_usd: None,
+            pricing_revision: None,
         },
         SavingsEstimateInput::OldModelPriceDifference(comparison.clone()),
         SavingsEstimateInput::FastTierPricePremium(comparison),
@@ -229,6 +235,8 @@ fn typed_estimates_preserve_zero_negative_unknown_and_overflow() {
             &SavingsEstimateInput::InjectedSkillDocument {
                 document_tokens: Some(10),
                 compatible_requests: None,
+                replicated_cost_usd: None,
+                pricing_revision: None,
             },
         )
         .value,
@@ -240,11 +248,41 @@ fn typed_estimates_preserve_zero_negative_unknown_and_overflow() {
             &SavingsEstimateInput::McpDefinitionExposure {
                 definition_tokens: Some(u64::MAX),
                 compatible_requests: Some(2),
+                replicated_cost_usd: None,
+                pricing_revision: None,
             },
         )
         .value,
         Err(SavingsUnavailableReason::ArithmeticOverflow)
     );
+}
+
+#[test]
+fn prefix_burn_methods_prefer_priced_cost_when_the_revision_is_valid() {
+    let priced = |cost: Option<f64>, revision: Option<&str>| {
+        estimate_savings(
+            savings_interval(),
+            &SavingsEstimateInput::BuiltInDefinitionReplication {
+                replicated_tokens: Some(30),
+                replicated_cost_usd: cost,
+                pricing_revision: revision.map(str::to_owned),
+            },
+        )
+        .value
+    };
+    assert_eq!(
+        priced(Some(0.05), Some("pricing-7")).unwrap().unit,
+        SavingsUnit::ApiEquivalentUsd
+    );
+    assert_eq!(priced(Some(0.05), Some("pricing-7")).unwrap().value, 0.05);
+    // A missing revision falls back to the literal token count, not an error.
+    let fallback = priced(Some(0.05), None).unwrap();
+    assert_eq!(fallback.unit, SavingsUnit::LiteralInputTokens);
+    assert_eq!(fallback.value, 30.0);
+    // A missing cost with a valid revision also falls back to tokens.
+    let no_cost = priced(None, Some("pricing-7")).unwrap();
+    assert_eq!(no_cost.unit, SavingsUnit::LiteralInputTokens);
+    assert_eq!(no_cost.value, 30.0);
 }
 
 #[test]

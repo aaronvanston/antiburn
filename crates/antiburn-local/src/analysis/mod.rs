@@ -60,12 +60,13 @@ pub use evidence::{
     ContextSourceEvidence, CoverageReason, DepthExample, EVIDENCE_STRING_CAP, EligibilityEvidence,
     EvidenceCoverage, EvidenceSource, EvidenceValue, FAST_SPEED_KEY, LoadedSource,
     ModelControlObservation, ModelEvidence, ModelTokens, ModelTransition, OrderingObservation,
-    ParseDiagnostics, QuotaConfidence, QuotaHitSeverity, QuotaIncident, QuotaLimitKind,
-    RelationConfidence, RepeatedContext, RepeatedContextAccounting, SessionCoverageRecord,
-    SessionEvidence, SessionEvidenceIdentity, SessionProvenance, SessionQuotaEvidence,
-    SessionTimeRange, SignalCoverage, SourceAcceptance, SourceCapabilities, SourceFormat,
-    SourceKind, SubagentChild, SubagentEvidence, SubagentExample, ToolClass, ToolDefinition,
-    ToolEvidence, ToolUse, TurnCounts,
+    ParseDiagnostics, ProviderIncident, ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity,
+    QuotaIncident, QuotaLimitKind, RelationConfidence, RepeatedContext, RepeatedContextAccounting,
+    SessionCoverageRecord, SessionEvidence, SessionEvidenceIdentity, SessionProvenance,
+    SessionProviderEvidence, SessionQuotaEvidence, SessionTimeRange, SignalCoverage,
+    SourceAcceptance, SourceCapabilities, SourceFormat, SourceKind, SubagentChild,
+    SubagentEvidence, SubagentExample, ToolClass, ToolDefinition, ToolEvidence, ToolUse,
+    TurnCounts,
 };
 pub use evidence_query::{
     FenceScope, PublishedScope, TurnFacts, query_model_breakdown, query_model_runs,
@@ -101,8 +102,8 @@ pub use rows::{
     MemoryTurnRowStore, ResumeRevisions, SESSION_COVERAGE_SCHEMA_SQL, SOURCE_RESUME_SCHEMA_SQL,
     StoredResume, TURN_MIGRATIONS, TURN_ROW_BATCH_SIZE, TURN_SCHEMA_SQL, TURN_SCHEMA_V2_SQL,
     TURN_SCHEMA_V3_SQL, TURN_SCHEMA_V4_SQL, TURN_SCHEMA_V5_SQL, TURN_SCHEMA_V6_SQL,
-    TURN_SCHEMA_V7_SQL, TurnRow, TurnRowError, TurnRowSink, TurnRowStore, TurnScope,
-    TurnSessionKey, count_turn_content_rows, count_turn_rows, delete_source_resume,
+    TURN_SCHEMA_V7_SQL, TURN_SCHEMA_V8_SQL, TurnRow, TurnRowError, TurnRowSink, TurnRowStore,
+    TurnScope, TurnSessionKey, count_turn_content_rows, count_turn_rows, delete_source_resume,
     delete_source_rows_at_fence, delete_stale_source_resume, delete_turn_rows,
     delete_turn_rows_except_fence, delete_turn_rows_for_fence, insert_coverage_record,
     insert_source_resume, insert_turn_rows, latest_turn_model, query_coverage_record,
@@ -174,7 +175,19 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // +1 for Pi assistant request-start timestamps: token and context buckets now
 // use `message.timestamp` while event ordering keeps the outer row timestamp.
 // Deduplicate delayed exact Codex usage copies.
-pub const PARSER_REVISION: i64 = 34;
+// +1 for the one-hour cache-write premium: `parse_usage` now reads the
+// nested `cache_creation` breakdown (`ephemeral_1h_input_tokens`,
+// `ephemeral_5m_input_tokens`) into `Usage::cache_creation_1h_tokens`, so a
+// stored Claude session must reparse to price one-hour cache writes at the
+// correct rate (`records::parse_usage`).
+// +1 for Codex's `spawn_agent` launch tool: `is_subagent_launch_tool`
+// (`analysis::model`) now also matches `spawn_agent`, so every stored
+// Codex session must reparse to count launches in `subagent_launches`.
+// +1 for Codex quota incidents: a `task_complete` event with a non-null
+// `error` object now maps to a `QuotaIncident` for the three reviewed
+// `codex_error_info` codes, so a stored Codex session must reparse to
+// collect them (`vendors::codex::task_complete_incident`).
+pub const PARSER_REVISION: i64 = 37;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to
@@ -250,7 +263,8 @@ pub const METRICS_SCHEMA_REVISION: i64 = 8;
 // harness version, and model-associated speed and effort evidence.
 // +1 for source-surface formats and fail-closed skill alias attribution.
 // +1 for nested resource evidence and paired parent-call and child-model observations.
-pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
+// +1 for the provider_incidents evidence group.
+pub const EVIDENCE_SCHEMA_REVISION: i64 = 19;
 /// Versions [`evidence::SessionCoverageRecord`]'s own shape, separately
 /// from [`EVIDENCE_SCHEMA_REVISION`]: the record is an internal input to
 /// evidence replay, not the published `SessionEvidence` shape itself.
@@ -259,7 +273,8 @@ pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
 // +1 for source format and repeated-context accounting capabilities.
 // +1 for dedicated source-surface capability contracts.
 // +1 for nested resources, paired subagent models, and incomplete linkage state.
-pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
+// +1 for Codex quota and provider incidents and their bounded-collection cap flags.
+pub const COVERAGE_SCHEMA_REVISION: i64 = 5;
 /// Versions [`resume::StreamSnapshot`]'s own shape. [`resume::StreamSnapshot::is_current`]
 /// rejects a persisted snapshot stamped with an older revision.
 ///
@@ -277,7 +292,8 @@ pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
 // This batch also changes retained nested resource and paired subagent state.
 // +1 for the bounded Codex cross-format usage matcher in adapter snapshots.
 // Reject snapshots that can retain duplicate usage totals.
-pub const RESUME_SNAPSHOT_REVISION: i64 = 8;
+// +1 because the evidence sink now carries Codex quota and provider incidents.
+pub const RESUME_SNAPSHOT_REVISION: i64 = 9;
 
 /// Normalize and analyze a batch of live sessions into one averaged summary.
 ///

@@ -534,6 +534,7 @@ fn apply_settings_transition(app: &tauri::AppHandle, previous: &AppSettings, sav
     if crate::startup_registration::should_reconcile_after_save(previous, saved) {
         crate::startup_registration::reconcile(app, saved.launch_at_login);
     }
+    crate::app_presence::apply_transition(app, previous, saved);
 
     // Finishing onboarding, widening the window past what the store holds, and
     // resuming discovery all want fresh data immediately rather than at the
@@ -604,6 +605,14 @@ fn apply_settings_transition(app: &tauri::AppHandle, previous: &AppSettings, sav
         (
             previous.launch_at_login != saved.launch_at_login,
             "launch_at_login",
+        ),
+        (
+            previous.tray_icon_visible != saved.tray_icon_visible,
+            "tray_icon",
+        ),
+        (
+            previous.dock_icon_visible != saved.dock_icon_visible,
+            "dock_icon",
         ),
         (
             previous.discovery_paused != saved.discovery_paused,
@@ -1478,6 +1487,8 @@ pub async fn get_insights_report(app: tauri::AppHandle) -> CommandResult<Insight
         .await?;
     let report = reduced.report;
     crate::analytics::record_unrecognized_records(&app, &report.unrecognized_records);
+    crate::analytics::record_quota_incidents(&app, &report.quota_pressure);
+    crate::analytics::record_provider_incidents(&app, &report.provider_incidents);
     Ok(report.into())
 }
 

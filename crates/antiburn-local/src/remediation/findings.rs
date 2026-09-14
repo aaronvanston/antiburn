@@ -26,7 +26,7 @@ pub enum BuiltInToolTokens {
 }
 
 /// Typed evidence for one actionable finding target.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FindingCause {
     SessionsOverDepth {
         maximum_tokens: u64,
@@ -49,13 +49,29 @@ pub enum FindingCause {
     },
     UnusedMcpServer {
         server: String,
+        /// Replicated definition tokens from source evidence, when available.
+        tokens: Option<u128>,
+        /// The priced cost of `tokens`, when both price and revision resolve.
+        cost_usd: Option<f64>,
+        /// The pricing table generation that priced `cost_usd`.
+        pricing_revision: Option<String>,
     },
     UnusedBuiltInTool {
         tool: String,
         tokens: BuiltInToolTokens,
+        /// The priced cost of a `BuiltInToolTokens::Replicated` count.
+        cost_usd: Option<f64>,
+        /// The pricing table generation that priced `cost_usd`.
+        pricing_revision: Option<String>,
     },
     UnusedSkill {
         skill: String,
+        /// Replicated definition tokens from source evidence, when available.
+        tokens: Option<u128>,
+        /// The priced cost of `tokens`, when both price and revision resolve.
+        cost_usd: Option<f64>,
+        /// The pricing table generation that priced `cost_usd`.
+        pricing_revision: Option<String>,
     },
     OldModelUsage {
         provider: Option<String>,
@@ -118,7 +134,7 @@ impl FindingCause {
             } => vec![parent_model, worker_model],
             Self::UnusedMcpServer { server, .. } => vec![server],
             Self::UnusedBuiltInTool { tool, .. } => vec![tool],
-            Self::UnusedSkill { skill } => vec![skill],
+            Self::UnusedSkill { skill, .. } => vec![skill],
             Self::OldModelUsage {
                 provider,
                 api,
@@ -148,7 +164,7 @@ impl FindingCause {
 }
 
 /// One current per-target finding with exact private selectors.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
     pub detector: DetectorId,
     pub source_format: SourceFormat,
@@ -216,7 +232,7 @@ impl Finding {
                 "base": base("resource"), "scope": scope, "resource": tool,
             })
             .to_string(),
-            FindingCause::UnusedSkill { skill } => serde_json::json!({
+            FindingCause::UnusedSkill { skill, .. } => serde_json::json!({
                 "base": base("resource"), "scope": scope, "resource": skill,
             })
             .to_string(),
@@ -294,7 +310,7 @@ pub enum FindingUnavailableReason {
 }
 
 /// One detector result before report aggregation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FindingAssessment {
     Findings(Vec<Finding>),
     Clean,

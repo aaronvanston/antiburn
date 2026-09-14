@@ -49,6 +49,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::read_source;
+use crate::analysis::evidence::{
+    ProviderIncident, ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity, QuotaIncident,
+    QuotaLimitKind,
+};
 use crate::analysis::framing::{BoundedJsonlReader, FramedRecord, PartialReason, RecordSkip};
 use crate::analysis::initial_context::CodexContextAccumulator;
 use crate::analysis::interface::{
@@ -569,6 +573,11 @@ impl CodexStreamState {
                     },
                 )));
             }
+            if let Some(observation) =
+                task_complete_observation(&value, self.current_model.as_deref())
+            {
+                sink.record(NormalizedRecord::Observation(Box::new(observation)));
+            }
         }
 
         if is_usage_record {
@@ -982,6 +991,64 @@ fn is_recognized_eventless(record_type: Option<&str>, payload_type: Option<&str>
     )
 }
 
+/// Maps one `event_msg`/`task_complete` record's non-null `error` object to
+/// a quota incident or a provider incident, for the three reviewed
+/// `codex_error_info` codes. `server_overloaded` names a provider-side
+/// capacity failure the user's own usage did not cause, so it maps to a
+/// `ProviderIncident` instead of a `QuotaIncident`.
+///
+/// `codex_error_info` is the pinned `openai/codex` `CodexErrorInfo` enum's
+/// serde form: a unit variant serializes as a bare string
+/// (`"server_overloaded"`); a struct variant serializes as a single-key
+/// object (`{"http_connection_failed":{"http_status_code":503}}`). Every
+/// other code, an absent or non-object `error`, or a missing top-level
+/// `timestamp` returns `None`; the record stays allowlisted-eventless with
+/// no diagnostic. The observation never carries the error's `message` text.
+fn task_complete_observation(value: &Value, model: Option<&str>) -> Option<EvidenceObservation> {
+    if value.get("type").and_then(Value::as_str) != Some("event_msg") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("type").and_then(Value::as_str) != Some("task_complete") {
+        return None;
+    }
+    let error = payload.get("error")?.as_object()?;
+    let code = match error.get("codex_error_info")? {
+        Value::String(code) => code.as_str(),
+        Value::Object(fields) if fields.len() == 1 => fields.keys().next()?.as_str(),
+        _ => return None,
+    };
+    let ts_ms = value.get("timestamp").and_then(parse_ts)?;
+    // `task_complete` with a non-null error means the turn terminated, so
+    // every mapped code is a hard hit, never an advance warning.
+    match code {
+        "server_overloaded" => Some(EvidenceObservation::ProviderIncident(ProviderIncident {
+            ts_ms,
+            kind: ProviderIncidentKind::Capacity,
+            model: model.map(ToOwned::to_owned),
+        })),
+        "rate_limit_exceeded" => Some(EvidenceObservation::QuotaIncident(QuotaIncident {
+            ts_ms,
+            limit_kind: QuotaLimitKind::RateLimit,
+            severity: QuotaHitSeverity::HardHit,
+            model: model.map(ToOwned::to_owned),
+            reset_ts_ms: None,
+            utilization_pct: None,
+            confidence: QuotaConfidence::Observed,
+        })),
+        "usage_limit_exceeded" => Some(EvidenceObservation::QuotaIncident(QuotaIncident {
+            ts_ms,
+            limit_kind: QuotaLimitKind::UsageLimit,
+            severity: QuotaHitSeverity::HardHit,
+            model: model.map(ToOwned::to_owned),
+            reset_ts_ms: None,
+            utilization_pct: None,
+            confidence: QuotaConfidence::Observed,
+        })),
+        _ => None,
+    }
+}
+
 /// The subset of `is_recognized_eventless` names that must still pass the
 /// light structural check (`is_inert_codex_record`'s `reject_nested = false`
 /// pass) before an unrecognized-record observation is skipped. See
@@ -1326,9 +1393,11 @@ fn codex_fork_owned_offset(content: &str) -> Option<usize> {
 }
 
 /// Map one rollout envelope record to a normalized event, or `None` for framing
-/// / bookkeeping records that carry no analyzable signal (`session_meta`,
+/// / bookkeeping records that carry no cost or usage signal (`session_meta`,
 /// `turn_context`, `task_started`, and the `user_message` / `agent_message` UI
-/// echoes of `response_item` turns).
+/// echoes of `response_item` turns). `task_complete` also returns `None` here,
+/// but [`task_complete_observation`] reads its `error` object separately, for
+/// the `QuotaIncident` or `ProviderIncident` observation.
 fn record_to_event(record: &Value) -> Option<NormalizedEvent> {
     let obj = record.as_object()?;
     let ts = obj.get("timestamp").and_then(parse_ts);
@@ -2141,6 +2210,8 @@ fn codex_usage(u: &Map<String, Value>) -> Usage {
         output_tokens: get("output_tokens"),
         cache_read_tokens,
         cache_creation_tokens,
+        // Codex does not report a one-hour cache-write split.
+        cache_creation_1h_tokens: 0,
     }
 }
 
@@ -2361,7 +2432,14 @@ mod tests {
 
     #[test]
     fn record_to_event_changes_require_an_inertness_review() {
-        const EXPECTED_FINGERPRINT: u64 = 17_590_009_681_109_556_840;
+        // `codex_usage` now sets `cache_creation_1h_tokens: 0`: Codex never
+        // reports a one-hour cache-write split, so this reads no new key.
+        // `task_complete_observation` now reads a `task_complete` event's
+        // `error` object and `process_value` emits the mapped quota or
+        // provider incident observation; `is_recognized_eventless` still
+        // allowlists `task_complete` as eventless, so coverage and
+        // diagnostics are unchanged.
+        const EXPECTED_FINGERPRINT: u64 = 6_617_144_581_780_975_234;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();

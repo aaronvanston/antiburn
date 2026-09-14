@@ -50,9 +50,9 @@ pub(super) fn watch_definition(target: &CachedTarget) -> WatchDefinition {
         old_model,
         replacement,
         resource: match target.findings[0].finding.cause() {
-            FindingCause::UnusedMcpServer { server } => Some(server.clone()),
+            FindingCause::UnusedMcpServer { server, .. } => Some(server.clone()),
             FindingCause::UnusedBuiltInTool { tool, .. } => Some(tool.clone()),
-            FindingCause::UnusedSkill { skill } => Some(skill.clone()),
+            FindingCause::UnusedSkill { skill, .. } => Some(skill.clone()),
             _ => None,
         },
         physical_target_key: target.physical_target_key.clone(),

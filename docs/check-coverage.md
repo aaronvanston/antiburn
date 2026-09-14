@@ -121,6 +121,13 @@ deny session-wide `Clean`, even when a nested observed-resource map is complete.
 A scoped finding requires complete coverage of that observed subset, calls, and
 eligible activity. An unrelated partial resource group does not block it.
 
+Report-time token estimates (`insights/report.rs::token_cost` and
+`TokenBurnTurnEvidence`), old-model remediation savings, and provider-limit
+attribution all read `turn.cache_write_1h_tokens` and price that subset at
+two times the input rate. These readers are report-time views of turn rows,
+not part of `SessionEvidence`, so the evidence schema revision does not
+change when this pricing split changes.
+
 Thread attribution retains at most 16,384 distinct UUIDs, each at most 256 bytes.
 An overflow or oversized UUID records `CapExceeded`, makes attribution
 incomplete, and blocks every clean result that needs complete affected evidence.
@@ -153,6 +160,34 @@ clean-result eligibility. Analyzer revision 22 reprocesses prior evidence.
 Skills mean full documents injected into model context. Listings, installed
 skills, and names in tool calls do not prove unused document overhead. Resource
 identity is retained without copying private document bodies into evidence.
+
+Quota pressure and provider incidents sit outside the nine-code check
+contract (FR-15): neither has a row in the Checks table above, and each
+reports only when transcripts carry its own evidence. `CodexRolloutJsonl`
+now supplies both. An `event_msg`/`task_complete` record with a non-null
+`error` object maps to one of two groups, for exactly three reviewed
+`codex_error_info` codes, against the pinned `openai/codex` protocol commit
+[`e7637306bc9246a3e42e407cb94f96b7ed345e3e`][codex-source] and a synthetic
+fixture (`task_complete_errors.jsonl`):
+
+- `quota_incidents`, a `QuotaIncident`, from `rate_limit_exceeded`
+  (`RateLimit`) and `usage_limit_exceeded` (`UsageLimit`) — both name a
+  user-allocation limit the reader's own usage caused.
+- `provider_incidents`, a `ProviderIncident`, from `server_overloaded`
+  (`Capacity`) — the provider could not serve the request regardless of the
+  user's usage.
+
+Every other code is ignored. Clean or absence is never claimed from either
+group: each section is not assessed without at least one observed incident
+of its own kind, per FR-15's one condition.
+
+Maintainer confirmation (2026-09-14): support Codex quota incidents from
+`task_complete` errors, limited to the three reviewed `codex_error_info`
+codes above. Reviewed passive alternatives include mapping every
+`codex_error_info` variant to a limit kind; rejected because most codes
+(`context_window_exceeded`, policy and transport failures, `other`) name a
+different failure class, not a quota or capacity limit. Provider capacity is
+recorded as a separate group because the user's usage did not cause it.
 
 | Source                      | Checks              | Implemented contract and remaining limit                                                                                                                                                                                                                                                                                                |
 | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -339,17 +374,17 @@ reasons. Known zero and negative values remain known. Missing evidence,
 assumptions, comparisons, rates, revisions, or durable ownership remains
 unknown. Arithmetic overflow is unknown, not a saturated saving.
 
-| Check | Method                               | Result unit           | Current numeric eligibility                                                                                                                                                             |
-| ----- | ------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D     | Repeated context above the depth cap | Literal input tokens  | Numeric only with an observed request total and pinned cap. Confirmed accumulation is unavailable while D verification is unavailable.                                                  |
-| T     | Reviewed output reduction assumption | Assumed output tokens | Requires observed output and an explicit basis-point assumption. No default assumption exists.                                                                                          |
-| S     | Worker model price difference        | API-equivalent USD    | Requires exact worker tokens, reviewed alternative rates, route, pricing revision, and ownership. Missing inputs remain unknown.                                                        |
-| M     | MCP definition exposure              | Literal input tokens  | Requires attributable definition tokens and compatible-request count. Names or exposure alone are nonnumeric.                                                                           |
-| B     | Built-in definition replication      | Literal input tokens  | Numeric for established catalog-backed replication counts. It is not converted into a confirmed win while B verification is unavailable.                                                |
-| K     | Injected skill document              | Literal input tokens  | Requires full document tokens and compatible-request count. Listings never qualify.                                                                                                     |
-| O     | Old-model price difference           | API-equivalent USD    | Implemented for exact attributed Claude Code, Codex, OpenCode, and Pi replacement activity with both reviewed rates and a pricing revision. Zero and negative differences remain known. |
-| F     | Fast-tier price premium              | API-equivalent USD    | Requires same-model, same-route standard and fast rates, eligible tokens, pricing revision, and ownership. Missing comparisons remain unknown.                                          |
-| C     | Paid versus cache-read difference    | API-equivalent USD    | Requires attributable repeated paid tokens and reviewed paid/cache rates. Raw repeated tokens alone do not establish dollars.                                                           |
+| Check | Method                               | Result unit                                | Current numeric eligibility                                                                                                                                                                                                                                                                                                                                  |
+| ----- | ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D     | Repeated context above the depth cap | Literal input tokens                       | Numeric only with an observed request total and pinned cap. Confirmed accumulation is unavailable while D verification is unavailable.                                                                                                                                                                                                                       |
+| T     | Reviewed output reduction assumption | Assumed output tokens                      | Requires observed output and an explicit basis-point assumption. No default assumption exists.                                                                                                                                                                                                                                                               |
+| S     | Worker model price difference        | API-equivalent USD                         | Requires exact worker tokens, reviewed alternative rates, route, pricing revision, and ownership. Missing inputs remain unknown.                                                                                                                                                                                                                             |
+| M     | MCP definition exposure              | API-equivalent USD or literal input tokens | Requires attributable definition tokens and compatible-request count. Names or exposure alone are nonnumeric. Reports API-equivalent USD only when every contributing turn's model resolves in the live pricing table and the stamped pricing revision is still current; otherwise the finding still reports with literal input tokens and no dollar figure. |
+| B     | Built-in definition replication      | API-equivalent USD or literal input tokens | Numeric for established catalog-backed replication counts. It is not converted into a confirmed win while B verification is unavailable. Same pricing-table and revision requirement as M applies for the API-equivalent USD figure; an unresolvable model still reports the token count.                                                                    |
+| K     | Injected skill document              | API-equivalent USD or literal input tokens | Requires full document tokens and compatible-request count. Listings never qualify. Same pricing-table and revision requirement as M applies for the API-equivalent USD figure; an unresolvable model still reports the token count.                                                                                                                         |
+| O     | Old-model price difference           | API-equivalent USD                         | Implemented for exact attributed Claude Code, Codex, OpenCode, and Pi replacement activity with both reviewed rates and a pricing revision. Zero and negative differences remain known.                                                                                                                                                                      |
+| F     | Fast-tier price premium              | API-equivalent USD                         | Requires same-model, same-route standard and fast rates, eligible tokens, pricing revision, and ownership. Missing comparisons remain unknown.                                                                                                                                                                                                               |
+| C     | Paid versus cache-read difference    | API-equivalent USD                         | Requires attributable repeated paid tokens and reviewed paid/cache rates. Raw repeated tokens alone do not establish dollars.                                                                                                                                                                                                                                |
 
 Literal input tokens, assumed output tokens, cache-class tokens,
 API-equivalent USD, and improvement counts are separate units. Aggregation adds

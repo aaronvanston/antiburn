@@ -174,6 +174,7 @@ fn opencode_capabilities_match_the_observed_contract() {
             record_identity: false,
             linear_record_order: true,
             quota_incidents: false,
+            provider_incidents: false,
             harness_version: false,
             repeated_context_accounting: None,
         }

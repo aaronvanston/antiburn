@@ -625,6 +625,7 @@ fn every_group_reports_a_three_state_value() {
         "cache",
         "compactions",
         "quotaIncidents",
+        "providerIncidents",
     ] {
         let state = value[group]["state"].as_str().expect("group state");
         assert!(matches!(state, "complete" | "partial" | "unsupported"));
@@ -645,6 +646,7 @@ fn the_capability_matrix_names_every_group_and_every_capability() {
         "cache",
         "compactions",
         "quota_incidents",
+        "provider_incidents",
         "model_identity",
         "token_classes",
         "request_context_tokens",
@@ -735,6 +737,18 @@ fn quota_incidents_are_unsupported_for_claude() {
     assert!(!evidence.capabilities.quota_incidents);
     assert!(matches!(
         evidence.quota_incidents,
+        EvidenceValue::Unsupported
+    ));
+}
+
+#[test]
+fn provider_incidents_are_unsupported_for_claude() {
+    let evidence = stream_composite(&input("delegated_turns"))
+        .evidence()
+        .expect("evidence must publish");
+    assert!(!evidence.capabilities.provider_incidents);
+    assert!(matches!(
+        evidence.provider_incidents,
         EvidenceValue::Unsupported
     ));
 }
