@@ -26,6 +26,7 @@ import { BurnChecksView } from "./main-window/BurnChecksView"
 import { BurnChecksSession } from "./main-window/BurnChecksSession"
 import { MainWindowLayout } from "./main-window/MainWindowLayout"
 import { MainWindowNavigationSession } from "./main-window/MainWindowNavigationSession"
+import { MainOverviewSession } from "./main-window/MainOverviewSession"
 import { OverviewView } from "./main-window/OverviewView"
 
 export interface MainWindowSection extends SidebarNavItem {
@@ -111,6 +112,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   const [activitySession] = useState(() => new MainActivitySession())
   const [burnChecksSession] = useState(() => new BurnChecksSession())
   const [navigationSession] = useState(() => new MainWindowNavigationSession())
+  const [overviewSession] = useState(() => new MainOverviewSession())
   const navigation = useSyncExternalStore(
     navigationSession.subscribe,
     navigationSession.getSnapshot,
@@ -133,7 +135,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       id: "overview",
       label: "Overview",
       icon: House,
-      render: ({ active }) => <OverviewView active={active} />,
+      render: ({ active }) => <OverviewView active={active} session={overviewSession} />,
     },
     {
       id: "burnChecks",

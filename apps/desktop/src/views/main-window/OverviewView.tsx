@@ -1,16 +1,33 @@
+import { useSyncExternalStore } from "react"
+
 import { isMacOS } from "../../lib/platform"
 
 import { ScrollPane } from "../../components/ui/ScrollPane"
-import { Skeleton } from "../../components/ui/Skeleton"
+import { type MainOverviewSession } from "./MainOverviewSession"
+import { OverviewSpendChart } from "./overview/OverviewSpendChart"
+import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 
 /**
  * The main window's landing section: local spend, provider limits, Burn
  * checks, and recent sessions on one page.
  *
- * This first slice ships the section and a placeholder. The panels arrive in
- * later slices; until then the view shows a loading block and no figures.
+ * This slice ships the spend totals and the daily chart. The other panels
+ * arrive in later slices.
  */
-export function OverviewView({ active }: { active: boolean }) {
+export function OverviewView({
+  active,
+  session,
+}: {
+  active: boolean
+  session: MainOverviewSession
+}) {
+  const state = useSyncExternalStore(
+    active ? session.subscribe : session.subscribeInactive,
+    session.getSnapshot,
+    session.getSnapshot,
+  )
+  const usage = state.usage
+  const loading = !usage && !state.usageError
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-window"
@@ -24,28 +41,39 @@ export function OverviewView({ active }: { active: boolean }) {
         />
       )}
       <h1 className="sr-only">Overview</h1>
-      <ScrollPane className="min-h-0" topEdgeFade>
-        <div
-          role="region"
-          aria-label="Loading Overview"
-          aria-busy="true"
-          className="w-full px-8 py-6"
-        >
-          <p role="status" className="sr-only">
-            Loading Overview.
-          </p>
-          <div className="grid grid-cols-3 gap-[var(--space-lg)]">
-            {["today", "week", "month"].map((span) => (
-              <div key={span} className="flex flex-col gap-[var(--space-sm)]">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-8 w-32" />
-                <Skeleton className="h-3 w-40 max-w-full" />
-              </div>
-            ))}
+      {!usage && state.usageError ? (
+        <div className="flex flex-1 items-center justify-center text-center">
+          <div>
+            <p role="alert" className="type-body text-label-secondary">
+              Local usage is unavailable.
+            </p>
+            <button type="button" onClick={session.refresh} className="ui-push-button mt-3">
+              Retry
+            </button>
           </div>
-          <Skeleton className="mt-[var(--space-2xl)] h-24 w-full" />
         </div>
-      </ScrollPane>
+      ) : (
+        <ScrollPane className="min-h-0" topEdgeFade>
+          <div
+            role="region"
+            aria-label={loading ? "Loading Overview" : "Overview"}
+            aria-busy={loading || undefined}
+            className="flex w-full flex-col gap-[var(--space-2xl)] px-8 py-6"
+          >
+            {loading && (
+              <p role="status" className="sr-only">
+                Loading Overview.
+              </p>
+            )}
+            <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
+            <OverviewSpendChart
+              days={usage?.days ?? []}
+              previousDays={usage?.previousDays ?? []}
+              loading={loading}
+            />
+          </div>
+        </ScrollPane>
+      )}
     </div>
   )
 }
