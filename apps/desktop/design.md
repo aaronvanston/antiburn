@@ -17,6 +17,7 @@ sources:
   - src/styles/session-detail.css
   - src/components/ui/text-roll.css
   - src/components/burn-checks/burn-check-summary.css
+  - src/views/main-window/overview/overview.css
 colors:
   # Concrete token colors use modern HSL function syntax.
   # Use the shortest value that keeps the same 8-bit RGB channels.
@@ -277,6 +278,7 @@ fonts:
   mono: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" # via `font-mono`
 typography:
   display: { fontSize: 40px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.36px" }
+  hero-figure: { fontSize: 32px, fontWeight: 800, lineHeight: 1.4, letterSpacing: "-0.96px" } # a headline number; pair with font-mono
   # class .type-<name> · [fontSize, fontWeight, lineHeight, letterSpacing] · family = fonts.sans
   large-title: { fontSize: 26px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.36px" }
   title-1: { fontSize: 22px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.35px" }

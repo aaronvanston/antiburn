@@ -1,0 +1,106 @@
+/* ==========================================================================
+   Overview daily spend chart.
+
+   Thirty day slots, each a pair of pill bars: this period in `token-in` and
+   the thirty days before it in tertiary ink. The bar is the same diameter as
+   a `SegmentedMeter` dot, so an empty day is a single dot and a bar is a
+   stretched dot. Geometry stays here; every color is a Tailwind utility on
+   the element.
+   ========================================================================== */
+
+.overview-chart {
+  /* One meter dot. */
+  --overview-bar-width: 7px;
+  --overview-chart-height: 90px;
+  /* Between the two bars of a day, and between days. */
+  --overview-pair-gap: 2px;
+  --overview-day-gap: 3px;
+  /* Left-to-right delay per day on first paint. */
+  --overview-bar-stagger: 12ms;
+  /* Room for the scale figures to the right of the bars. */
+  --overview-scale-gutter: 44px;
+}
+
+/* The bars and the scale figures side by side, at the chart height. */
+.overview-plot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--overview-scale-gutter);
+  column-gap: var(--overview-day-gap);
+  block-size: var(--overview-chart-height);
+}
+
+.overview-days {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--overview-day-gap);
+  block-size: var(--overview-chart-height);
+}
+
+.overview-day {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: var(--overview-pair-gap);
+  block-size: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  cursor: default;
+}
+
+.overview-bar {
+  display: block;
+  inline-size: var(--overview-bar-width);
+  min-block-size: var(--overview-bar-width);
+  border-radius: 9999px;
+  transform-origin: bottom;
+  transition: block-size var(--duration-slow) ease-out;
+  animation: overview-bar-grow var(--duration-slow) ease-out both;
+  animation-delay: calc(var(--overview-bar-index, 0) * var(--overview-bar-stagger));
+}
+
+/* A day with tokens that no price covers: an outline the height of a dot,
+   so it is visibly a reading with no figure rather than a zero. */
+.overview-bar[data-unpriced] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+@keyframes overview-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* The x-axis: one cell per day; a label sits at the left edge of its cell,
+   and the last label hangs from the right edge so "Today" ends on the bar. */
+.overview-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--overview-day-gap);
+  padding-inline-end: calc(var(--overview-scale-gutter) + var(--overview-day-gap));
+}
+
+.overview-axis-day {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: calc(var(--overview-bar-width) * 2 + var(--overview-pair-gap));
+  block-size: 1.4em;
+}
+
+.overview-axis-label {
+  position: absolute;
+  inset-inline-start: 0;
+  white-space: nowrap;
+}
+
+.overview-axis-day:last-child .overview-axis-label {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}

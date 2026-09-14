@@ -1018,6 +1018,8 @@ export const EMPTY_PROVIDER_USAGE: ProviderUsageSummaryPayload = {
     },
   },
   agents: [],
+  days: [],
+  previousDays: [],
   generatedAt: "",
 }
 

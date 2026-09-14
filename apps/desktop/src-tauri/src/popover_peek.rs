@@ -279,6 +279,8 @@ fn selected_provider_data(
                 .collect(),
             totals: local.totals,
             agents: local.agents,
+            days: local.days,
+            previous_days: local.previous_days,
             generated_at: local.generated_at,
         }),
         live: Box::new(LiveUsageSummary {
@@ -674,6 +676,8 @@ mod tests {
                 providers: vec![local_provider("anthropic"), local_provider("openai")],
                 totals: ProviderUsageWindows::default(),
                 agents: Vec::new(),
+                days: Vec::new(),
+                previous_days: Vec::new(),
                 generated_at: "now".to_string(),
             },
             LiveUsageSummary {
