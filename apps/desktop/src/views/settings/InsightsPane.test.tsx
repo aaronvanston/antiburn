@@ -69,6 +69,7 @@ function report(overrides: Partial<InsightsReportPayload> = {}): InsightsReportP
     assessedSessions: 0,
     categories: notAssessedCategories(),
     quotaPressure: { assessed: false, findings: null },
+    providerIncidents: { assessed: false, findings: null },
     unrecognizedRecords: {
       types: [],
       typesTruncated: false,
@@ -483,14 +484,13 @@ describe("InsightsPane quota pressure", () => {
         quotaPressure: {
           assessed: true,
           findings: {
-            totalHits: 4,
-            hardHits: 2,
+            totalHits: 3,
+            hardHits: 1,
             warnings: 2,
             affectedSessionCount: 2,
             hitsByLimitKind: [
               { kind: "weekly", hits: 2 },
               { kind: "rateLimit", hits: 1 },
-              { kind: "providerCapacity", hits: 1 },
             ],
             affectedModels: ["claude-3-5-haiku-20241022"],
             affectedModelsTruncated: false,
@@ -502,12 +502,49 @@ describe("InsightsPane quota pressure", () => {
     })
     render(<InsightsPane />)
 
-    expect(await screen.findByText("4 limit hits across 2 sessions")).toBeInTheDocument()
-    expect(screen.getByText("2 hard hits · 2 warnings")).toBeInTheDocument()
+    expect(await screen.findByText("3 limit hits across 2 sessions")).toBeInTheDocument()
+    expect(screen.getByText("1 hard hit · 2 warnings")).toBeInTheDocument()
     expect(screen.getByText("Weekly: 2 hits")).toBeInTheDocument()
     expect(screen.getByText("Rate limit: 1 hit")).toBeInTheDocument()
-    expect(screen.getByText("Provider capacity: 1 hit")).toBeInTheDocument()
     expect(screen.getByText("Models: claude-3-5-haiku-20241022")).toBeInTheDocument()
+  })
+})
+
+describe("InsightsPane provider incidents", () => {
+  it("renders the not-assessed case as not assessed, without a clean look", async () => {
+    render(<InsightsPane />)
+
+    expect(
+      await screen.findByText(
+        "Not assessed — the sessions in this window carry no provider incident evidence.",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("renders an assessed section with one capacity hit across one session", async () => {
+    mockCommands({
+      get_insights_report: report({
+        coverage: coverage({ discovered: 1, ready: 1 }),
+        assessedSessions: 1,
+        providerIncidents: {
+          assessed: true,
+          findings: {
+            totalHits: 1,
+            affectedSessionCount: 1,
+            hitsByKind: [{ kind: "capacity", hits: 1 }],
+            affectedModels: ["gpt-6-astra"],
+            affectedModelsTruncated: false,
+            firstObservedTsMs: 1_000,
+            lastObservedTsMs: 1_000,
+          },
+        },
+      }),
+    })
+    render(<InsightsPane />)
+
+    expect(await screen.findByText("1 capacity failure across 1 session")).toBeInTheDocument()
+    expect(screen.getByText("Model or server at capacity: 1 hit")).toBeInTheDocument()
+    expect(screen.getByText("Models: gpt-6-astra")).toBeInTheDocument()
   })
 })
 

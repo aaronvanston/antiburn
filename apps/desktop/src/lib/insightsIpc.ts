@@ -67,6 +67,32 @@ export interface InsightsQuotaPressurePayload {
   findings: InsightsQuotaFindingsPayload | null
 }
 
+/** Deduplicated hits for one provider-incident kind. */
+interface InsightsProviderIncidentKindPayload {
+  kind: string
+  hits: number
+}
+
+/** Bounded provider-incident findings from transcript-attributable incidents. */
+interface InsightsProviderIncidentFindingsPayload {
+  totalHits: number
+  affectedSessionCount: number
+  hitsByKind: InsightsProviderIncidentKindPayload[]
+  affectedModels: string[]
+  affectedModelsTruncated: boolean
+  firstObservedTsMs: number
+  lastObservedTsMs: number
+}
+
+/** The provider-incidents section. `assessed` is false exactly when the
+ *  transcripts carry no provider incident evidence — one condition, not a
+ *  matrix. A sibling of `InsightsQuotaPressurePayload`: this section carries
+ *  provider-side failures the user's own usage did not cause. */
+export interface InsightsProviderIncidentsPayload {
+  assessed: boolean
+  findings: InsightsProviderIncidentFindingsPayload | null
+}
+
 /** Bounded unknown record vocabulary from the local evidence cohort. */
 export interface InsightsUnrecognizedRecordsPayload {
   types: string[]
@@ -90,6 +116,7 @@ export interface InsightsReportPayload {
   assessedSessions: number
   categories: InsightsCategoryPayload[]
   quotaPressure: InsightsQuotaPressurePayload
+  providerIncidents: InsightsProviderIncidentsPayload
   unrecognizedRecords: InsightsUnrecognizedRecordsPayload
   catalogRevision: number
 }

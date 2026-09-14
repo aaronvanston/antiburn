@@ -12,6 +12,7 @@ import type {
   InsightsCategoryPayload,
   InsightsCoveragePayload,
   InsightsNotAssessedReason,
+  InsightsProviderIncidentsPayload,
   InsightsQuotaPressurePayload,
   InsightsReportPayload,
   InsightsUnrecognizedRecordsPayload,
@@ -77,7 +78,11 @@ const LIMIT_KIND_LABELS: Record<string, string> = {
   weightedUsage: "Weighted usage",
   rateLimit: "Rate limit",
   usageLimit: "Usage limit",
-  providerCapacity: "Provider capacity",
+}
+
+/** Reader-facing names for the provider-incident kind identifiers. */
+const PROVIDER_INCIDENT_KIND_LABELS: Record<string, string> = {
+  capacity: "Model or server at capacity",
 }
 
 export function InsightsPane({ analyticsVisible = true }: { analyticsVisible?: boolean }) {
@@ -215,6 +220,7 @@ function InsightsBody({
       />
       <CategoriesSection categories={report.categories} />
       <QuotaPressureSection quota={report.quotaPressure} />
+      <ProviderIncidentsSection incidents={report.providerIncidents} />
     </>
   )
 }
@@ -441,6 +447,46 @@ function QuotaPressureSection({ quota }: { quota: InsightsQuotaPressurePayload }
               <p className="type-footnote text-label-secondary">
                 Models: {quota.findings.affectedModels.join(", ")}
                 {quota.findings.affectedModelsTruncated ? " and more" : ""}
+              </p>
+            )}
+          </div>
+        )}
+      </Card>
+    </SectionGroup>
+  )
+}
+
+function ProviderIncidentsSection({
+  incidents,
+}: {
+  incidents: InsightsProviderIncidentsPayload
+}) {
+  return (
+    <SectionGroup title="Provider capacity">
+      <Card>
+        {!incidents.assessed || !incidents.findings ? (
+          <p className="type-footnote px-4 py-3 text-label-secondary">
+            Not assessed — the sessions in this window carry no provider incident evidence.
+          </p>
+        ) : (
+          <div className="space-y-2 px-4 py-3">
+            <StatusText icon={CircleAlert} iconClassName="text-system-orange">
+              {incidents.findings.totalHits} capacity{" "}
+              {incidents.findings.totalHits === 1 ? "failure" : "failures"} across{" "}
+              {incidents.findings.affectedSessionCount}{" "}
+              {incidents.findings.affectedSessionCount === 1 ? "session" : "sessions"}
+            </StatusText>
+            <ul className="space-y-1">
+              {incidents.findings.hitsByKind.map(({ kind, hits }) => (
+                <li key={kind} className="type-footnote text-label-secondary">
+                  {PROVIDER_INCIDENT_KIND_LABELS[kind] ?? kind}: {hits} {hits === 1 ? "hit" : "hits"}
+                </li>
+              ))}
+            </ul>
+            {incidents.findings.affectedModels.length > 0 && (
+              <p className="type-footnote text-label-secondary">
+                Models: {incidents.findings.affectedModels.join(", ")}
+                {incidents.findings.affectedModelsTruncated ? " and more" : ""}
               </p>
             )}
           </div>
