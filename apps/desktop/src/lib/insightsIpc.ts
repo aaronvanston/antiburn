@@ -164,6 +164,7 @@ export type BurnCheckSourceFormat =
   | "cursorJsonl"
   | "cursorCliAgentJsonl"
   | "cursorCliStoreDb"
+  | "cursorChatStoreDb"
   | "cursorIdeComposer"
   | "cursorLegacyChatJson"
   | "antigravityJson"

@@ -407,7 +407,7 @@ impl SessionReader for ClaudeSessionReader {
         "claude"
     }
 
-    fn capabilities(&self, _source: &RawSource) -> crate::analysis::SourceCapabilities {
+    fn capabilities(&self, _input: &SessionInput) -> crate::analysis::SourceCapabilities {
         crate::analysis::SourceCapabilities::claude()
     }
 
@@ -1097,6 +1097,7 @@ mod tests {
             session_id: "claimed-session".to_string(),
             source: RawSource::File(path.to_path_buf()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         }
     }
 
@@ -1431,6 +1432,7 @@ mod tests {
             session_id: "plain-session".to_string(),
             source: RawSource::Jsonl(FIRST_RECORD.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = CountingSink::default();
 
@@ -1471,6 +1473,7 @@ mod tests {
             session_id: "content-session".to_string(),
             source: RawSource::Jsonl(format!("{assistant_record}\n{tool_result_record}\n")),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ContentCapturingSink::default();
 
@@ -2302,6 +2305,7 @@ mod tests {
             session_id: "agent-x".to_string(),
             source: RawSource::File(fork_path),
             fork_parent_session_id: Some("parent".to_string()),
+            source_format: Default::default(),
         };
         let mut collector = SessionCollector::new("claude", "agent-x");
 

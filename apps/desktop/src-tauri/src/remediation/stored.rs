@@ -158,6 +158,7 @@ fn legacy_source_format(value: &str) -> Option<SourceFormat> {
         "CursorJsonl" => SourceFormat::CursorJsonl,
         "CursorCliAgentJsonl" => SourceFormat::CursorCliAgentJsonl,
         "CursorCliStoreDb" => SourceFormat::CursorCliStoreDb,
+        "CursorChatStoreDb" => SourceFormat::CursorChatStoreDb,
         "CursorIdeComposer" => SourceFormat::CursorIdeComposer,
         "CursorLegacyChatJson" => SourceFormat::CursorLegacyChatJson,
         "AntigravityJson" => SourceFormat::AntigravityJson,

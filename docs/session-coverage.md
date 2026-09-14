@@ -1,6 +1,6 @@
 # Session Parsing Coverage
 
-Audit date: 2026-09-11.
+Audit date: 2026-09-14.
 
 This document records how Antiburn discovers and parses local session sources.
 It covers source identity, framing, companion data, normalized facts, and
@@ -85,7 +85,7 @@ Dedicated reader registration alone does not establish usable session analysis.
 
 ## Source Matrix
 
-The table lists all 26 `SourceFormat` names from
+The table lists all 27 `SourceFormat` names from
 `crates/antiburn-local/src/analysis/evidence.rs`, each exactly once.
 
 Before a production session enters the local index, its CWD must resolve to a
@@ -96,21 +96,22 @@ Newly discovered repositories remain enabled by default.
 
 | `SourceFormat`                 | Agent         | Native source                                                              | Discovery and framing                                                                                                                                          | Parsed facts                                                                                                                                                                  | State                                                                                             |
 | ------------------------------ | ------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ClaudeJsonl`                  | Claude Code   | `~/.claude/projects/<workspace>/*.jsonl`                                   | Native discovery; bounded JSONL with source claims; resume supported                                                                                           | Usage (including the nested one-hour/five-minute cache-write split), token classes, time, models, request controls/routes, calls, observed resource injection, thread links, compactions, exact Task/Agent child pairing                    | Characterized accepted core; observed resources are not full inventories                          |
-| `CodexRolloutJsonl`            | Codex         | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`                             | Native discovery with child rollouts; bounded JSONL; resume supported; paired `token_usage_record`/`token_count` usage dedupe                                                       | Per-response usage and context window, time, models, provider/control inheritance, service tier, tools, harness version, spawn records, selected skill documents, exact tool-search MCP exposure, compactions | Characterized accepted core; resource subsets only                                                |
-| `OpenCodeJsonl`                | OpenCode      | Legacy exported session JSONL                                              | Native or WSL export discovery; bounded JSONL with validated history wrappers/order                                                                            | Usage, time, models, provider/API fields where saved, raw variants, task proof, selected skills, tools, compactions, session/message identities                               | Characterized accepted export; no historical effort map or resource inventory                     |
-| `OpenCodeSqliteV2`             | OpenCode      | `~/.local/share/opencode/opencode.db` or platform equivalent               | Read-only snapshot of the root and descendant `session`, `message`, `part` cluster; row-streamed content fingerprint; validated creation-time/message-ID order | Native messages and parts, task metadata joined to child models, selected skills, usage, provider/API fields, compactions, identities                                         | Characterized table contract; not CoreV2 `session_message`                                        |
+| `ClaudeJsonl`                  | Claude Code   | `~/.claude/projects/<workspace>/*.jsonl`                                   | Native discovery; bounded JSONL with source claims; resume supported; the reviewed 2.1.220-2.1.246 sidecar contract uses a unique `toolUseId` join | Usage (including the nested one-hour/five-minute cache-write split), token classes, time, models, request controls/routes, calls, observed resource injection, thread links, compactions, exact Task/Agent child pairing                    | Characterized accepted core; transcript format is private, so unknown evidence-bearing records deny clean |
+| `CodexRolloutJsonl`            | Codex         | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`                             | Native discovery with child rollouts; bounded JSONL; resume supported; recorder source pin defines `session_meta`, `turn_context`, `event_msg`, `response_item`, ordinal, and `compacted` rows | Per-response usage and context window, time, models, provider/control inheritance, service tier, tools, harness version, spawn records, selected skill documents, exact tool-search MCP exposure, compactions | Characterized accepted core; resource subsets only                                                |
+| `OpenCodeJsonl`                | OpenCode      | Legacy exported session JSONL                                              | Native persisted export or WSL CLI export; bounded JSONL with validated history wrappers/order                                                                  | Usage, time, models, provider/API fields where saved, task proof, selected skills, tools, compactions, session/message identities                                             | Characterized accepted export; WSL is not disk-only; variant labels do not prove effort or speed; no resource inventory |
+| `OpenCodeSqliteV2`             | OpenCode      | `~/.local/share/opencode/opencode.db` or platform equivalent               | Read-only transaction snapshot, including visible WAL rows; requires `session(id,time_created)`, `message(id,session_id,data)`, and `part(message_id,data)`; row-streamed content fingerprint; validated creation-time/message-ID order | Native messages and parts, task metadata joined to child models, selected skills, usage, provider/API fields, compactions, identities                                         | Characterized table contract; not CoreV2 `session_message`                                        |
 | `PiV3Jsonl`                    | Pi            | `~/.pi/agent/sessions/**/*.jsonl` or `PI_AGENT_DIR`                        | Native discovery; version 3 header; bounded JSONL; resume supported                                                                                            | Usage at the nested request-start timestamp, top-level event time, provider/API/model, agent-selected thinking policy, branch/fork state, tools, links, compactions, official example-extension nested worker results | Characterized core; extension delegation is finding-only, not arbitrary extension support         |
 | `CursorJsonl`                  | Cursor        | In-memory or compatibility JSONL without a source marker                   | Dedicated reader with bounded JSONL; native surface is unknown                                                                                                 | Generic Cursor role, content, timestamp, model, tool call, and record ID fields                                                                                               | Uncharacterized compatibility format                                                              |
-| `CursorCliAgentJsonl`          | Cursor        | `.cursor/projects/*/agent-transcripts/**` with chat metadata               | Native discovery; transcript and metadata synthesis; bounded JSONL reader                                                                                      | Role, content, timestamps, models, tool calls, and selected record IDs                                                                                                        | Partial                                                                                           |
-| `CursorCliStoreDb`             | Cursor        | Cursor CLI `chats/**/store.db`                                             | Read-only database extraction into marked JSONL                                                                                                                | Scalar messages, title, workspace, timestamps, model, IDs, and fork-prefix hints                                                                                              | Partial; structured records are reduced during synthesis                                          |
+| `CursorCliAgentJsonl`          | Cursor        | `.cursor/projects/*/agent-transcripts/**` with chat metadata               | Native discovery; transcript and metadata synthesis; bounded JSONL reader; the JSONL export is independent from the store contract | Role, content, timestamps, models, tool calls, and selected record IDs                                                                                                        | Partial; no model fallback or configuration inference                                             |
+| `CursorCliStoreDb`             | Cursor        | Legacy Cursor CLI `chats/**/store.db`                                      | Read-only database extraction into marked JSONL; reviewed `blobs(id,data)` and `meta(key,value)` subset                                                        | Scalar messages, title, workspace, timestamps, model, IDs, and fork-prefix hints                                                                                              | Partial; structured records are reduced during synthesis                                          |
+| `CursorChatStoreDb`            | Cursor        | Cursor chat `~/.cursor/chats/<workspace>/<session>/store.db`               | Read-only database extraction; same reviewed `blobs(id,data)` and `meta(key,value)` subset, separate path contract                                             | No detector-grade fact contract beyond direct timestamped model observations                                                                         | Partial; chat persistence does not establish effective model, inventory, route, or IDE configuration |
 | `CursorIdeComposer`            | Cursor        | Workspace and global `state.vscdb` composer data                           | Paired database discovery and synthesis into marked JSONL                                                                                                      | Composer identity, title, workspace, timestamps, model, messages, bubble IDs, and an `isSubagent` hint                                                                        | Partial; structured calls and relations are reduced during synthesis                              |
 | `CursorLegacyChatJson`         | Cursor        | VS Code-family `chatSessions/*.json`                                       | Native file discovery; dedicated fail-closed profile                                                                                                           | No detector-grade fact contract                                                                                                                                               | Uncharacterized                                                                                   |
 | `AntigravityJson`              | Antigravity   | Internal compatibility profile                                             | Not emitted by current source classification                                                                                                                   | Shared partial Antigravity JSON facts                                                                                                                                         | Internal profile; not a native source                                                             |
 | `AntigravityBrainJsonl`        | Antigravity   | Brain transcript JSONL from CLI, IDE 2.0, or legacy paths                  | Native file discovery; bounded JSONL                                                                                                                           | Step usage where present, timestamps, direct models, tool calls, and selected tool input                                                                                      | Partial                                                                                           |
 | `AntigravityCascadeJson`       | Antigravity   | API cascade or configured mirror JSON                                      | Native or configured file discovery; bounded whole-document parsing                                                                                            | Nested steps, usage, timestamps, direct models, tool calls, and selected arguments                                                                                            | Partial                                                                                           |
 | `AntigravityWorkspaceChatJson` | Antigravity   | Workspace `chatSessions/*.json`                                            | Native file discovery; dedicated fail-closed profile                                                                                                           | No detector-grade fact contract                                                                                                                                               | Uncharacterized                                                                                   |
-| `AntigravitySqlite`            | Antigravity   | Native `conversations/<uuid>.db` with an optional sibling brain transcript | Read-only snapshot; private protobuf subsets; companion fingerprinting                                                                                         | Generation and step usage, retries, token classes, direct timestamps/model strings, companion tool rows                                                                       | Partial; missing model/time stays missing; identity, enums, routes, and linkage remain incomplete |
+| `AntigravitySqlite`            | Antigravity   | Native `conversations/<uuid>.db` with an optional sibling brain transcript | Read-only transaction snapshot, including visible WAL rows; requires `PRAGMA user_version = 1`, reviewed `gen_metadata(idx,data)` or `steps(idx,metadata)` columns, and a private protobuf subset; companion fingerprinting | Generation and step usage, retries, token classes, direct timestamps/model strings, companion tool rows                                                                       | Partial; missing model/time stays missing; identity, enums, routes, and linkage remain incomplete |
 | `CopilotCliJsonl`              | Copilot       | `session-state/<id>/events.jsonl`                                          | Native file discovery; dedicated fail-closed reader                                                                                                            | Generic JSONL metrics only; no detector-grade contract                                                                                                                        | Uncharacterized                                                                                   |
 | `CopilotIdeChatJson`           | Copilot       | VS Code-family `chatSessions/*.json`                                       | Native file discovery; dedicated fail-closed reader                                                                                                            | No IDE-specific fact contract                                                                                                                                                 | Uncharacterized                                                                                   |
 | `ClineSessionJson`             | Cline         | Cline metadata JSON and message companion                                  | Metadata discovery; companion loading is incomplete                                                                                                            | No paired detector-grade fact contract                                                                                                                                        | Uncharacterized                                                                                   |
@@ -153,9 +154,15 @@ compactions, or incomplete history prevent clean. OpenCode uses validated
 ordered history, not `parentID` as a fabricated predecessor link.
 
 The route columns use engine turn migration 7 and desktop migration 39. Current
-parser/analyzer/evidence/coverage/resume revisions are 33/23/18/4/7. Existing
+parser/analyzer/evidence/coverage/resume revisions are 37/24/18/4/9. Existing
 revision gates invalidate old projections and snapshots; JSON and binary
 evidence round trips and full/resumed replay are covered by tests.
+
+Discovery carries the selected `SourceFormat` and surface identity with each
+source descriptor. Readers use that metadata rather than reclassifying a raw
+path after discovery. SQLite readers fingerprint rows visible through the live
+connection, including uncheckpointed WAL rows, and compare again after a
+transaction snapshot completes.
 
 The evidence accumulator retains at most 16,384 distinct thread UUIDs. Each UUID
 must be at most 256 bytes. A new UUID after the set is full, or an oversized
@@ -219,9 +226,10 @@ deleted transcripts to reconstruct attempts or contributions.
 
 ## Known Contract Gaps
 
-- OpenCode WSL discovery currently launches the OpenCode executable to query and
-  export its database. This remains a passive-source contract gap; the coverage
-  baseline does not treat executable export as passive file access.
+- OpenCode WSL discovery launches the OpenCode executable for bounded metadata
+  queries and session export. This is supported discovery, but it is not
+  disk-only passive file access and does not establish a normal persisted-store
+  contract for a new source format.
 - Cursor store and IDE synthesis drops structured calls, arguments, usage,
   settings, and relation fields that can exist in native records.
 - Antigravity private protobuf parsing does not yet preserve stable request
@@ -240,6 +248,37 @@ deleted transcripts to reconstruct attempts or contributions.
   Cursor retains its explicit synthesized header-model behavior.
 - Generic and fail-closed readers must not promote recognized-looking fields to
   detector-grade evidence.
+
+## Pinned First-Tier Sources
+
+- Claude Code main JSONL fields and the child sidecar are private. The accepted
+  record subset is pinned to the public 2.1.220-2.1.246 observation contract in
+  [cclens][claude-session-source]. The main transcript and `.meta.json` are
+  separate contracts. A missing sidecar, missing worker model, ambiguous join,
+  or unknown evidence-bearing record blocks clean results.
+- Codex rollout rows are pinned to the public recorder at
+  [`e7637306`][codex-recorder-source]. The source writes `session_meta`,
+  `turn_context`, `event_msg`, `response_item`, ordinals, and `compacted` rows.
+  Synthetic fixtures cover accepted rows and loss paths. Persisted config is
+  not treated as historical session evidence.
+- Pi V3 is pinned to the public session-format document at
+  [`b2602be7`][pi-session-source]. It defines `responseModel`,
+  `providerThinkingLevel`, diagnostics, cache buckets, `id`/`parentId`, and
+  the separate legacy `firstKeptEntryId` and newer retained-tail compaction
+  forms. `providerThinkingLevel` is not agent-selected effort.
+- Cursor's legacy CLI store and chat store use different contracts. The reviewed
+  chat source uses `~/.cursor/chats/<workspace>/<session>/store.db`; both use
+  only the reviewed `blobs` and `meta` subset.
+  Neither source establishes an effective model fallback, inventory, route, or
+  IDE configuration contract.
+- Antigravity CLI SQLite is pinned to agy 1.0.16 reverse-engineering and the
+  descriptor-backed field subset in ccusage. The reader admits only
+  `user_version = 1`; it does not claim protobuf fields outside the tested
+  usage, model, timestamp, retry, and identity subset.
+
+[claude-session-source]: https://github.com/lambdalisue/cclens/blob/8246ffa3/docs/specs/session-format.md
+[codex-recorder-source]: https://github.com/openai/codex/blob/e7637306bc9246a3e42e407cb94f96b7ed345e3e/codex-rs/rollout/src/recorder.rs
+[pi-session-source]: https://github.com/badlogic/pi-mono/blob/b2602be77cb7b0de45dd616407fd210daa48aa75/packages/coding-agent/docs/session-format.md
 
 ## Update Rules
 

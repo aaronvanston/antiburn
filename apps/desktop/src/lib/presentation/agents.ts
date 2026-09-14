@@ -26,9 +26,10 @@ interface AgentInfo {
    */
   defaultSurface: AgentSurface
   /**
-   * Whether the engine has a usable session parser for this agent.
-   * Passive source registration does not enable analysis.
-   */
+    * Whether the engine has a usable session parser for this agent.
+    * This does not describe discovery or Burn Check support. Passive source
+    * registration does not enable analysis.
+    */
   supportsAnalysis: boolean
 }
 

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::analysis::evidence::SourceCapabilities;
+use crate::analysis::evidence::{SourceCapabilities, SourceFormat};
 use crate::analysis::framing::PartialReason;
 use crate::analysis::initial_context::InitialContextBreakdown;
 use crate::analysis::model::{NormalizedEvent, NormalizedSession, ToolCall};
@@ -36,9 +36,24 @@ pub struct SessionInput {
     pub agent: String,
     pub session_id: String,
     pub source: RawSource,
+    /// The bounded source contract selected by discovery. Readers must not
+    /// infer this value from a path, content, or database name.
+    pub source_format: SourceFormat,
     /// The session this one was forked from, when the shell knows it. An
     /// adapter that cannot use this ignores it.
     pub fork_parent_session_id: Option<String>,
+}
+
+impl SessionInput {
+    /// Returns discovery's format, or the reader's single legacy default for
+    /// inputs created before source admission became explicit.
+    pub fn source_format_or(&self, fallback: SourceFormat) -> SourceFormat {
+        if self.source_format == SourceFormat::Uncharacterized {
+            fallback
+        } else {
+            self.source_format
+        }
+    }
 }
 
 /// One framed record's outcome, in transcript order.
@@ -427,7 +442,7 @@ pub trait SessionReader: Send + Sync {
     fn agent(&self) -> &'static str;
 
     /// Returns the evidence contract for this exact source kind.
-    fn capabilities(&self, _source: &RawSource) -> SourceCapabilities {
+    fn capabilities(&self, _input: &SessionInput) -> SourceCapabilities {
         SourceCapabilities::generic()
     }
 

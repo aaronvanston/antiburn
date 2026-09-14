@@ -1,6 +1,6 @@
 # Burn Check Source Coverage
 
-Audit date: 2026-09-11.
+Audit date: 2026-09-14.
 
 This document covers local passive evidence only. Coverage must not use hooks,
 new extensions, runtime subscriptions, or agent calls to fill evidence gaps. Existing
@@ -19,10 +19,12 @@ companion-source, and provider-route coverage for the same source formats.
 | Unsupported | The reviewed passive sources do not prove a required fact or its policy semantics. This is source-scoped, not a claim about future formats.       |
 | Unknown     | The source or its relevant field semantics are not characterized. Do not infer support from a path, field name, mode name, or generic JSON shape. |
 
-`Partial` can mean finding-only support or an unimplemented evidence path. The
-limits below distinguish them. `Assessable` describes the accepted source
-contract, not every session or historical release. Complete session facts,
-eligible activity, and reviewed model/provider policy remain necessary for clean.
+`Partial` means the implemented reader can produce a bounded positive finding,
+but cannot prove every fact required for a clean result. An unimplemented or
+uncharacterized evidence path is `Unknown` or `Unsupported`, not `Partial`.
+`Assessable` describes the accepted source contract, not every session or
+historical release. Complete session facts, eligible activity, and reviewed
+model/provider policy remain necessary for clean.
 
 ## Checks
 
@@ -40,28 +42,29 @@ eligible activity, and reviewed model/provider policy remain necessary for clean
 
 ## Source Inventory
 
-The tables list all 26 `SourceFormat` keys. Known source shape and release
+The tables list all 27 `SourceFormat` keys. Known source shape and release
 version are separate facts. A version range is not always available; an accepted
 schema, header, or pinned producer commit with synthetic fixtures can establish
 a bounded contract. No row promises parity across all historical versions.
 
 | `SourceFormat`                 | Passive source format                                              | Version statement                                                                       | Current reader                        |
 | ------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------- |
-| `ClaudeJsonl`                  | Claude Code session JSONL and child sidecars                       | Accepted persisted shapes have synthetic fixtures; no universal release range           | Dedicated                             |
-| `CodexRolloutJsonl`            | Codex rollout JSONL, with discovered child rollouts                | Accepted rollout/protocol shapes and pinned producer research below; synthetic fixtures | Dedicated                             |
+| `ClaudeJsonl`                  | Claude Code session JSONL and child sidecars                       | Private 2.1.220-2.1.246 observation contract; main JSONL and sidecar shapes are pinned separately | Dedicated                             |
+| `CodexRolloutJsonl`            | Codex rollout JSONL, with discovered child rollouts                | Recorder commit `e7637306bc9246a3e42e407cb94f96b7ed345e3e`; synthetic fixtures | Dedicated                             |
 | `OpenCodeJsonl`                | OpenCode legacy exported session data                              | Accepted export wrappers and native message/part shapes; pinned research below          | Dedicated                             |
-| `OpenCodeSqliteV2`             | OpenCode SQLite `session`, `message`, `part` tables                | Fixture-backed table contract; not CoreV2 `session_message`                             | Dedicated                             |
-| `PiV3Jsonl`                    | Pi session JSONL                                                   | Header version 3 and pinned core/example-extension shapes; synthetic fixtures           | Dedicated                             |
+| `OpenCodeSqliteV2`             | OpenCode SQLite `session`, `message`, `part` tables                | Fixture-backed required-column contract in a read-only transaction snapshot; not CoreV2 `session_message` | Dedicated                             |
+| `PiV3Jsonl`                    | Pi session JSONL                                                   | Leading header version 3 and pinned core/example-extension shapes; headerless and unsupported-version sources are rejected | Dedicated                             |
 | `CursorJsonl`                  | Cursor compatibility JSONL without a surface marker                | Unversioned and uncharacterized                                                         | Dedicated shared Cursor reader        |
-| `CursorCliAgentJsonl`          | Cursor agent transcript JSONL                                      | Unversioned; current synthesis is partial                                               | Dedicated shared Cursor reader        |
-| `CursorCliStoreDb`             | Cursor CLI `chats/**/store.db` data                                | Private and unversioned; current synthesis is partial                                   | Dedicated shared Cursor reader        |
+| `CursorCliAgentJsonl`          | Cursor agent transcript JSONL                                      | Separate partial export contract; no model fallback                                      | Dedicated shared Cursor reader        |
+| `CursorCliStoreDb`             | Legacy Cursor CLI `chats/**/store.db` data                         | Private `blobs`/`meta` subset pinned by public reverse engineering; partial             | Dedicated shared Cursor reader        |
+| `CursorChatStoreDb`            | Cursor chat `~/.cursor/chats/<workspace>/<session>/store.db` data  | Chat path and private `blobs`/`meta` subset pinned by public reverse engineering; partial | Dedicated shared Cursor reader        |
 | `CursorIdeComposer`            | Cursor IDE composer data from `state.vscdb`                        | Private and unversioned; current synthesis is partial                                   | Dedicated shared Cursor reader        |
 | `CursorLegacyChatJson`         | Cursor IDE `chatSessions/*.json`                                   | Unversioned and uncharacterized                                                         | Dedicated fail-closed profile         |
 | `AntigravityJson`              | Internal Antigravity compatibility profile                         | Not emitted by current source classification                                            | Dedicated shared profile              |
 | `AntigravityBrainJsonl`        | Antigravity brain transcript JSONL                                 | Unversioned; current shape is partially characterized                                   | Dedicated                             |
 | `AntigravityCascadeJson`       | Antigravity API cascade or mirror JSON                             | Unversioned; current shape is partially characterized                                   | Dedicated                             |
 | `AntigravityWorkspaceChatJson` | Antigravity workspace `chatSessions/*.json`                        | Unversioned and uncharacterized                                                         | Dedicated fail-closed profile         |
-| `AntigravitySqlite`            | Native `conversations/<uuid>.db` plus an optional brain transcript | Private descriptor subset; installed 2.11.0 research below, not full schema support     | Dedicated                             |
+| `AntigravitySqlite`            | Native `conversations/<uuid>.db` plus an optional brain transcript | agy 1.0.16 reverse-engineered subset; requires `user_version = 1` and reviewed `gen_metadata(idx,data)` or `steps(idx,metadata)` columns; not full schema support | Dedicated                             |
 | `CopilotCliJsonl`              | `session-state/<id>/events.jsonl`                                  | Copilot CLI GA 2026 shape; no exact schema revision is pinned                           | Dedicated fail-closed                 |
 | `CopilotIdeChatJson`           | VS Code-family `chatSessions/*.json`                               | Unversioned; IDE and CLI contracts are separate                                         | Dedicated fail-closed                 |
 | `ClineSessionJson`             | Cline metadata and message companion                               | Cline 2.0+ naming is known; message schemas are not pinned                              | Dedicated fail-closed                 |
@@ -88,21 +91,22 @@ vocabulary; behavior tests separately check finding and clean gates.
 | `OpenCodeSqliteV2`             | Assessable  | Unsupported | Assessable  | Unsupported | Unsupported | Partial     | Assessable  | Unsupported | Assessable  |
 | `PiV3Jsonl`                    | Assessable  | Assessable  | Partial     | Unsupported | Unsupported | Unsupported | Assessable  | Unsupported | Assessable  |
 | `CursorJsonl`                  | Unsupported | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Partial     | Unknown     | Unknown     |
-| `CursorCliAgentJsonl`          | Unsupported | Unknown     | Partial     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unsupported |
-| `CursorCliStoreDb`             | Unsupported | Unknown     | Partial     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unsupported |
-| `CursorIdeComposer`            | Unsupported | Unknown     | Partial     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unsupported |
+| `CursorCliAgentJsonl`          | Unsupported | Unknown     | Unsupported | Unsupported | Unsupported | Unknown     | Partial     | Unknown     | Unsupported |
+| `CursorCliStoreDb`             | Unsupported | Unknown     | Unsupported | Unsupported | Unsupported | Unknown     | Partial     | Unknown     | Unsupported |
+| `CursorChatStoreDb`            | Unsupported | Unknown     | Unsupported | Unsupported | Unsupported | Unknown     | Partial     | Unknown     | Unsupported |
+| `CursorIdeComposer`            | Unsupported | Unknown     | Unsupported | Unsupported | Unsupported | Unknown     | Partial     | Unknown     | Unsupported |
 | `CursorLegacyChatJson`         | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
 | `AntigravityJson`              | Partial     | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Partial     | Unsupported | Unsupported |
 | `AntigravityBrainJsonl`        | Partial     | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Partial     | Unsupported | Unsupported |
 | `AntigravityCascadeJson`       | Partial     | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Partial     | Unsupported | Unsupported |
 | `AntigravityWorkspaceChatJson` | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
 | `AntigravitySqlite`            | Partial     | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Partial     | Unsupported | Unsupported |
-| `CopilotCliJsonl`              | Unsupported | Partial     | Partial     | Partial     | Unsupported | Partial     | Partial     | Unknown     | Unsupported |
+| `CopilotCliJsonl`              | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
 | `CopilotIdeChatJson`           | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Partial     | Unknown     | Unknown     |
-| `ClineSessionJson`             | Unknown     | Unknown     | Unknown     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unknown     |
-| `KiroSessionJson`              | Unknown     | Unknown     | Unknown     | Partial     | Partial     | Partial     | Partial     | Unknown     | Unknown     |
-| `KiroChat`                     | Unknown     | Unknown     | Unknown     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unknown     |
-| `AmpThreadJson`                | Partial     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Partial     | Unknown     | Unknown     |
+| `ClineSessionJson`             | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
+| `KiroSessionJson`              | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
+| `KiroChat`                     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
+| `AmpThreadJson`                | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     | Unknown     |
 | `AmpFileChanges`               | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported |
 | `WindsurfWorkspaceJson`        | Unknown     | Unknown     | Unknown     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unknown     |
 | `WindsurfMirrorJson`           | Unknown     | Unknown     | Unknown     | Partial     | Partial     | Unknown     | Partial     | Unknown     | Unknown     |
@@ -173,7 +177,7 @@ identity is retained without copying private document bodies into evidence.
 | Codex                       | K                   | Selected full skill documents reach observed injection/invocation evidence. Listings remain availability only. Selected documents do not establish unused listing overhead or full inventory coverage.                                                                                                                                  |
 | OpenCode                    | S                   | Native `task` metadata identifies the child session and model; ancestry and the child's assistant model must agree. The parent model comes from the task request. A bare `subtask`, fork, or `parent_id` relation is insufficient.                                                                                                      |
 | OpenCode                    | K                   | Complete native selected-skill results preserve full identity as injected and invoked. Truncated, compacted, empty, or invalid result wrappers do not prove full injection. This is observed selected-skill support, not an unused-listing finding or complete inventory.                                                               |
-| OpenCode                    | T, M, B, F          | Confirmed unsupported for the reviewed sources: no historical effort map, model-facing resource inventories, or effective speed tier. Variant labels, current configuration, and tool registries cannot substitute.                                                                                                                     |
+| OpenCode                    | T, M, B, F          | Confirmed unsupported for the reviewed sources: no historical effort map, model-facing resource inventories, or effective speed tier. The reader does not retain a variant as effort. Variant labels, current configuration, and tool registries cannot substitute.                                                                        |
 | Pi                          | T                   | `EffortSemantics::AgentSelectedPolicy` evaluates the saved agent-selected thinking level, not translated provider effort. Reviewed native routes and branch/fork policy state are retained. Missing levels/routes and unknown models fail closed; provider overrides are not guessed.                                                   |
 | Pi                          | S                   | Existing output from the official subagent example extension supplies nested `toolResult` messages, exact native call/worker identity, and actual models. This is finding-only. Arbitrary extensions, fork ancestry, requested aliases, and a nonpremium observed worker cannot establish clean.                                        |
 | Pi                          | M, B, K, F          | Confirmed unsupported for the reviewed sources. Tool calls and bounded skill invocation identity do not establish historical resource exposure or speed. No alternative local proof was identified.                                                                                                                                     |
@@ -291,6 +295,7 @@ The exact source-format Auto Fix matrix lists every `SourceFormat` once.
 | `CursorJsonl`                  | No             | No                 | No remediation prompt         |
 | `CursorCliAgentJsonl`          | No             | No                 | No remediation prompt         |
 | `CursorCliStoreDb`             | No             | No                 | No remediation prompt         |
+| `CursorChatStoreDb`            | No             | No                 | No remediation prompt         |
 | `CursorIdeComposer`            | No             | No                 | No remediation prompt         |
 | `CursorLegacyChatJson`         | No             | No                 | No remediation prompt         |
 | `AntigravityJson`              | No             | No                 | Prompts for D/O               |
@@ -393,7 +398,8 @@ inheriting a native format's contract.
 | ---------- | ----------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-08 | Pi                      | M (MCP), B (built-ins), K (skills), F (fast mode)                                                   | Unsupported. Core session persistence, resource/tool configuration, and official example-extension output do not supply alternative historical inventories or speed proof. See [Pi source][pi-source].                                                              |
 | 2026-09-08 | OpenCode                | M (MCP), B (built-ins), F (fast mode), T (overthinking)                                             | Unsupported. Legacy/native message schemas, CoreV2 `session_message`, and the tool registry do not save historical inventories, effective tier, or a request-resolvable effort map. See [v1.2.0 source][opencode-v1] and [CoreV2 source][opencode-core].            |
-| 2026-09-08 | Antigravity             | T (overthinking), S (subagents), M (MCP), B (built-ins), K (skills), F (fast mode), C (cache churn) | Unsupported. Installed 2.11.0 descriptors, native conversation databases, brain/cascade data, and adapter protobuf research provide no alternative native proof for these checks. See [adapter research][antigravity-adapter].                                      |
+| 2026-09-08 | Antigravity             | T (overthinking), S (subagents), M (MCP), B (built-ins), K (skills), F (fast mode), C (cache churn) | Unsupported. The admitted agy 1.0.16 `user_version = 1` subset and descriptor-backed fields provide no alternative native proof for these checks. See [adapter research][antigravity-adapter].                                      |
+| 2026-09-14 | Cursor                  | T, S, M, B, K, F, C                                                           | Unsupported or unknown. The independent JSONL and `~/.cursor/chats/<workspace>/<session>/store.db` contract do not prove complete requests, effective model fallbacks, resource inventory, routes, or IDE configuration. See [Cursor chat research][cursor-chat-source]. |
 | 2026-09-08 | Claude, Codex, OpenCode | M/B/K where observed evidence exists                                                                | Approved scoped observed-resource findings only. Complete observed subset plus calls is required; no session-wide clean without full inventory. Codex exact server exposure and selected documents are covered by [rollout/protocol/skills research][codex-source]. |
 | 2026-09-08 | Pi                      | T, S                                                                                                | T is explicitly agent-selected policy on reviewed routes. S is limited to persisted official example-extension nested results and actual models, finding-only. See [core/session and examples/extensions/subagent][pi-source].                                      |
 
@@ -402,6 +408,7 @@ inheriting a native format's contract.
 [pi-source]: https://github.com/badlogic/pi-mono/tree/b2602be77cb7b0de45dd616407fd210daa48aa75/packages/coding-agent
 [codex-source]: https://github.com/openai/codex/tree/e7637306bc9246a3e42e407cb94f96b7ed345e3e
 [antigravity-adapter]: https://github.com/ccusage/ccusage/blob/90e296efd1bdd25a9db07019854255284588d720/rust/adapters/antigravity/src/proto.rs
+[cursor-chat-source]: https://github.com/antonvp/cursor-acp-enriched/commit/4801804543f0234bdfc266fbd53d81a6f20e9508
 
 Research anchors include OpenCode schema/session-message and tool registry;
 Pi core/session and `examples/extensions/subagent`; Codex rollout policy,

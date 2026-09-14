@@ -9,7 +9,7 @@ use antiburn_local::analysis::{
     SourceCapabilities, SourceKind, TurnCounts, TurnFacts,
 };
 
-const SOURCE_FORMATS: [SourceFormat; 26] = [
+const SOURCE_FORMATS: [SourceFormat; 27] = [
     SourceFormat::ClaudeJsonl,
     SourceFormat::CodexRolloutJsonl,
     SourceFormat::OpenCodeJsonl,
@@ -18,6 +18,7 @@ const SOURCE_FORMATS: [SourceFormat; 26] = [
     SourceFormat::CursorJsonl,
     SourceFormat::CursorCliAgentJsonl,
     SourceFormat::CursorCliStoreDb,
+    SourceFormat::CursorChatStoreDb,
     SourceFormat::CursorIdeComposer,
     SourceFormat::CursorLegacyChatJson,
     SourceFormat::AntigravityJson,

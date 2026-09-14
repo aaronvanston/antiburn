@@ -74,7 +74,7 @@ impl SessionReader for CodexSessionReader {
         "codex"
     }
 
-    fn capabilities(&self, _source: &RawSource) -> crate::analysis::SourceCapabilities {
+    fn capabilities(&self, _input: &SessionInput) -> crate::analysis::SourceCapabilities {
         crate::analysis::SourceCapabilities::codex()
     }
 
@@ -2580,6 +2580,7 @@ mod tests {
             session_id: "synthetic-token-usage".to_owned(),
             source: RawSource::Jsonl(jsonl.to_owned()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = SessionCollector::new("codex", "synthetic-token-usage");
         CodexSessionReader
@@ -2939,6 +2940,7 @@ mod tests {
             session_id: "old-allowlist-with-signal".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ObservationCapturingSink::default();
 
@@ -2970,6 +2972,7 @@ mod tests {
             session_id: "zero-component-heartbeat".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ObservationCapturingSink::default();
 
@@ -3082,6 +3085,7 @@ mod tests {
             session_id: "content-session".to_string(),
             source: RawSource::Jsonl(jsonl),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ContentCapturingSink::default();
 
@@ -3198,6 +3202,7 @@ mod tests {
             session_id: "fork-speed".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = SessionCollector::new("codex", "fork-speed");
 
@@ -3263,6 +3268,7 @@ mod tests {
             session_id: "spawn-owned".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ObservationCapturingSink::default();
 
@@ -3311,6 +3317,7 @@ mod tests {
             session_id: "spawn-replayed-prefix".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ObservationCapturingSink::default();
 
@@ -3334,6 +3341,7 @@ mod tests {
             session_id: "spawn-other-name".to_string(),
             source: RawSource::Jsonl(jsonl.to_string()),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         };
         let mut sink = ObservationCapturingSink::default();
 
@@ -3380,6 +3388,7 @@ mod tests {
                 session_id: "claimed-session".to_string(),
                 source: RawSource::File(path.to_path_buf()),
                 fork_parent_session_id: None,
+                source_format: Default::default(),
             }
         }
 

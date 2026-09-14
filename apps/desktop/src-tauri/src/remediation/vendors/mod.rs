@@ -130,7 +130,7 @@ mod tests {
     use super::*;
     use antiburn_local::analysis::TurnCounts;
 
-    const SOURCE_FORMATS: [SourceFormat; 26] = [
+    const SOURCE_FORMATS: [SourceFormat; 27] = [
         SourceFormat::ClaudeJsonl,
         SourceFormat::CodexRolloutJsonl,
         SourceFormat::OpenCodeJsonl,
@@ -139,6 +139,7 @@ mod tests {
         SourceFormat::CursorJsonl,
         SourceFormat::CursorCliAgentJsonl,
         SourceFormat::CursorCliStoreDb,
+        SourceFormat::CursorChatStoreDb,
         SourceFormat::CursorIdeComposer,
         SourceFormat::CursorLegacyChatJson,
         SourceFormat::AntigravityJson,

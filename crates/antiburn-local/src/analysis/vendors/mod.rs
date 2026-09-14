@@ -131,7 +131,14 @@ mod tests {
             assert_eq!(reader_for(&agent.to_uppercase()).agent(), agent);
             assert!(!has_dedicated_reader(agent));
             assert!(!has_dedicated_reader(&agent.to_uppercase()));
-            let capabilities = reader_for(agent).capabilities(&RawSource::Jsonl(String::new()));
+            let input = crate::analysis::SessionInput {
+                agent: agent.to_owned(),
+                session_id: "test".to_owned(),
+                source: RawSource::Jsonl(String::new()),
+                source_format: expected,
+                fork_parent_session_id: None,
+            };
+            let capabilities = reader_for(agent).capabilities(&input);
             assert_eq!(capabilities.source_format, expected, "{agent}");
             assert_eq!(
                 capabilities,

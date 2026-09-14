@@ -116,6 +116,9 @@ pub use vendors::claude::ClaudeSessionReader;
 pub use vendors::pi::PiSessionReader;
 pub use vendors::{has_dedicated_reader, reader_for};
 
+// +1 for Pi V3 source admission. The adapter now requires the leading valid
+// `session` header and rejects duplicate record IDs, so stored Pi sessions
+// must re-ingest before they can retain V3 evidence.
 // +1 for native Antigravity token classes and paired transcript roles. Stored
 // database sessions must re-ingest for model and cache checks.
 // +1 for Codex collab-family recognition: `collab_agent_spawn_begin`,
@@ -182,7 +185,7 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // +1 for Codex's `spawn_agent` launch tool: `is_subagent_launch_tool`
 // (`analysis::model`) now also matches `spawn_agent`, so every stored
 // Codex session must reparse to count launches in `subagent_launches`.
-pub const PARSER_REVISION: i64 = 36;
+pub const PARSER_REVISION: i64 = 37;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to
@@ -280,12 +283,13 @@ pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
 /// before it restores a snapshot; this constant and the rule are
 /// documented here so a future revision bump remembers to bump this one
 /// too, when the change touches resumable state.
+// +1 because PiStreamState gained its source-admission state.
 // +1 because `ClaudeStreamState` gained a `context_window_source` field.
 // +1 because parent evidence now includes delegated model control observations.
 // This batch also changes retained nested resource and paired subagent state.
 // +1 for the bounded Codex cross-format usage matcher in adapter snapshots.
 // Reject snapshots that can retain duplicate usage totals.
-pub const RESUME_SNAPSHOT_REVISION: i64 = 8;
+pub const RESUME_SNAPSHOT_REVISION: i64 = 9;
 
 /// Normalize and analyze a batch of live sessions into one averaged summary.
 ///

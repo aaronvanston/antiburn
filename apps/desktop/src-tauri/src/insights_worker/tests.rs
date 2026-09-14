@@ -178,16 +178,14 @@ fn published_pass(record: &SessionRecord) -> EvidencePass {
     let store: Arc<dyn TurnRowStore> =
         MemoryTurnRowStore::new("claude", record.key.session_id.clone());
     let mut pass = analysis::evidence_pass_with_turn_rows(
-        &[SessionInput {
-            agent: "claude".into(),
-            session_id: record.key.session_id.clone(),
-            source: RawSource::Jsonl(
-                r#"{"type":"assistant","timestamp":100,"message":{"id":"m","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":2,"output_tokens":3},"content":[]}}
-"#
-                .into(),
-            ),
-            fork_parent_session_id: None,
-        }],
+        &[SessionInput { agent: "claude".into(),
+        session_id: record.key.session_id.clone(),
+        source: RawSource::Jsonl(
+            r#"{"type":"assistant","timestamp":100,"message":{"id":"m","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":2,"output_tokens":3},"content":[]}}
+        "#
+            .into(),
+        ),
+        fork_parent_session_id: None, source_format: Default::default() }],
         &|| false,
         Some(store),
     );
@@ -211,11 +209,12 @@ fn generic_published_pass(record: &SessionRecord) -> EvidencePass {
             session_id: record.key.session_id.clone(),
             source: RawSource::Jsonl(
                 r#"{"role":"user","content":"hi"}
-{"role":"assistant","content":"hello","usage":{"prompt_tokens":2,"completion_tokens":3}}
-"#
+        {"role":"assistant","content":"hello","usage":{"prompt_tokens":2,"completion_tokens":3}}
+        "#
                 .into(),
             ),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         }],
         &|| false,
         Some(store),
@@ -1145,18 +1144,16 @@ async fn a_published_pass_leaves_the_expected_turn_rows_under_its_claim_fence() 
                     _fork_parent_session_id: Option<String>| {
         Box::pin(async move {
             let mut pass = analysis::evidence_pass_with_turn_rows(
-                &[SessionInput {
-                    agent: "claude".into(),
-                    session_id,
-                    source: RawSource::Jsonl(concat!(
-                        r#"{"type":"assistant","timestamp":100,"message":{"id":"m1","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":2,"output_tokens":3},"content":[]}}"#,
-                        "\n",
-                        r#"{"type":"assistant","timestamp":200,"message":{"id":"m2","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":4,"output_tokens":6},"content":[]}}"#,
-                        "\n",
-                    )
-                    .into()),
-                    fork_parent_session_id: None,
-                }],
+                &[SessionInput { agent: "claude".into(),
+                session_id,
+                source: RawSource::Jsonl(concat!(
+                    r#"{"type":"assistant","timestamp":100,"message":{"id":"m1","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":2,"output_tokens":3},"content":[]}}"#,
+                    "\n",
+                    r#"{"type":"assistant","timestamp":200,"message":{"id":"m2","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":4,"output_tokens":6},"content":[]}}"#,
+                    "\n",
+                )
+                .into()),
+                fork_parent_session_id: None, source_format: Default::default() }],
                 &|| signal.observe(),
                 turn_row_store,
             );
@@ -1257,6 +1254,7 @@ async fn a_linked_forks_pass_publishes_turn_rows_only_for_its_own_turns() {
                     session_id,
                     source: RawSource::File(path),
                     fork_parent_session_id,
+                    source_format: Default::default(),
                 }],
                 &|| signal.observe(),
                 turn_row_store,
@@ -1351,6 +1349,7 @@ async fn pi_file_flows_through_worker_persistence_and_report() {
             agent: crate::agents::vendor_label(agent).to_owned(),
             session_id,
             source: antiburn_local::analysis::RawSource::File(pi_source.clone()),
+            source_format: Default::default(),
             fork_parent_session_id: None,
         };
         Box::pin(async move {

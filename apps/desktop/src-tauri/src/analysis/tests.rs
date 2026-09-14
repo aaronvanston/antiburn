@@ -2,6 +2,20 @@ use super::*;
 
 mod claude_parent_child;
 
+#[test]
+fn cursor_chat_database_uses_its_own_source_format() {
+    let source = SessionSource::ProviderDb {
+        agent: AgentKind::Cursor,
+        db_path: std::path::PathBuf::from("/tmp/.cursor/chats/workspace/session/store.db"),
+        session_id: "session".to_owned(),
+    };
+
+    assert_eq!(
+        source_format(AgentKind::Cursor, &source),
+        SourceFormat::CursorChatStoreDb
+    );
+}
+
 /// A row store for a test pass that wants published evidence. A pass
 /// without a row store publishes no evidence, so any test that reads
 /// `session.evidence` or `pass.evidence` needs one of these.
@@ -84,6 +98,7 @@ fn file_input(path: &std::path::Path, id: &str) -> SessionInput {
         session_id: id.to_string(),
         source: RawSource::File(path.to_path_buf()),
         fork_parent_session_id: None,
+        source_format: SourceFormat::AntigravitySqlite,
     }
 }
 
@@ -93,6 +108,7 @@ fn inline_input(content: String, id: &str) -> SessionInput {
         session_id: id.to_string(),
         source: RawSource::Jsonl(content),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     }
 }
 
@@ -232,6 +248,7 @@ async fn a_claimed_antigravity_database_stays_native_and_publishes() {
         session_id: "root".to_owned(),
         source: RawSource::Sqlite(path),
         fork_parent_session_id: None,
+        source_format: SourceFormat::AntigravitySqlite,
     };
 
     let outcome = stream_vendor_with_hooks(
@@ -276,6 +293,7 @@ async fn a_claimed_opencode_database_publishes_from_the_validated_snapshot() {
         session_id: "root".to_owned(),
         source: RawSource::Sqlite(path),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     };
 
     let outcome = stream_vendor_with_hooks(
@@ -365,6 +383,7 @@ fn an_opencode_completed_task_links_as_a_delegated_thread() {
         session_id: "root".to_owned(),
         source: RawSource::Sqlite(path),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     };
 
     let pass = evidence_pass_with_turn_rows(
@@ -401,6 +420,7 @@ fn codex_file_input(path: &std::path::Path, id: &str) -> SessionInput {
         session_id: id.to_string(),
         source: RawSource::File(path.to_path_buf()),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     }
 }
 
@@ -438,6 +458,7 @@ fn codex_read_publishes_its_capabilities_and_provider_start() {
         session_id: "codex-inline".to_owned(),
         source: RawSource::Jsonl(codex_record()),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     };
 
     let StreamOutcome::Published { session, .. } =
@@ -470,6 +491,7 @@ fn pi_read_publishes_through_the_evidence_path() {
         session_id: "pi-inline".to_owned(),
         source: RawSource::Jsonl(pi_record()),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     };
 
     let StreamOutcome::Published { session, .. } =
@@ -506,21 +528,19 @@ fn pi_read_publishes_through_the_evidence_path() {
 /// `thread_identity` flip is for.
 #[test]
 fn pi_thread_chain_through_a_model_change_supports_cache_and_overdepth() {
-    let input = SessionInput {
-        agent: "pi".to_owned(),
-        session_id: "pi-thread-chain".to_owned(),
-        source: RawSource::Jsonl(
-            [
-                r#"{"type":"session","version":3,"timestamp":"2026-08-01T09:59:58Z"}"#,
-                r#"{"type":"message","id":"pi-thread-1","parentId":null,"timestamp":"2026-08-01T10:00:00Z","message":{"role":"assistant","model":"model-a","usage":{"input":2,"output":3,"cacheRead":5,"cacheWrite":7},"content":[]}}"#,
-                r#"{"type":"model_change","id":"pi-thread-2","parentId":"pi-thread-1","timestamp":"2026-08-01T10:00:01Z","modelId":"model-b"}"#,
-                r#"{"type":"message","id":"pi-thread-3","parentId":"pi-thread-2","timestamp":"2026-08-01T10:00:02Z","message":{"role":"assistant","model":"model-b","usage":{"input":3,"output":4,"cacheRead":1,"cacheWrite":0},"content":[]}}"#,
-            ]
-            .join("\n")
-                + "\n",
-        ),
-        fork_parent_session_id: None,
-    };
+    let input = SessionInput { agent: "pi".to_owned(),
+    session_id: "pi-thread-chain".to_owned(),
+    source: RawSource::Jsonl(
+        [
+            r#"{"type":"session","version":3,"timestamp":"2026-08-01T09:59:58Z"}"#,
+            r#"{"type":"message","id":"pi-thread-1","parentId":null,"timestamp":"2026-08-01T10:00:00Z","message":{"role":"assistant","model":"model-a","usage":{"input":2,"output":3,"cacheRead":5,"cacheWrite":7},"content":[]}}"#,
+            r#"{"type":"model_change","id":"pi-thread-2","parentId":"pi-thread-1","timestamp":"2026-08-01T10:00:01Z","modelId":"model-b"}"#,
+            r#"{"type":"message","id":"pi-thread-3","parentId":"pi-thread-2","timestamp":"2026-08-01T10:00:02Z","message":{"role":"assistant","model":"model-b","usage":{"input":3,"output":4,"cacheRead":1,"cacheWrite":0},"content":[]}}"#,
+        ]
+        .join("\n")
+            + "\n",
+    ),
+    fork_parent_session_id: None, source_format: Default::default() };
 
     let pass = evidence_pass_with_turn_rows(
         &[input],
@@ -559,6 +579,7 @@ fn codex_thread_identity_without_record_identity_still_attests_linkage_from_orde
         session_id: "codex-thread-identity".to_owned(),
         source: RawSource::Jsonl(codex_record()),
         fork_parent_session_id: None,
+        source_format: Default::default(),
     };
 
     let pass = evidence_pass_with_turn_rows(
@@ -1273,6 +1294,7 @@ fn an_unsupported_schema_terminates() {
             session_id: "unsupported".to_string(),
             source: RawSource::Sqlite(std::path::PathBuf::from("unsupported.sqlite")),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         }],
         &|| false,
     );
@@ -1319,6 +1341,7 @@ fn an_inline_source_records_matching_and_mismatching_generations() {
             session_id: "inline".to_string(),
             source: RawSource::Jsonl(content),
             fork_parent_session_id: None,
+            source_format: Default::default(),
         }],
         &CancelFlag::never(),
     ) else {

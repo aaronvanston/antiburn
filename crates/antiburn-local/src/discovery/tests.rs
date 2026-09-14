@@ -68,6 +68,8 @@ async fn a_non_claude_file_source_uses_whole_document_fallback() {
         session_id: "session-1".to_string(),
         environment: log.environment,
         source: log.source,
+        source_format: crate::analysis::SourceFormat::PiV3Jsonl,
+        surface: "cli".to_owned(),
         updated_at_epoch: log.updated_at,
     };
     let expected_fingerprint = FingerprintInputs {
@@ -84,6 +86,11 @@ async fn a_non_claude_file_source_uses_whole_document_fallback() {
     assert_eq!(version.streamability, Streamability::RecordStream);
     assert_eq!(version.estimated_bytes, Some(content.len() as u64));
     assert_eq!(version.fingerprint, expected_fingerprint);
+    assert_eq!(
+        version.source_format,
+        crate::analysis::SourceFormat::PiV3Jsonl
+    );
+    assert_eq!(version.surface, "cli");
 }
 
 #[tokio::test]

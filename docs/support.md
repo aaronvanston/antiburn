@@ -22,19 +22,19 @@ antiburn reads session data that a coding agent has already written to disk.
 Plan limits are separate: antiburn can ask a provider for those figures as
 described in [Network](#network).
 
-| Agent          | Native (macOS / Windows / Linux) | WSL           | Notes                                                                                                                                                  |
-| -------------- | -------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Claude Code    | Supported                        | Supported     |                                                                                                                                                        |
-| Codex          | Supported                        | Supported     |                                                                                                                                                        |
-| OpenCode       | Supported                        | Supported     | Dedicated session analysis and Insights                                                                                                                |
-| Cursor         | Supported                        | Not supported |                                                                                                                                                        |
-| GitHub Copilot | Supported                        | Not supported |                                                                                                                                                        |
-| Cline          | Supported                        | Not supported |                                                                                                                                                        |
-| Kiro           | Supported                        | Not supported |                                                                                                                                                        |
-| Amp            | Supported                        | Not supported |                                                                                                                                                        |
-| Pi             | macOS and Linux only             | Not supported | Pi v3 CLI sessions only, including `PI_AGENT_DIR`; dedicated analysis and Insights; excluded on native Windows and WSL; no Pi-specific live plan meter |
-| Antigravity    | Supported, **disk-only**         | Not supported | Native `agy`/IDE SQLite usage plus brain JSONL and saved cascade analysis                                                                              |
-| Windsurf       | Supported, **disk-only**         | Not supported | Documented local files only                                                                                                                            |
+| Agent          | Discovery | Detailed session analysis | Burn Check | WSL | Notes |
+| -------------- | --------- | ------------------------- | ---------- | --- | ----- |
+| Claude Code    | Supported | Supported | Supported | Supported | |
+| Codex          | Supported | Supported | Supported | Supported | |
+| OpenCode       | Supported | Supported | Supported | Supported | WSL discovery uses bounded OpenCode CLI export. It is not disk-only access. |
+| Cursor         | Supported | Supported on characterized surfaces | Finding-only O support | Not supported | Other surfaces fail closed. |
+| GitHub Copilot | Supported | Not supported | Unavailable | Not supported | Registered sources fail closed. |
+| Cline          | Supported | Not supported | Unavailable | Not supported | Registered sources fail closed. |
+| Kiro           | Supported | Not supported | Unavailable | Not supported | Registered sources fail closed. |
+| Amp            | Supported | Not supported | Unavailable | Not supported | Registered sources fail closed. |
+| Pi             | macOS and Linux only | Supported for Pi V3 CLI sessions | Supported | Not supported | Includes `PI_AGENT_DIR`; excluded on native Windows and WSL. |
+| Antigravity    | Supported, **disk-only** | Supported on characterized surfaces | Finding-only D/O support | Not supported | Native `agy`/IDE SQLite usage plus brain JSONL and saved cascade analysis. |
+| Windsurf       | Supported, **disk-only** | Not supported | Unavailable | Not supported | Registered sources fail closed. |
 
 **Disk-only** means sessions come from the agent's own documented local files; the
 live language-server APIs those two editors expose aren't read, so a session that
@@ -42,17 +42,24 @@ exists only in memory will not appear.
 
 ## Burn Check remediation
 
-The main Burn checks workspace shows supported findings for Claude Code, Codex,
-OpenCode, Pi, and Antigravity. Safe bounded prompts cover the exact check matrix
-in [Burn Check Source Coverage](check-coverage.md#automatic-editor-support).
+The main Burn checks workspace shows supported findings only for the agents and
+checks listed below. `Finding-only` means it cannot report a clean result. Safe
+bounded prompts cover the exact check matrix in
+[Burn Check Source Coverage](check-coverage.md#automatic-editor-support).
 
-| Agent       | Auto Fix on macOS and Linux | Other current support         |
-| ----------- | --------------------------- | ----------------------------- |
-| Claude Code | Model and reasoning         | Prompts for all nine checks   |
-| Codex       | Model and reasoning         | Prompts for all nine checks   |
-| OpenCode    | Model                       | Prompts for D, S, K, O, and C |
-| Pi          | Model and reasoning         | Prompts for D, T, S, O, and C |
-| Antigravity | None                        | Prompts for D and O           |
+| Agent          | Burn Check result | Auto Fix on macOS and Linux | Other current support |
+| -------------- | ----------------- | --------------------------- | --------------------- |
+| Claude Code    | Supported         | Model and reasoning         | Prompts for all nine checks |
+| Codex          | Supported         | Model and reasoning         | Prompts for all nine checks |
+| OpenCode       | Supported         | Model                       | Prompts for D, S, K, O, and C |
+| Cursor         | Finding-only O    | None                        | No remediation prompt |
+| GitHub Copilot | Unavailable       | None                        | No remediation prompt |
+| Cline          | Unavailable       | None                        | No remediation prompt |
+| Kiro           | Unavailable       | None                        | No remediation prompt |
+| Amp            | Unavailable       | None                        | No remediation prompt |
+| Pi             | Supported         | Model and reasoning         | Prompts for D, T, S, O, and C |
+| Antigravity    | Finding-only D/O  | None                        | Prompts for D and O |
+| Windsurf       | Unavailable       | None                        | No remediation prompt |
 
 Auto Fix changes one existing effective global or project setting after a
 separate review and confirmation. Native Windows can read supported setting

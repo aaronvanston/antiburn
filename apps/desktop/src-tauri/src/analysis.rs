@@ -23,10 +23,10 @@ use antiburn_local::analysis::{
     METRICS_SCHEMA_REVISION, ModelRun, PARSER_REVISION, ProviderHint, RESUME_SNAPSHOT_REVISION,
     RawSource, ResumePoint, ResumeRevisions, ResumedVisit, SessionCost, SessionEvidence,
     SessionEvidenceAccumulator, SessionInput, SessionMetrics, SessionMetricsAccumulator,
-    SessionReader, SessionSummary, SourceCapabilities, SourceClaim, SourceKind, StoredResume,
-    StreamSnapshot, TurnRow, TurnRowSink, TurnRowStore, TurnScope, VisitOutcome, aggregate_metrics,
-    append_only_guarantee, evidence_from_facts, merge_metrics, metrics_by_source,
-    metrics_from_rows, price_breakdown, pricing_generation, reader_for,
+    SessionReader, SessionSummary, SourceCapabilities, SourceClaim, SourceFormat, SourceKind,
+    StoredResume, StreamSnapshot, TurnRow, TurnRowSink, TurnRowStore, TurnScope, VisitOutcome,
+    aggregate_metrics, append_only_guarantee, evidence_from_facts, merge_metrics,
+    metrics_by_source, metrics_from_rows, price_breakdown, pricing_generation, reader_for,
 };
 use antiburn_local::discovery::source_version::claude_sidecar_fingerprint;
 use antiburn_local::discovery::{
@@ -538,6 +538,53 @@ async fn raw_source(source: &SessionSource) -> Option<RawSource> {
     }
 }
 
+/// Select the source contract while discovery still identifies its route.
+/// Readers use this value and use `RawSource` only for I/O.
+pub(crate) fn source_format(agent: AgentKind, source: &SessionSource) -> SourceFormat {
+    match (agent, source) {
+        (AgentKind::Claude, _) => SourceFormat::ClaudeJsonl,
+        (AgentKind::Codex, _) => SourceFormat::CodexRolloutJsonl,
+        (AgentKind::Pi, _) => SourceFormat::PiV3Jsonl,
+        (AgentKind::OpenCode, SessionSource::ProviderDb { .. }) => SourceFormat::OpenCodeSqliteV2,
+        (AgentKind::OpenCode, _) => SourceFormat::OpenCodeJsonl,
+        (AgentKind::Cursor, SessionSource::ProviderDb { db_path, .. })
+            if db_path
+                .components()
+                .any(|component| component.as_os_str() == "chats") =>
+        {
+            SourceFormat::CursorChatStoreDb
+        }
+        (AgentKind::Cursor, SessionSource::ProviderDb { .. }) => SourceFormat::CursorCliStoreDb,
+        (AgentKind::Cursor, SessionSource::File(path))
+            if path.extension().and_then(|value| value.to_str()) == Some("json") =>
+        {
+            SourceFormat::CursorLegacyChatJson
+        }
+        (AgentKind::Cursor, SessionSource::File(_)) => SourceFormat::CursorCliAgentJsonl,
+        (AgentKind::Cursor, SessionSource::Inline { label, .. })
+            if label.contains("state.vscdb") =>
+        {
+            SourceFormat::CursorIdeComposer
+        }
+        (AgentKind::Cursor, SessionSource::Inline { .. }) => SourceFormat::CursorCliAgentJsonl,
+        (AgentKind::Antigravity, SessionSource::ProviderDb { .. }) => {
+            SourceFormat::AntigravitySqlite
+        }
+        (AgentKind::Antigravity, SessionSource::File(path))
+            if path.extension().and_then(|value| value.to_str()) == Some("jsonl") =>
+        {
+            SourceFormat::AntigravityBrainJsonl
+        }
+        (AgentKind::Antigravity, SessionSource::File(path))
+            if path.to_string_lossy().contains("chatSessions") =>
+        {
+            SourceFormat::AntigravityWorkspaceChatJson
+        }
+        (AgentKind::Antigravity, _) => SourceFormat::AntigravityCascadeJson,
+        _ => SourceFormat::Uncharacterized,
+    }
+}
+
 fn claim_file(path: &std::path::Path) -> anyhow::Result<SourceClaim> {
     let mut file = std::fs::File::open(path)?;
     let stat = SourceStat::from_open_std_file(&file)
@@ -873,7 +920,7 @@ fn stream_vendor_with_hooks(
         // remaining path that outcome still covers, further down.
         let kind = SourceKind::from(&input.source);
         let adapter = reader_for(&input.agent);
-        let capabilities = adapter.capabilities(&input.source);
+        let capabilities = adapter.capabilities(input);
         // Every input after the parent is a discovered child transcript, so
         // its rows get `Delegated` scope from position. The adapter's own
         // `EventSource` flag is not the only source of scope.
@@ -1377,6 +1424,7 @@ pub async fn analyze_for_evidence(
         agent: label.to_string(),
         session_id: session_id.to_string(),
         source: raw,
+        source_format: source_format(agent, &source),
         fork_parent_session_id: fork_parent_session_id.clone(),
     };
 
@@ -1416,6 +1464,7 @@ pub async fn analyze_for_evidence(
                 agent: label.to_string(),
                 session_id: subagent_id,
                 source: RawSource::File(path.clone()),
+                source_format: source_format(agent, &SessionSource::File(path.clone())),
                 fork_parent_session_id: fork_parent_session_id.clone(),
             },
         ));

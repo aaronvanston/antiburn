@@ -317,6 +317,7 @@ fn source_supports_clean(format: crate::analysis::SourceFormat) -> bool {
         SourceFormat::CursorJsonl
         | SourceFormat::CursorCliAgentJsonl
         | SourceFormat::CursorCliStoreDb
+        | SourceFormat::CursorChatStoreDb
         | SourceFormat::CursorIdeComposer
         | SourceFormat::CursorLegacyChatJson
         | SourceFormat::AntigravityJson
@@ -1423,6 +1424,7 @@ mod tests {
             (SourceFormat::CursorJsonl, "cursor_jsonl"),
             (SourceFormat::CursorCliAgentJsonl, "cursor_cli_agent_jsonl"),
             (SourceFormat::CursorCliStoreDb, "cursor_cli_store_db"),
+            (SourceFormat::CursorChatStoreDb, "cursor_chat_store_db"),
             (SourceFormat::CursorIdeComposer, "cursor_ide_composer"),
             (
                 SourceFormat::CursorLegacyChatJson,
