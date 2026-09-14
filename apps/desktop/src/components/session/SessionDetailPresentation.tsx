@@ -370,13 +370,16 @@ function HostActions({
       {hasRelations && relations && (
         <RelationControl relations={relations} onOpen={onOpenRelatedSession} />
       )}
-      {onCopySourcePath && (
-        <CopySourcePathAction
-          key={sessionKey}
-          sessionKey={sessionKey}
-          onCopy={onCopySourcePath}
-        />
-      )}
+      <Tooltip label="Delete this session">
+        <button
+          type="button"
+          onClick={onDeleteSession}
+          aria-label="Delete this session"
+          className="rounded-control p-1 text-label-tertiary hover:bg-surface-tertiary hover:text-system-red-text"
+        >
+          <Trash2 size={14} aria-hidden="true" />
+        </button>
+      </Tooltip>
       {onRevealSource && (
         <Tooltip label="Reveal in file manager">
           <button
@@ -389,16 +392,13 @@ function HostActions({
           </button>
         </Tooltip>
       )}
-      <Tooltip label="Delete this session">
-        <button
-          type="button"
-          onClick={onDeleteSession}
-          aria-label="Delete this session"
-          className="rounded-control p-1 text-label-tertiary hover:bg-surface-tertiary hover:text-system-red-text"
-        >
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
-      </Tooltip>
+      {onCopySourcePath && (
+        <CopySourcePathAction
+          key={sessionKey}
+          sessionKey={sessionKey}
+          onCopy={onCopySourcePath}
+        />
+      )}
     </div>
   )
 }
