@@ -161,6 +161,25 @@ Skills mean full documents injected into model context. Listings, installed
 skills, and names in tool calls do not prove unused document overhead. Resource
 identity is retained without copying private document bodies into evidence.
 
+Quota pressure sits outside the nine-code check contract (FR-15): it has no
+row in the Checks table above and reports only when transcripts carry quota
+evidence. `CodexRolloutJsonl` now supplies it. An `event_msg`/`task_complete`
+record with a non-null `error` object maps to a `QuotaIncident` for exactly
+three `codex_error_info` codes — `server_overloaded` (`ProviderCapacity`),
+`rate_limit_exceeded` (`RateLimit`), and `usage_limit_exceeded`
+(`UsageLimit`) — against the pinned `openai/codex` protocol commit
+[`e7637306bc9246a3e42e407cb94f96b7ed345e3e`][codex-source] and a synthetic
+fixture (`task_complete_errors.jsonl`). Every other code is ignored. Clean or
+absence is never claimed from this group: the section is not assessed
+without at least one observed incident, per FR-15's one condition.
+
+Maintainer confirmation (2026-09-14): support Codex quota incidents from
+`task_complete` errors, limited to the three reviewed `codex_error_info`
+codes above. Reviewed passive alternatives include mapping every
+`codex_error_info` variant to a limit kind; rejected because most codes
+(`context_window_exceeded`, policy and transport failures, `other`) name a
+different failure class, not a quota or capacity limit.
+
 | Source                      | Checks              | Implemented contract and remaining limit                                                                                                                                                                                                                                                                                                |
 | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude and Codex            | D, O                | Direct request depth and timed model use reach checks independently of token-accounting policy. Clean needs all required session facts and reviewed model state. Unknown models are not automatically current.                                                                                                                          |
