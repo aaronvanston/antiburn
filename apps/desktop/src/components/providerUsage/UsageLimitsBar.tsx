@@ -472,11 +472,17 @@ function UnavailableGroup({
 /**
  * One limit window: label, segmented VU meter with the linear-use notch,
  * figure.
+ *
+ * The popover keeps this row private in spirit: Overview shares it so both
+ * surfaces draw one meter, with `segments` and `resetPlacement` as the only
+ * differences.
  */
-function WindowMeterRow({
+export function WindowMeterRow({
   window,
   now,
   resetOnHover = false,
+  resetPlacement = "inline",
+  segments,
 }: {
   window: LiveUsageWindowPayload
   /** The instant the elapsed notch is measured from. */
@@ -489,8 +495,17 @@ function WindowMeterRow({
    * A surface that shows one provider keeps the reset in view instead.
    */
   resetOnHover?: boolean
+  /**
+   * Where the reset time sits: beside the figure, or as a caption under the
+   * meter. The caption is for a surface with one provider per card, where
+   * the reset has room of its own.
+   */
+  resetPlacement?: "inline" | "caption"
+  /** The dot count of the meter; see `SegmentedMeter` for the default. */
+  segments?: number
 }) {
   const percent = window.usedPercent
+  const reset = window.resetsAt ? liveResetLabel(window, now) : null
   return (
     <div className="group/meter">
       <div className="flex items-baseline justify-between gap-2 pb-0.5">
@@ -502,14 +517,14 @@ function WindowMeterRow({
               stated one — there is no seat for "reset unavailable" here. The
               hidden state fades and does not unmount, so the row keeps the
               space and the figure does not move on hover. */}
-          {window.resetsAt && (
+          {reset && resetPlacement === "inline" && (
             <span
               className={cn(
                 "type-footnote text-label-tertiary transition-opacity duration-[var(--duration-fast)]",
                 resetOnHover && "opacity-0 group-hover/meter:opacity-100",
               )}
             >
-              {liveResetLabel(window, now)}
+              {reset}
             </span>
           )}
           <span className="type-footnote text-label">
@@ -520,7 +535,11 @@ function WindowMeterRow({
       <SegmentedMeter
         percent={percent ?? null}
         expectedFraction={liveWindowElapsed(window, now)}
+        {...(segments != null ? { segments } : {})}
       />
+      {reset && resetPlacement === "caption" && (
+        <p className="pt-1 type-caption text-label-tertiary">{reset}</p>
+      )}
     </div>
   )
 }

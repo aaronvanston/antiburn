@@ -4,6 +4,7 @@ import { isMacOS } from "../../lib/platform"
 
 import { ScrollPane } from "../../components/ui/ScrollPane"
 import { type MainOverviewSession } from "./MainOverviewSession"
+import { OverviewProviderLimits } from "./overview/OverviewProviderLimits"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
 import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 
@@ -11,8 +12,7 @@ import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
  * The main window's landing section: local spend, provider limits, Burn
  * checks, and recent sessions on one page.
  *
- * This slice ships the spend totals and the daily chart. The other panels
- * arrive in later slices.
+ * The Burn checks summary and the recent sessions arrive in a later slice.
  */
 export function OverviewView({
   active,
@@ -70,6 +70,10 @@ export function OverviewView({
               days={usage?.days ?? []}
               previousDays={usage?.previousDays ?? []}
               loading={loading}
+            />
+            <OverviewProviderLimits
+              live={state.liveUsage}
+              loading={loading && !state.liveUsage}
             />
           </div>
         </ScrollPane>
