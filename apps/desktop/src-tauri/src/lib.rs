@@ -834,6 +834,7 @@ mod tests {
                 &runner,
                 &|entry| task_announced.lock().unwrap().push(entry),
                 &|| {},
+                &|_, _| {},
             )
             .await;
         });
