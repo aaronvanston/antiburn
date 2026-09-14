@@ -1045,13 +1045,11 @@ fn task_complete_observation(value: &Value, model: Option<&str>) -> Option<Evide
             kind: ProviderIncidentKind::Capacity,
             model: model.map(ToOwned::to_owned),
         })),
-        "internal_server_error" => {
-            Some(EvidenceObservation::ProviderIncident(ProviderIncident {
-                ts_ms,
-                kind: ProviderIncidentKind::ServerError,
-                model: model.map(ToOwned::to_owned),
-            }))
-        }
+        "internal_server_error" => Some(EvidenceObservation::ProviderIncident(ProviderIncident {
+            ts_ms,
+            kind: ProviderIncidentKind::ServerError,
+            model: model.map(ToOwned::to_owned),
+        })),
         "http_connection_failed"
         | "response_stream_connection_failed"
         | "response_stream_disconnected"
@@ -2502,7 +2500,7 @@ mod tests {
         // variants' `http_status_code` to a `ServerError` or `Connection`
         // provider incident, through the new `transport_incident_kind`
         // helper; this changed the fingerprinted byte range.
-        const EXPECTED_FINGERPRINT: u64 = 6_162_584_255_561_803_301;
+        const EXPECTED_FINGERPRINT: u64 = 5_782_876_435_163_781_937;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();

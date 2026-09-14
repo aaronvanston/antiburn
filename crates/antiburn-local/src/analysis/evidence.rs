@@ -1230,7 +1230,7 @@ mod tests {
             },
             "coverage": coverage,
             "provenance": {
-                "parserRevision": 37,
+                "parserRevision": 38,
                 "analyzerRevision": 24,
                 "evidenceSchemaRevision": 19,
                 "sourceKind": "file",
