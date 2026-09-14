@@ -20,12 +20,34 @@ const hideOverlayWindow = vi.hoisted(() => vi.fn(async () => {}))
 const setFloatingHudEnabled = vi.hoisted(() => vi.fn())
 const hudVisibility = vi.hoisted(() => ({
   visible: false,
+  preferences: {
+    enabled: false,
+    dynamic: false,
+    edge: "top" as "top" | "left" | "right" | "bottom",
+  },
   listeners: new Set<() => void>(),
 }))
 vi.mock("../../lib/overlayWindow", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   class HudVisibilitySession {
     getSnapshot = () => hudVisibility.visible
+    getPreferencesSnapshot = () => {
+      if (hudVisibility.preferences.enabled !== hudVisibility.visible) {
+        hudVisibility.preferences = {
+          ...hudVisibility.preferences,
+          enabled: hudVisibility.visible,
+        }
+      }
+      return hudVisibility.preferences
+    }
+    getError = () => null
+    reveal = () => {
+      void openOverlayWindow()
+    }
+    change = (change: Partial<typeof hudVisibility.preferences>) => {
+      hudVisibility.preferences = { ...hudVisibility.preferences, ...change }
+      for (const listener of hudVisibility.listeners) listener()
+    }
     subscribe = (listener: () => void) => {
       hudVisibility.listeners.add(listener)
       return () => hudVisibility.listeners.delete(listener)
@@ -331,6 +353,7 @@ describe("UsagePane — floating HUD", () => {
     refreshLiveUsage.mockResolvedValue(summary())
     platform.mac = true
     hudVisibility.visible = false
+    hudVisibility.preferences = { enabled: false, dynamic: false, edge: "top" }
     hudVisibility.listeners.clear()
     setFloatingHudEnabled.mockClear()
     openOverlayWindow.mockClear()
@@ -369,5 +392,18 @@ describe("UsagePane — floating HUD", () => {
     act(() => emitHudVisibility(false))
 
     expect(toggle).not.toBeChecked()
+  })
+  it("offers all edges and a keyboard-operable reveal without disabling the HUD", () => {
+    hudVisibility.visible = true
+    pane()
+    fireEvent.click(screen.getByRole("switch", { name: "Appear dynamically" }))
+    expect(screen.getByRole("switch", { name: "Appear dynamically" })).toBeChecked()
+    for (const label of ["Top", "Left", "Right", "Bottom"]) {
+      fireEvent.click(screen.getByRole("radio", { name: label }))
+      expect(screen.getByRole("radio", { name: label })).toHaveAttribute("aria-checked", "true")
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Show HUD" }))
+    expect(openOverlayWindow).toHaveBeenCalled()
+    expect(screen.getByRole("switch", { name: "Show floating usage HUD" })).toBeChecked()
   })
 })

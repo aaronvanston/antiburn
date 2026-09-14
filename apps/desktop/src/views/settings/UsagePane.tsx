@@ -1,5 +1,7 @@
 import { useState, useSyncExternalStore } from "react"
 
+import { SegmentedControl } from "../../components/ui/SegmentedControl"
+import { PushButton } from "../../components/ui/PushButton"
 import { Card } from "../../components/ui/Card"
 import { Pane } from "../../components/ui/Pane"
 import { Row } from "../../components/ui/Row"
@@ -53,11 +55,12 @@ export type UsagePaneProps = AppSettingsController
 
 export function UsagePane({ settings, update }: UsagePaneProps) {
   const [hudVisibility] = useState(() => new HudVisibilitySession())
-  const hudShown = useSyncExternalStore(
+  const hud = useSyncExternalStore(
     hudVisibility.subscribe,
-    hudVisibility.getSnapshot,
-    hudVisibility.getSnapshot,
+    hudVisibility.getPreferencesSnapshot,
+    hudVisibility.getPreferencesSnapshot,
   )
+  const hudError = useSyncExternalStore(hudVisibility.subscribe, hudVisibility.getError)
   // Show the cached value on open. Then refresh through the shell and accept
   // updates from this window or the popover.
   const [store] = useState(() =>
@@ -121,10 +124,48 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
           <Card>
             <ToggleRow
               label="Show floating usage HUD"
-              description="A small always-on-top readout of your plan limits. It expands when you hover over it, and you can drag it anywhere on screen. It shows the same figures as this pane, so it is only as current as they are — the refresh switch above is what keeps them moving."
-              checked={hudShown}
+              description="A small readout of your plan limits. Hover for detail. Turn dynamic appearance off to keep it visible and drag it anywhere."
+              checked={hud.enabled}
               onChange={handleHudChange}
             />
+            <ToggleRow
+              label="Appear dynamically"
+              description="Shows briefly at launch and when session work resumes after an hour away. Hover to keep it visible."
+              checked={hud.dynamic}
+              disabled={!hud.enabled}
+              onChange={(dynamic) => hudVisibility.change({ dynamic })}
+            />
+            <Row
+              label="Reveal edge"
+              description="Rest the pointer at this screen edge to show the HUD."
+              trailing={
+                <SegmentedControl
+                  ariaLabel="Reveal edge"
+                  value={hud.edge}
+                  options={[
+                    { value: "top", label: "Top" },
+                    { value: "left", label: "Left" },
+                    { value: "right", label: "Right" },
+                    { value: "bottom", label: "Bottom" },
+                  ]}
+                  disabled={!hud.enabled || !hud.dynamic}
+                  onChange={(edge) => hudVisibility.change({ edge })}
+                />
+              }
+            />
+            <Row
+              label="Show now"
+              trailing={
+                <PushButton disabled={!hud.enabled} onClick={hudVisibility.reveal}>
+                  Show HUD
+                </PushButton>
+              }
+            />
+            {hudError && (
+              <p role="alert" className="type-callout text-label-secondary px-3 py-2">
+                {hudError}
+              </p>
+            )}
           </Card>
         </SectionGroup>
       )}

@@ -201,15 +201,16 @@ live macOS validation after changes to the native window mechanism.
 
 ## Preference and entry points
 
-The preference key is `antiburn.showFloatingHud` in localStorage. Settings →
-Usage writes it. The popover session restores the HUD at startup when it reads
-`1`. The HUD close button writes `0` before it calls the native hide command.
+Native HUD preferences persist enabled state, dynamic appearance, and reveal edge
+under `internal:dynamicHud`. Settings → Usage writes field-level changes through
+the shell. The legacy `antiburn.showFloatingHud` localStorage value migrates once;
+existing native preferences win. Relaunch restores an enabled HUD without waiting
+for the popover to become visible after migration.
 
-Each webview can hold a different localStorage copy. The native window therefore
-broadcasts each visibility change. Settings uses that live state, refreshes it
-when it receives focus, and updates its cached preference. Closing the HUD with
-its ✕ turns the Settings control off. The cached value only restores the HUD at
-startup.
+Settings follows `hud:settings`, not native visibility. The HUD close command
+turns the enabled preference off. Dynamic conceal only hides the window, so the
+setting stays on and edge retrieval continues. The renderer still receives
+native work/visibility events to suspend hidden presentation work.
 
 ## Platform boundary
 
@@ -229,3 +230,39 @@ always-on-top behavior.
 
 The separate detail window and content-sized HUD frame close this list. The HUD
 does not expand, and the detail window is sized before it appears.
+
+
+## Dynamic appearance prototype
+
+Settings → Usage keeps the master HUD preference separate from actual window
+visibility. **Appear dynamically** is opt-in. An enabled HUD shows at launch or
+enabling, after a 300ms dwell on the chosen screen edge, and when meaningful
+Claude/Codex activity resumes after an hour without session activity. Startup
+and old transcript replay do not count as a new session return.
+
+The first reveal per app run/enabling stays for five seconds from native
+visibility. After its first automatic dismissal, later reveals stay for three
+seconds. Hover holds the HUD open and restarts the current countdown. Conceal
+slides toward Top, Left, Right, or Bottom using the design system's 300ms slow
+duration, then hides the native frame. Reduced motion removes the slide.
+
+Dynamic placement centers on the selected edge of the display's work area.
+Without a saved position, the pointer's display determines a hidden HUD's next
+reveal; an already-visible HUD stays on its display. Shared display seams and corners do not retrieve it.
+Both modes support dragging and restore the newest connected display's saved
+position from `internal:hudPlacements`. Default edge placement applies only
+when no saved display is available. A drag holds native dismissal and placement
+updates; release flushes the last move before saving, then starts the full
+current countdown. A click without movement does not create a saved position.
+Saved and resized frames clamp to the work area. Display arrangement and safe
+area changes trigger the existing watcher; a missing or changed-DPI display
+uses the fallback without replacing the saved entry. The selected edge remains
+the retrieval gesture and slide direction at a custom position.
+Show HUD in Settings is keyboard-operable when screen edges are inconvenient.
+Closing the HUD disables it; automatic conceal leaves it enabled.
+
+The controller reuses validated semantic records from normal and targeted
+scans. Its freshness follows the existing watcher/scoped scheduler; it does not
+add a token threshold, a provider request, or a second filesystem watcher.
+See [the prototype plan](plans/dynamic-hud-prototype.md) for timing tests and
+native UX cases still awaiting validation.

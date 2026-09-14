@@ -902,3 +902,20 @@ Inside the HUD, unlit segments raise `led-off` to full opacity. The token keeps
 its 45% alpha everywhere else, because the popover and the detail card paint
 their own surfaces to hold it. The HUD has none. These ring and opacity values
 are local to `src/styles/hud.css` and are not palette or shadow tokens.
+
+### Dynamic HUD prototype
+
+The opt-in dynamic HUD anchors its existing content-sized frame to the selected
+edge of the display work area until the user drags it. Saved positions take
+precedence in both modes. Edge selection uses the shared segmented control;
+Show HUD is a keyboard-operable push button. The first reveal per app run or
+enabling lasts five seconds until its first automatic dismissal. Later reveals
+last three seconds. Hover and dragging hold the HUD open and restart the full countdown.
+
+Conceal moves the content toward the chosen edge within the native frame using
+`--duration-slow` and `--ease-out-quart` in `src/styles/hud.css`. The shell hides
+the frame after the matching 300ms deadline, even if the renderer stalls. The
+global reduced-motion clamp removes movement. No invisible window remains over
+the desktop after conceal. Both modes keep remembered positions. At a custom
+position, the content still slides in the selected retrieval-edge direction
+inside its frame; the native window stays at the saved position.

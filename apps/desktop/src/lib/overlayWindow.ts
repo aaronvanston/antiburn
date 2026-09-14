@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { SurfaceOrigin } from "./ipc"
 
 const OVERLAY_WINDOW_LABEL = "antiburn-overlay"
-const OVERLAY_VISIBILITY_EVENT = "overlay_visibility_changed"
+const HUD_SETTINGS_EVENT = "hud:settings"
 const OVERLAY_WORK_EVENT = "overlay_work_changed"
 
 export function openOverlayWindow(origin: SurfaceOrigin): Promise<void> {
@@ -36,6 +36,11 @@ export async function onOverlayWorkChanged(
  */
 export function recordHudPosition(): Promise<void> {
   return invoke("record_hud_position")
+}
+
+/** Hold native dismissal and placement while the pointer moves the HUD. */
+export function setHudDragging(active: boolean): Promise<void> {
+  return invoke("set_hud_dragging", { active })
 }
 
 const HUD_PREF_KEY = "antiburn.showFloatingHud"
@@ -73,81 +78,99 @@ export async function isOverlayWindowVisible(): Promise<boolean> {
   }
 }
 
-/** Keep HUD controls synchronized with the native window visibility. */
+export type HudEdge = "top" | "left" | "right" | "bottom"
+export type HudPreferences = { enabled: boolean; dynamic: boolean; edge: HudEdge }
+export type HudMotion = { dynamic: boolean; edge: HudEdge; concealing: boolean }
+
+export function getHudPreferences(): Promise<HudPreferences> {
+  return invoke("get_hud_preferences", { legacyEnabled: isFloatingHudEnabled() })
+}
+
+/** Keep enabled state separate from temporary native visibility. */
 export class HudVisibilitySession {
   private listeners = new Set<() => void>()
-  private started = false
   private generation = 0
   private revision = 0
-  private visible = isFloatingHudEnabled()
-  private stopVisibilityListening: (() => void) | null = null
+  private preferences: HudPreferences = {
+    enabled: isFloatingHudEnabled(),
+    dynamic: false,
+    edge: "top",
+  }
+  private dispose: (() => void) | null = null
+  private error: string | null = null
 
-  getSnapshot = (): boolean => this.visible
+  getSnapshot = (): boolean => this.preferences.enabled
+  getPreferencesSnapshot = (): HudPreferences => this.preferences
+  getError = (): string | null => this.error
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
-    if (!this.started) this.start()
+    if (this.listeners.size === 1) this.start()
     return () => {
       this.listeners.delete(listener)
-      if (this.listeners.size === 0) this.stop()
+      if (this.listeners.size === 0) {
+        this.generation += 1
+        this.dispose?.()
+        this.dispose = null
+        window.removeEventListener("focus", this.read)
+      }
     }
   }
 
-  set = (visible: boolean): void => {
-    this.revision += 1
-    this.setVisible(visible)
-    setFloatingHudEnabled(visible)
-    void (visible ? openOverlayWindow("user") : hideOverlayWindow()).catch(() => {})
+  set = (enabled: boolean): void => this.change({ enabled })
+  toggle = (): void => this.set(!this.preferences.enabled)
+  reveal = (): void => {
+    void openOverlayWindow("user").catch(() => this.fail())
   }
 
-  toggle = (): void => this.set(!this.visible)
+  change = (change: Partial<HudPreferences>): void => {
+    const revision = ++this.revision
+    void invoke<HudPreferences>("set_hud_preferences", { change })
+      .then((saved) => {
+        if (revision === this.revision) this.apply(saved)
+      })
+      .catch(() => this.fail())
+  }
+
+  private fail(): void {
+    this.error = "The HUD change could not be applied. Try again."
+    for (const listener of this.listeners) listener()
+  }
+
+  private apply(preferences: HudPreferences): void {
+    this.error = null
+    if (!preferences) return
+    this.preferences = preferences
+    setFloatingHudEnabled(preferences.enabled)
+    for (const listener of this.listeners) listener()
+  }
+
+  private read = (): void => {
+    const generation = this.generation
+    const revision = ++this.revision
+    void getHudPreferences()
+      .then((saved) => {
+        if (generation === this.generation && revision === this.revision) this.apply(saved)
+      })
+      .catch(() => this.fail())
+  }
 
   private start(): void {
-    this.started = true
     const generation = ++this.generation
-    const read = () => {
-      const revision = ++this.revision
-      void isOverlayWindowVisible().then((visible) => {
-        if (this.started && this.generation === generation && this.revision === revision) {
-          this.setVisible(visible)
-        }
-      })
-    }
-    this.read = read
-    void listen<boolean>(OVERLAY_VISIBILITY_EVENT, (event) => {
-      if (!this.started || this.generation !== generation) return
-      const visible = Boolean(event.payload)
+    void listen<HudPreferences>(HUD_SETTINGS_EVENT, (event) => {
+      if (generation !== this.generation) return
       this.revision += 1
-      setFloatingHudEnabled(visible)
-      this.setVisible(visible)
+      this.apply(event.payload)
     })
       .then((dispose) => {
-        if (this.started && this.generation === generation) {
-          this.stopVisibilityListening = dispose
-        } else {
+        if (generation !== this.generation) {
           dispose()
+          return
         }
+        this.dispose = dispose
+        this.read()
       })
-      .catch(() => {})
-    read()
-    window.addEventListener("focus", read)
-  }
-
-  private read: (() => void) | null = null
-
-  private stop(): void {
-    this.started = false
-    this.generation += 1
-    this.revision += 1
-    if (this.read) window.removeEventListener("focus", this.read)
-    this.read = null
-    this.stopVisibilityListening?.()
-    this.stopVisibilityListening = null
-  }
-
-  private setVisible(visible: boolean): void {
-    if (visible === this.visible) return
-    this.visible = visible
-    for (const listener of this.listeners) listener()
+      .catch(() => this.fail())
+    window.addEventListener("focus", this.read)
   }
 }

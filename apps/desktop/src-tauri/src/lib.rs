@@ -61,6 +61,7 @@ mod dto;
 mod fork_lineage;
 mod global_click;
 mod hud;
+mod hud_dynamic;
 mod insights_ipc;
 mod insights_report;
 mod insights_worker;
@@ -324,6 +325,7 @@ pub fn run() {
         if let Some(schedulers) = app.try_state::<Schedulers>() {
             analytics::install_schedulers(app.handle(), &schedulers);
             schedulers.push(runtime_pricing::spawn_scheduler(app.handle()));
+            schedulers.push(hud_dynamic::spawn(app.handle()));
             schedulers.push(scan::spawn_scheduler(app.handle()));
             schedulers.push(scan::idle::spawn(app.handle()));
             schedulers.push(retention::spawn_scheduler(app.handle()));

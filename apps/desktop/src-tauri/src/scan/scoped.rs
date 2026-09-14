@@ -575,6 +575,7 @@ async fn refresh_sessions_locked(
     };
 
     let described = super::describe_with_states(logs, &home, &ignored, &previous_map).await;
+    crate::hud_dynamic::observe_records(app, &described.records);
     let record_keys = described
         .records
         .iter()

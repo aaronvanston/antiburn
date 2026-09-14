@@ -18,6 +18,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 
+mod dynamic;
+pub use dynamic::{
+    DynamicSample, Edge, dynamic_sample, is_dragging, set_dragging, set_dynamic_edge,
+};
+
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 #[cfg(target_os = "macos")]
@@ -229,7 +234,7 @@ fn contains_point(x: f64, y: f64, width: f64, height: f64, point_x: f64, point_y
 /// moves the display itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Placement {
-    /// The display this position belongs to. See [`monitor_keys`].
+    /// The display identity, independent of its desktop position.
     pub monitor: String,
     /// Distance from the display's left edge, in logical pixels.
     pub x: f64,
@@ -261,11 +266,23 @@ fn monitor_key(monitor: &Monitor) -> String {
     )
 }
 
-/// Keys for every connected display.
+/// Detect connected displays, their arrangement, and their usable areas.
 #[cfg(target_os = "macos")]
 pub fn monitor_keys(app: &AppHandle) -> Vec<String> {
     app.available_monitors()
-        .map(|monitors| monitors.iter().map(monitor_key).collect())
+        .map(|monitors| {
+            monitors
+                .iter()
+                .map(|monitor| {
+                    format!(
+                        "{}|{:?}|{:?}",
+                        monitor_key(monitor),
+                        monitor.position(),
+                        monitor.work_area()
+                    )
+                })
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -327,6 +344,9 @@ pub fn apply_placement(_app: &AppHandle, _entries: &[Placement]) -> tauri::Resul
 /// it is, because a window at its old position beats a window at (0,0).
 #[cfg(target_os = "macos")]
 fn place(window: &WebviewWindow, entries: &[Placement]) -> tauri::Result<()> {
+    if is_dragging() {
+        return Ok(());
+    }
     let Ok(monitors) = window.available_monitors() else {
         return Ok(());
     };
@@ -340,8 +360,14 @@ fn place(window: &WebviewWindow, entries: &[Placement]) -> tauri::Result<()> {
         && let Some(index) = keys.iter().position(|key| key == &placement.monitor)
         && let Some(frame) = logical_frame(&monitors[index])
     {
-        let (x, y) = clamp_into(placement.x, placement.y, OVERLAY_WIDTH, height, &frame);
+        dynamic::set_custom_position(true);
+        let (x, y) = clamp_to_work_area(&monitors[index], placement.x, placement.y, height, &frame);
         return set_on_monitor(window, &monitors[index], x, y);
+    }
+
+    dynamic::set_custom_position(false);
+    if let Some(result) = dynamic::place(window, !window.is_visible().unwrap_or(false)) {
+        return result;
     }
 
     let Some(monitor) = window.primary_monitor()? else {
@@ -404,6 +430,63 @@ fn clamp_into(x: f64, y: f64, width: f64, height: f64, frame: &LogicalFrame) -> 
         clamp_within(x, 0.0, frame.width - width),
         clamp_within(y, 0.0, frame.height - height),
     )
+}
+
+#[cfg(target_os = "macos")]
+fn clamp_to_work_area(
+    monitor: &Monitor,
+    x: f64,
+    y: f64,
+    height: f64,
+    fallback: &LogicalFrame,
+) -> (f64, f64) {
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    let origin = monitor.position();
+    let left = f64::from(area.position.x - origin.x) / scale;
+    let top = f64::from(area.position.y - origin.y) / scale;
+    let frame = LogicalFrame {
+        width: f64::from(area.size.width) / scale,
+        height: f64::from(area.size.height) / scale,
+    };
+    if frame.width <= 0.0 || frame.height <= 0.0 {
+        return clamp_into(x, y, OVERLAY_WIDTH, height, fallback);
+    }
+    clamp_in_area(x, y, (OVERLAY_WIDTH, height), (left, top), &frame)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn clamp_in_area(
+    x: f64,
+    y: f64,
+    size: (f64, f64),
+    origin: (f64, f64),
+    frame: &LogicalFrame,
+) -> (f64, f64) {
+    let (left, top) = origin;
+    let (x, y) = clamp_into(x - left, y - top, size.0, size.1, frame);
+    (x + left, y + top)
+}
+
+#[cfg(target_os = "macos")]
+fn clamp_current_position(window: &WebviewWindow) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()? else {
+        return Ok(());
+    };
+    let Some(frame) = logical_frame(&monitor) else {
+        return Ok(());
+    };
+    let position = window.outer_position()?;
+    let origin = monitor.position();
+    let scale = monitor.scale_factor();
+    let (x, y) = clamp_to_work_area(
+        &monitor,
+        f64::from(position.x - origin.x) / scale,
+        f64::from(position.y - origin.y) / scale,
+        RESIZE_STATE.height(),
+        &frame,
+    );
+    set_on_monitor(window, &monitor, x, y)
 }
 
 /// Open or re-show the floating HUD.
@@ -724,6 +807,13 @@ fn apply_height(
         _ => Ok(()),
     };
     let restore_result = window.set_resizable(false);
+    if !is_dragging() {
+        if let Some(result) = dynamic::place(window, false) {
+            result?;
+        } else {
+            clamp_current_position(window)?;
+        }
+    }
     reposition_detail_after_hud_frame(window);
     size_result?;
     position_result?;
@@ -1156,6 +1246,30 @@ fn clamp_within(value: f64, min: f64, max: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_positions_and_growing_frames_respect_dock_and_menu_bar_insets() {
+        let work = LogicalFrame {
+            width: 900.0,
+            height: 700.0,
+        };
+        assert_eq!(
+            clamp_in_area(10.0, 0.0, (176.0, 60.0), (80.0, 32.0), &work),
+            (80.0, 32.0)
+        );
+        assert_eq!(
+            clamp_in_area(950.0, 720.0, (176.0, 100.0), (80.0, 32.0), &work),
+            (804.0, 632.0)
+        );
+        assert_eq!(
+            clamp_in_area(300.0, 200.0, (176.0, 100.0), (80.0, 32.0), &work),
+            (300.0, 200.0)
+        );
+        assert_eq!(
+            clamp_in_area(300.0, 200.0, (176.0, 800.0), (80.0, 32.0), &work),
+            (300.0, 32.0)
+        );
+    }
 
     #[test]
     fn heights_stay_inside_the_supported_frame() {

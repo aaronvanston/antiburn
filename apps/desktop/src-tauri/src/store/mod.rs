@@ -449,6 +449,15 @@ impl Store {
         );
     }
 
+    /// Save a user-controlled internal setting and report storage failures.
+    pub fn set_internal_value_checked(&self, key: &str, value: &str) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO setting (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
     /// Return the durable random secret used for provider account keys.
     pub fn provider_account_secret(&self) -> Result<[u8; 32]> {
         let connection = self.lock();

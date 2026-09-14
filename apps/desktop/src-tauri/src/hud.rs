@@ -195,6 +195,18 @@ mod tests {
     }
 
     #[test]
+    fn a_dragged_position_survives_reopening_the_store() {
+        let directory = tempfile::tempdir().unwrap();
+        let saved = placement("external|3840x2160@2", 350.0, 120.0);
+        {
+            let store = Store::open(directory.path()).unwrap();
+            save_placement(&store, saved.clone());
+        }
+        let reopened = Store::open(directory.path()).unwrap();
+        assert_eq!(load_placements(&reopened), vec![saved]);
+    }
+
+    #[test]
     fn a_stored_value_round_trips() {
         let stored = StoredPlacements {
             version: PLACEMENTS_VERSION,

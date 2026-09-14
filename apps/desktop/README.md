@@ -302,3 +302,25 @@ details only for opened checks. It coalesces refreshes, rejects stale results, a
 after a refresh error. Its snapshot subscription reports bounded visible-state and outcome
 analytics. Actions report only reviewed closed outcomes. They never report work data, target values,
 paths, identifiers, exact tokens, or exact costs.
+
+
+## Dynamic HUD prototype
+
+On macOS, Settings → Usage offers **Appear dynamically** and a Top/Left/Right/Bottom
+reveal edge. Enabled HUDs reveal at launch/enabling. Dynamic mode dismisses the
+first reveal after five seconds and subsequent reveals after three seconds,
+with hover and dragging restarting the countdown. Turning dynamic mode off keeps the HUD
+visible. **Show HUD** provides keyboard access without edge gestures.
+
+A native controller samples pointer position every 100ms only while enabled
+and dynamic. It reuses semantic Claude/Codex activity from the existing normal
+and targeted scans to reveal once after a one-hour lull. It adds no filesystem
+watcher, transcript parser, or provider requests. Discovery pause gates these
+automatic-return observations; edge retrieval remains available. The native
+scheduler owner aborts the controller on exit. See
+[the plan](../../docs/plans/dynamic-hud-prototype.md) for validation status.
+
+The HUD is draggable in both appearance modes. Its existing
+`internal:hudPlacements` storage remembers the chosen position across hides and
+restarts. A saved connected display takes precedence over default edge placement.
+The selected edge still retrieves the HUD and sets its slide direction.

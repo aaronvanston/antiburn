@@ -19,10 +19,13 @@ import {
   type LiveUsageSummaryPayload,
 } from "../../lib/ipc"
 import {
+  getHudPreferences,
+  type HudMotion,
   hideOverlayWindow,
   onOverlayWorkChanged,
   recordHudPosition,
   setFloatingHudEnabled,
+  setHudDragging,
   takeHudAnalyticsOrigin,
 } from "../../lib/overlayWindow"
 import { prefersReducedMotion } from "../../lib/popoverHeight"
@@ -42,6 +45,7 @@ export type OverlaySnapshot = {
   sessionLive: boolean
   /** True when `bars` is empty because every meter is turned off. */
   noMeterSelected: boolean
+  motion: HudMotion
 }
 
 const INITIAL_SNAPSHOT: OverlaySnapshot = {
@@ -50,6 +54,7 @@ const INITIAL_SNAPSHOT: OverlaySnapshot = {
   dragging: false,
   sessionLive: false,
   noMeterSelected: false,
+  motion: { dynamic: false, edge: "top", concealing: false },
 }
 
 type DragOrigin = {
@@ -93,6 +98,8 @@ export class OverlaySession {
   private livenessExpiry: number | null = null
   private latestActivity: number | null = null
   private livenessRevision = 0
+  private stopMotionListening: (() => void) | null = null
+  private motionRevision = 0
   private stopWorkListening: (() => void) | null = null
   private stopHoverListening: (() => void) | null = null
   private stopUsageListening: (() => void) | null = null
@@ -104,6 +111,11 @@ export class OverlaySession {
   private dragOrigin: DragOrigin | null = null
   private pendingMove: MouseEvent | null = null
   private moveFrame = 0
+  private dragWork: Promise<void> = Promise.resolve()
+  private dragRevision = 0
+  private dragMoved = false
+  private pendingNativePosition: LogicalPosition | null = null
+  private dragMoveQueued = false
   private readonly hudExposure = new SurfaceExposureTracker()
   private readonly detailExposure = new SurfaceExposureTracker()
   private hudExposureGeneration: number | null = null
@@ -168,6 +180,41 @@ export class OverlaySession {
     this.started = true
     const generation = ++this.generation
     document.body.dataset.transparentWindow = "true"
+    void listen<HudMotion>("hud:motion", (event) => {
+      if (!this.isLifecycleCurrent(generation)) return
+      this.motionRevision += 1
+      this.update({ motion: event.payload })
+      if (event.payload.concealing) {
+        this.clearShowTimer()
+        this.hideDetail()
+      }
+    })
+      .then((dispose) => {
+        if (!this.isLifecycleCurrent(generation)) {
+          dispose()
+          return
+        }
+        this.stopMotionListening = dispose
+        const revision = this.motionRevision
+        void getHudPreferences()
+          .then((preferences) => {
+            if (
+              !this.isLifecycleCurrent(generation) ||
+              revision !== this.motionRevision ||
+              !preferences
+            )
+              return
+            this.update({
+              motion: {
+                dynamic: preferences.dynamic,
+                edge: preferences.edge,
+                concealing: false,
+              },
+            })
+          })
+          .catch(() => {})
+      })
+      .catch(() => {})
     void this.startWorkLifecycle(generation)
   }
 
@@ -293,6 +340,8 @@ export class OverlaySession {
     this.started = false
     this.generation += 1
     this.stopActivity()
+    this.stopMotionListening?.()
+    this.stopMotionListening = null
     this.stopWorkListening?.()
     this.stopWorkListening = null
     this.hudExposure.suspend()
@@ -325,6 +374,10 @@ export class OverlaySession {
     this.stopVisibilityListening = null
     this.stopDetailShownListening?.()
     this.stopDetailShownListening = null
+    if (this.snapshot.dragging) {
+      void this.queueDragWork(() => setHudDragging(false)).catch(() => {})
+    }
+    this.dragRevision += 1
     this.removeDragListeners()
     this.observer?.disconnect()
     this.observer = null
@@ -546,7 +599,10 @@ export class OverlaySession {
       this.snapshot.hovered === next.hovered &&
       this.snapshot.dragging === next.dragging &&
       this.snapshot.sessionLive === next.sessionLive &&
-      this.snapshot.noMeterSelected === next.noMeterSelected
+      this.snapshot.noMeterSelected === next.noMeterSelected &&
+      this.snapshot.motion.dynamic === next.motion.dynamic &&
+      this.snapshot.motion.edge === next.motion.edge &&
+      this.snapshot.motion.concealing === next.motion.concealing
     ) {
       return false
     }
@@ -584,9 +640,22 @@ export class OverlaySession {
     this.hideDetail()
     this.update({ dragging: true })
     this.dragOrigin = null
+    this.dragMoved = false
+    const revision = ++this.dragRevision
     this.addDragListeners()
+    try {
+      await this.queueDragWork(() => setHudDragging(true))
+    } catch {
+      if (this.dragRevision === revision) this.settleDrag()
+      return
+    }
     await this.syncWindow(false, generation)
-    if (!this.isCurrent(generation) || !this.snapshot.dragging) return
+    if (
+      !this.isCurrent(generation) ||
+      !this.snapshot.dragging ||
+      this.dragRevision !== revision
+    )
+      return
 
     let monitor
     let position
@@ -595,10 +664,15 @@ export class OverlaySession {
       monitor = result[0]
       position = result[1]
     } catch {
-      if (this.isCurrent(generation)) this.settleDrag()
+      if (this.isCurrent(generation) && this.dragRevision === revision) this.settleDrag()
       return
     }
-    if (!this.isCurrent(generation) || !this.snapshot.dragging) return
+    if (
+      !this.isCurrent(generation) ||
+      !this.snapshot.dragging ||
+      this.dragRevision !== revision
+    )
+      return
     const scale = monitor?.scaleFactor ?? 1
     this.dragOrigin = {
       pointerX: screenX,
@@ -634,23 +708,50 @@ export class OverlaySession {
     const event = this.pendingMove
     this.pendingMove = null
     if (!event || !origin) return
-    void getCurrentWindow().setPosition(
-      new LogicalPosition(
-        origin.windowX + (event.screenX - origin.pointerX),
-        origin.windowY + (event.screenY - origin.pointerY),
-      ),
+    if (
+      !this.dragMoved &&
+      event.screenX === origin.pointerX &&
+      event.screenY === origin.pointerY
     )
+      return
+    this.dragMoved = true
+    const position = new LogicalPosition(
+      origin.windowX + (event.screenX - origin.pointerX),
+      origin.windowY + (event.screenY - origin.pointerY),
+    )
+    this.pendingNativePosition = position
+    if (this.dragMoveQueued) return
+    this.dragMoveQueued = true
+    void this.queueDragWork(async () => {
+      try {
+        while (this.pendingNativePosition) {
+          const next = this.pendingNativePosition
+          this.pendingNativePosition = null
+          await getCurrentWindow().setPosition(next)
+        }
+      } finally {
+        this.dragMoveQueued = false
+      }
+    }).catch(() => {})
   }
 
   private stopDrag = (): void => {
     if (!this.snapshot.dragging) return
+    if (this.moveFrame) window.cancelAnimationFrame(this.moveFrame)
+    this.applyDragMove()
+    if (this.dragMoved) void this.queueDragWork(recordHudPosition).catch(() => {})
     this.settleDrag()
-    // The drag is what makes this display the preferred one, so the record
-    // happens here and not in `settleDrag`, which a failed drag start shares.
-    void recordHudPosition().catch(() => {})
+  }
+
+  private queueDragWork(work: () => Promise<void>): Promise<void> {
+    const next = this.dragWork.then(work)
+    this.dragWork = next.catch(() => {})
+    return next
   }
 
   private settleDrag(): void {
+    this.dragRevision += 1
+    void this.queueDragWork(() => setHudDragging(false)).catch(() => {})
     this.removeDragListeners()
     this.dragOrigin = null
     this.update({ dragging: false })

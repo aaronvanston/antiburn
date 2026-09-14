@@ -54,6 +54,8 @@ vi.mock("../lib/overlayWindow", async (importOriginal) => {
     ...actual,
     isCurrentWindowVisible: async () => hudPreference.popoverVisible,
     isFloatingHudEnabled: () => hudPreference.enabled,
+    getHudPreferences: () =>
+      invoke("get_hud_preferences", { legacyEnabled: hudPreference.enabled }),
     isOverlayWindowVisible: overlayVisibilityRead,
   }
 })
@@ -1378,7 +1380,7 @@ describe("PopoverView — floating HUD restore", () => {
     overlayVisibilityRead.mockImplementation(async () => hudPreference.overlayVisible)
   })
 
-  it("keeps the stored HUD hidden before the popover is shown", async () => {
+  it("migrates HUD preferences without waiting for a visible popover", async () => {
     platform.mac = true
     hudPreference.enabled = true
     render(<PopoverView />)
@@ -1387,7 +1389,7 @@ describe("PopoverView — floating HUD restore", () => {
     expect(invoke).not.toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" })
   })
 
-  it("reopens the stored HUD when the hidden popover appears", async () => {
+  it("does not reopen a dynamically concealed HUD when the popover appears", async () => {
     platform.mac = true
     hudPreference.enabled = true
     render(<PopoverView />)
@@ -1397,19 +1399,21 @@ describe("PopoverView — floating HUD restore", () => {
     emit("popover:shown", null)
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" }),
+      expect(invoke).toHaveBeenCalledWith("get_hud_preferences", { legacyEnabled: true }),
     )
+    expect(invoke).not.toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" })
   })
 
-  it("restores the stored HUD when the popover opened before its listener attached", async () => {
+  it("loads preferences when the popover opened before its listener attached", async () => {
     platform.mac = true
     hudPreference.enabled = true
     hudPreference.popoverVisible = true
     render(<PopoverView />)
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" }),
+      expect(invoke).toHaveBeenCalledWith("get_hud_preferences", { legacyEnabled: true }),
     )
+    expect(invoke).not.toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" })
   })
 
   it("does not show a stored HUD that is already visible", async () => {
@@ -1419,7 +1423,10 @@ describe("PopoverView — floating HUD restore", () => {
     hudPreference.popoverVisible = true
     render(<PopoverView />)
 
-    await waitFor(() => expect(overlayVisibilityRead).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("get_hud_preferences", { legacyEnabled: true }),
+    )
+    expect(overlayVisibilityRead).not.toHaveBeenCalled()
     expect(invoke).not.toHaveBeenCalledWith("open_overlay_window", { origin: "automatic" })
   })
 

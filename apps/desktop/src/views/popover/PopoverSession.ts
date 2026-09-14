@@ -44,12 +44,7 @@ import {
 } from "../../lib/insightsIpc"
 import { costOutlierThreshold } from "../../lib/presentation/sessionAnalysis"
 import { liveDisplayableProviders, liveWindows } from "../../lib/presentation/liveUsage"
-import {
-  isCurrentWindowVisible,
-  isFloatingHudEnabled,
-  isOverlayWindowVisible,
-  openOverlayWindow,
-} from "../../lib/overlayWindow"
+import { isCurrentWindowVisible, getHudPreferences } from "../../lib/overlayWindow"
 import { isMacOS } from "../../lib/platform"
 import { SurfaceExposureTracker, liveUsageObservations } from "../../lib/surfaceExposure"
 import type { LocalRepositoryItem, LocalRepositoryStatus } from "../../lib/types/repository"
@@ -706,12 +701,8 @@ export class PopoverSession {
   }
 
   private restoreFloatingHud = async (generation: number): Promise<void> => {
-    if (!isMacOS() || !isFloatingHudEnabled()) return
-    const visible = await isCurrentWindowVisible()
-    if (generation !== this.generation || !visible) return
-    const overlayVisible = await isOverlayWindowVisible()
-    if (generation !== this.generation || overlayVisible) return
-    await openOverlayWindow("automatic").catch(() => {})
+    if (!isMacOS() || generation !== this.generation) return
+    await getHudPreferences().catch(() => {})
   }
 
   private listenLiveUsage = async (generation: number): Promise<void> => {

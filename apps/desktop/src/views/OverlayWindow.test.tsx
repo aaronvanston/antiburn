@@ -388,12 +388,23 @@ describe("OverlayWindow", () => {
   })
 
   it("retries a transient native work-listener failure", async () => {
-    listenNative.mockRejectedValueOnce(new Error("listener unavailable"))
+    const listen = listenNative.getMockImplementation()!
+    let failed = false
+    listenNative.mockImplementation(
+      (name: string, handler: (event: { payload: unknown }) => void) => {
+        if (name === "overlay_work_changed" && !failed) {
+          failed = true
+          return Promise.reject(new Error("listener unavailable"))
+        }
+        return listen(name, handler)
+      },
+    )
     render(<OverlayWindow />)
 
     await waitFor(() => expect(getLiveUsage).toHaveBeenCalled())
-    expect(listenNative.mock.calls[0]?.[0]).toBe("overlay_work_changed")
-    expect(listenNative.mock.calls[1]?.[0]).toBe("overlay_work_changed")
+    expect(
+      listenNative.mock.calls.filter(([name]) => name === "overlay_work_changed"),
+    ).toHaveLength(2)
     expect(nativeEvents.get("overlay_work_changed")?.size).toBe(1)
   })
 
@@ -843,11 +854,58 @@ describe("OverlayWindow", () => {
     await waitFor(() => expect(getLiveUsage).toHaveBeenCalled())
     fireEvent.mouseDown(panel(container), { screenX: 700, screenY: 100 })
     await waitFor(() => expect(outerPosition).toHaveBeenCalledTimes(1))
+    fireEvent.mouseMove(window, { screenX: 710, screenY: 110 })
     fireEvent.mouseUp(window)
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("record_hud_position"))
     const records = invoke.mock.calls.filter(([command]) => command === "record_hud_position")
     expect(records).toHaveLength(1)
+  })
+
+  it("holds a dynamic HUD through the final movement and save before releasing", async () => {
+    let finishMove!: () => void
+    setPosition.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishMove = resolve
+        }),
+    )
+    const { container } = render(<OverlayWindow />)
+    await waitFor(() => expect(getLiveUsage).toHaveBeenCalled())
+    act(() => emitNative("hud:motion", { dynamic: true, edge: "left", concealing: false }))
+    fireEvent.mouseDown(panel(container), { screenX: 700, screenY: 100 })
+    await waitFor(() => expect(outerPosition).toHaveBeenCalledTimes(1))
+    expect(invoke).toHaveBeenCalledWith("set_hud_dragging", { active: true })
+    act(() => emitNative("hud:motion", { dynamic: true, edge: "left", concealing: false }))
+    fireEvent.mouseMove(window, { screenX: 720, screenY: 120 })
+    fireEvent.mouseUp(window)
+    await waitFor(() => expect(setPosition).toHaveBeenCalled())
+    expect(invoke).not.toHaveBeenCalledWith("record_hud_position")
+    expect(invoke).not.toHaveBeenCalledWith("set_hud_dragging", { active: false })
+    await act(async () => finishMove())
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_hud_dragging", { active: false }),
+    )
+    const commands = invoke.mock.calls.map(([command]) => command)
+    expect(commands.indexOf("record_hud_position")).toBeGreaterThan(
+      commands.indexOf("set_hud_dragging"),
+    )
+    expect(commands.lastIndexOf("set_hud_dragging")).toBeGreaterThan(
+      commands.indexOf("record_hud_position"),
+    )
+    expect(setPosition).toHaveBeenCalledWith(expect.objectContaining({ x: 620, y: 60 }))
+  })
+
+  it("keeps the default placement after a click without movement", async () => {
+    const { container } = render(<OverlayWindow />)
+    await waitFor(() => expect(getLiveUsage).toHaveBeenCalled())
+    fireEvent.mouseDown(panel(container), { screenX: 700, screenY: 100 })
+    await waitFor(() => expect(outerPosition).toHaveBeenCalledTimes(1))
+    fireEvent.mouseUp(window)
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_hud_dragging", { active: false }),
+    )
+    expect(invoke).not.toHaveBeenCalledWith("record_hud_position")
   })
 
   it("does not remember a position when no drag was running", async () => {
@@ -858,14 +916,20 @@ describe("OverlayWindow", () => {
   })
 
   it("survives a rejected position record", async () => {
-    invoke.mockRejectedValueOnce(new Error("no window"))
+    invoke.mockImplementation(async (command) => {
+      if (command === "record_hud_position") throw new Error("no window")
+    })
     const { container } = render(<OverlayWindow />)
     await waitFor(() => expect(getLiveUsage).toHaveBeenCalled())
     fireEvent.mouseDown(panel(container), { screenX: 700, screenY: 100 })
     await waitFor(() => expect(outerPosition).toHaveBeenCalledTimes(1))
+    fireEvent.mouseMove(window, { screenX: 710, screenY: 110 })
     fireEvent.mouseUp(window)
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("record_hud_position"))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_hud_dragging", { active: false }),
+    )
     fireEvent.mouseEnter(frame(container))
     expect(frame(container)).toBeInTheDocument()
   })
@@ -923,5 +987,25 @@ describe("OverlayWindow", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("updates directional conceal and cancels it on a new reveal", async () => {
+    const { container } = render(<OverlayWindow />)
+    await waitFor(() => expect(nativeEvents.has("hud:motion")).toBe(true))
+    act(() => emitNative("hud:motion", { dynamic: true, edge: "left", concealing: true }))
+    expect(container.querySelector(".hud-motion-content")).toHaveAttribute("data-edge", "left")
+    expect(container.querySelector(".hud-motion-content")).toHaveAttribute(
+      "data-concealing",
+      "true",
+    )
+    act(() => emitNative("hud:motion", { dynamic: true, edge: "bottom", concealing: false }))
+    expect(container.querySelector(".hud-motion-content")).toHaveAttribute(
+      "data-edge",
+      "bottom",
+    )
+    expect(container.querySelector(".hud-motion-content")).toHaveAttribute(
+      "data-concealing",
+      "false",
+    )
   })
 })

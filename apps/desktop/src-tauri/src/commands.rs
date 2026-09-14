@@ -223,28 +223,25 @@ pub async fn open_overlay_window(
     app: tauri::AppHandle,
     origin: crate::analytics::event::Origin,
 ) -> CommandResult<()> {
-    let entries = crate::hud::load_placements(&app.state::<Store>());
-    let needs_exposure = hud_needs_exposure(&app);
-    if needs_exposure {
-        crate::analytics::prepare_hud_exposure(origin);
-    }
-    if let Err(error) = antiburn_hud::open(&app, &entries) {
-        if needs_exposure {
-            crate::analytics::cancel_hud_exposure();
-        }
-        return Err(fail(error));
-    }
-    Ok(())
+    crate::hud_dynamic::reveal(&app, origin).await.map(|_| ())
 }
 
-#[cfg(target_os = "macos")]
-fn hud_needs_exposure(app: &tauri::AppHandle) -> bool {
-    !hud_is_exposed(app)
+/// Read native HUD settings and migrate the legacy preference once.
+#[tauri::command]
+pub async fn get_hud_preferences(
+    app: tauri::AppHandle,
+    legacy_enabled: bool,
+) -> CommandResult<crate::hud_dynamic::Preferences> {
+    crate::hud_dynamic::read(&app, legacy_enabled).await
 }
 
-#[cfg(not(target_os = "macos"))]
-fn hud_needs_exposure(_app: &tauri::AppHandle) -> bool {
-    false
+/// Apply one HUD preference change without replacing other fields.
+#[tauri::command]
+pub async fn set_hud_preferences(
+    app: tauri::AppHandle,
+    change: crate::hud_dynamic::Change,
+) -> CommandResult<crate::hud_dynamic::Preferences> {
+    crate::hud_dynamic::change(&app, change).await
 }
 
 #[cfg(target_os = "macos")]
@@ -264,6 +261,12 @@ pub fn take_hud_analytics_origin(app: tauri::AppHandle) -> Option<crate::analyti
     crate::analytics::take_hud_exposure_origin(hud_is_exposed(&app))
 }
 
+/// Hold the HUD during a drag and restore placement after release.
+#[tauri::command]
+pub async fn set_hud_dragging(app: tauri::AppHandle, active: bool) -> CommandResult<()> {
+    crate::hud_dynamic::drag(&app, active).await.map(|_| ())
+}
+
 /// Remember where the HUD is, after a drag moved it.
 ///
 /// No argument: the webview knows a drag ended, the shell knows where the
@@ -275,9 +278,17 @@ pub fn record_hud_position(app: tauri::AppHandle) {
 
 /// Hide the usage HUD and cancel any pending reveal.
 #[tauri::command]
-pub fn hide_overlay_window(app: tauri::AppHandle) -> CommandResult<()> {
+pub async fn hide_overlay_window(app: tauri::AppHandle) -> CommandResult<()> {
     crate::analytics::cancel_hud_exposure();
-    antiburn_hud::hide(&app).map_err(fail)
+    crate::hud_dynamic::change(
+        &app,
+        crate::hud_dynamic::Change {
+            enabled: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Return whether the HUD should run while its retained renderer mounts.
@@ -506,6 +517,9 @@ pub fn note_interaction(app: tauri::AppHandle, interaction: crate::analytics::ev
 }
 
 fn apply_settings_transition(app: &tauri::AppHandle, previous: &AppSettings, saved: &AppSettings) {
+    if previous.discovery_paused != saved.discovery_paused {
+        crate::hud_dynamic::reset_activity(app);
+    }
     // This transition means the current setup run is over. It can repeat only
     // after an explicit restart. Each completion refreshes data and explains
     // where the menu-bar app went.

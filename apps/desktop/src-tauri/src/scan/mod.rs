@@ -864,6 +864,7 @@ async fn pass(
         changed,
         list_changed,
     } = describe_with_states(logs, &home, &ignored, &previous_records).await;
+    crate::hud_dynamic::observe_records(app, &records);
     let evidence_agents: Vec<&str> = match scope {
         PassScope::Full => agents::evidence_cohort(),
         PassScope::Agents(agents) => agents.iter().map(|agent| agent.slug()).collect(),

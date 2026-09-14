@@ -246,3 +246,22 @@ body[data-transparent-window] #root {
 .hud-leds .led-off {
   background-color: var(--hud-led-off);
 }
+
+/* Move the content within the native frame before the shell hides it. */
+.hud-motion-content {
+  transition:
+    transform var(--duration-slow) var(--ease-out-quart),
+    background-color var(--duration-fast) ease-out;
+}
+.hud-motion-content[data-concealing="true"][data-edge="top"] {
+  transform: translateY(-100%);
+}
+.hud-motion-content[data-concealing="true"][data-edge="bottom"] {
+  transform: translateY(100%);
+}
+.hud-motion-content[data-concealing="true"][data-edge="left"] {
+  transform: translateX(calc(-100% - 2 * var(--space-sm)));
+}
+.hud-motion-content[data-concealing="true"][data-edge="right"] {
+  transform: translateX(calc(100% + 2 * var(--space-sm)));
+}
