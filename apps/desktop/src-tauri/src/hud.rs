@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use antiburn_hud::Placement;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 use crate::store::Store;
 
