@@ -15,17 +15,15 @@ import { WindowMeterRow } from "../../../components/providerUsage/UsageLimitsBar
 import { useStableAccountNumbers } from "../../../components/providerUsage/useStableAccountNumbers"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
-/**
- * Fewer dots than the popover's 32: the Overview card is narrower than the
- * popover row, and 16 keeps the dots the same distance apart.
- */
-const OVERVIEW_METER_SEGMENTS = 16
+/** The popover's dot count. The group width cap keeps the dots as close. */
+const OVERVIEW_METER_SEGMENTS = 32
 
 /**
- * The provider limits panel: one card per provider account with a dot meter
- * for each of its windows and the reset time under each meter. The
- * freshness tag floats in the top-right corner. The panel shows no local
- * cost figure; those belong to the totals above it.
+ * The provider limits panel: one group per provider account with a dot meter
+ * for each of its windows and the reset time under each meter. A group is
+ * capped at the popover row's width, so the dots pack the same as there.
+ * The freshness tag floats in the top-right corner. The panel shows no
+ * local cost figure; those belong to the totals above the panel.
  */
 export function OverviewProviderLimits({
   live,
@@ -99,7 +97,7 @@ export function OverviewProviderLimits({
                 key={key}
                 role="group"
                 aria-label={plan ? `${displayName}, ${plan} plan` : displayName}
-                className="min-w-0"
+                className="min-w-0 max-w-[300px]"
               >
                 <h3 className="type-footnote min-w-0 truncate pr-12 font-medium tracking-wide text-label">
                   <span className="uppercase">{displayName}</span>
@@ -127,7 +125,7 @@ export function OverviewProviderLimits({
               key={entry.provider}
               role="group"
               aria-label={entry.displayName}
-              className="min-w-0"
+              className="min-w-0 max-w-[300px]"
             >
               <h3 className="type-footnote truncate font-medium tracking-wide text-label uppercase">
                 {entry.displayName}

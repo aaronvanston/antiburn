@@ -82,7 +82,7 @@ function liveSummary(
 }
 
 describe("OverviewProviderLimits", () => {
-  it("draws a sixteen-dot meter with the notch, the figure and the reset caption", () => {
+  it("draws a thirty-two-dot meter with the notch, the figure and the reset caption", () => {
     render(<OverviewProviderLimits live={liveSummary()} />)
     const card = screen.getByRole("group", { name: /Claude/ })
     expect(card).toHaveAccessibleName("Claude, Max plan")
@@ -90,10 +90,10 @@ describe("OverviewProviderLimits", () => {
     expect(within(card).getByTestId("segmented-meter-notch")).toHaveStyle({ left: "40%" })
     expect(within(card).getByText(/^resets /)).toBeInTheDocument()
     const dots = card.querySelectorAll(".rounded-full")
-    expect(dots).toHaveLength(16)
+    expect(dots).toHaveLength(32)
     expect(
       Array.from(dots).filter((dot) => dot.className.includes("bg-brand-tint")),
-    ).toHaveLength(7)
+    ).toHaveLength(13)
     expect(screen.getByText("Live")).toHaveClass("text-label-tertiary")
     expect(screen.queryByText(/\$/)).toBeNull()
   })
@@ -120,7 +120,7 @@ describe("OverviewProviderLimits", () => {
     )
     const card = screen.getByRole("group", { name: /Claude/ })
     expect(within(card).getByText("—")).toBeInTheDocument()
-    expect(card.querySelectorAll(".rounded-full.opacity-50")).toHaveLength(16)
+    expect(card.querySelectorAll(".rounded-full.opacity-50")).toHaveLength(32)
     expect(card.querySelectorAll(".bg-system-red-tint").length).toBeGreaterThan(0)
   })
 

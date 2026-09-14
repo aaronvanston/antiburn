@@ -25,9 +25,22 @@ const AXIS_LABEL_STEP = 7
 /** A dated label this close to "Today" would collide with it. */
 const AXIS_LABEL_CLEARANCE = 3
 
-/** The figure beside a guide: whole dollars once the scale passes cents. */
-function guideLabel(usd: number): string {
-  return usd >= 10 ? `$${Math.round(usd).toLocaleString("en-US")}` : formatSpendFigure(usd)
+/** The fractions of the scale that carry a hairline and a figure. */
+const GUIDE_FRACTIONS = [1, 0.75, 0.5, 0.25]
+
+/**
+ * The figures beside the guides, one precision for the whole scale: whole
+ * dollars when every guide lands on one, else dollars and cents.
+ */
+function guideLabels(ceiling: number): Map<number, string> {
+  const values = GUIDE_FRACTIONS.map((fraction) => [fraction, ceiling * fraction] as const)
+  const whole = values.every(([, usd]) => Number.isInteger(usd))
+  return new Map(
+    values.map(([fraction, usd]) => [
+      fraction,
+      whole ? `$${usd.toLocaleString("en-US")}` : formatSpendFigure(usd),
+    ]),
+  )
 }
 
 /** The bar for one day: its height on the scale, and whether it has a figure. */
@@ -64,8 +77,9 @@ function dayDetail(
 /**
  * Thirty days of estimated local spend as paired pill bars: this period in
  * front, the thirty days before it behind in a quiet neutral. Each day is a
- * button; the selected day writes its reading on the line under the chart,
- * and the arrow keys walk the days.
+ * button, and the arrow keys walk the days. A selected past day writes its
+ * reading on the line under the chart. Today has no line there: the totals
+ * under the chart already show it.
  *
  * A day with tokens but no price draws an outlined dot and says "not priced",
  * so it is never mistaken for a day at zero.
@@ -122,26 +136,11 @@ export function OverviewSpendChart({
       aria-label="Estimated spend by day"
       aria-busy={loading || undefined}
     >
-      <div className="flex items-baseline justify-between gap-[var(--space-md)]">
-        <h2 className="type-caption text-label-secondary">
-          Estimated spend by session activity date
-        </h2>
-        <p className="type-caption flex items-center gap-[var(--space-md)] text-label-tertiary">
-          <span className="inline-flex items-center gap-[var(--space-xs)]">
-            <span aria-hidden="true" className="h-2 w-2 rounded-small bg-token-in" />
-            Last 30 days
-          </span>
-          <span className="inline-flex items-center gap-[var(--space-xs)]">
-            <span aria-hidden="true" className="h-2 w-2 rounded-small bg-label-tertiary/30" />
-            30 days before
-          </span>
-        </p>
-      </div>
       {loading || days.length === 0 ? (
-        <Skeleton className="mt-[var(--space-md)] block h-[var(--overview-chart-height)] w-full" />
+        <Skeleton className="block h-[var(--overview-chart-height)] w-full" />
       ) : (
         <>
-          <div className="overview-chart-scroll mt-[var(--space-md)]">
+          <div className="overview-chart-scroll">
             <div className="overview-chart-body">
               <div className="overview-plot">
                 <div className="relative">
@@ -208,20 +207,41 @@ export function OverviewSpendChart({
               </div>
             </div>
           </div>
-          {selected && (
-            <p
-              role="status"
-              className="type-caption mt-[var(--space-sm)] whitespace-nowrap text-label-secondary"
-              data-testid="overview-chart-detail"
-            >
-              <SegmentFigure>
-                {dayDetail(selected, previousDays[selectedIndex], selectedIndex === lastIndex)}
-              </SegmentFigure>
-            </p>
-          )}
+          <div className="mt-[var(--space-sm)] flex items-baseline justify-between gap-[var(--space-md)]">
+            {selected && selectedIndex !== lastIndex ? (
+              <p
+                role="status"
+                className="type-caption min-w-0 truncate text-label-secondary"
+                data-testid="overview-chart-detail"
+              >
+                <SegmentFigure>
+                  {dayDetail(selected, previousDays[selectedIndex], false)}
+                </SegmentFigure>
+              </p>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            <Legend />
+          </div>
         </>
       )}
     </section>
+  )
+}
+
+/** The key for the two series, at the right edge under the axis. */
+function Legend() {
+  return (
+    <p className="type-caption flex shrink-0 items-center gap-[var(--space-md)] text-label-tertiary">
+      <span className="inline-flex items-center gap-[var(--space-xs)]">
+        <span aria-hidden="true" className="h-2 w-2 rounded-small bg-token-in" />
+        Last 30 days
+      </span>
+      <span className="inline-flex items-center gap-[var(--space-xs)]">
+        <span aria-hidden="true" className="h-2 w-2 rounded-small bg-label-tertiary/30" />
+        30 days before
+      </span>
+    </p>
   )
 }
 
@@ -245,10 +265,7 @@ function Bar({
   )
 }
 
-/** The fractions of the scale that carry a hairline and a figure. */
-const GUIDE_FRACTIONS = [1, 0.5]
-
-/** Hairlines at the top and the middle of the scale, behind the bars. */
+/** Hairlines at each quarter of the scale, behind the bars. */
 function Guides() {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0">
@@ -265,6 +282,7 @@ function Guides() {
 
 /** The figures for the guides, in a gutter to the right of the bars. */
 function GuideLabels({ ceiling }: { ceiling: number }) {
+  const labels = guideLabels(ceiling)
   return (
     <div
       aria-hidden="true"
@@ -276,7 +294,7 @@ function GuideLabels({ ceiling }: { ceiling: number }) {
           className="absolute right-0 -translate-y-1/2 whitespace-nowrap"
           style={{ top: `${(1 - fraction) * 100}%` }}
         >
-          <SegmentFigure>{guideLabel(ceiling * fraction)}</SegmentFigure>
+          <SegmentFigure>{labels.get(fraction) ?? ""}</SegmentFigure>
         </span>
       ))}
     </div>

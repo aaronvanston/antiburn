@@ -10,24 +10,24 @@ handoff below is kept as the design record under its original name.
 from the `codex/home-view-design-handoff` worktree, where it is still untracked)
 
 This plan turns the agreed design handoff into stacked, reviewable changes. The
-handoff owns the *what*; this document owns the *how* and the *order*. Where the
+handoff owns the _what_; this document owns the _how_ and the _order_. Where the
 code differs from what the handoff assumed, the difference is called out.
 
 ## What the code says today
 
 Checked against `origin/main` on 2026-09-14.
 
-| Handoff assumption | Reality | Effect on the plan |
-|---|---|---|
-| Overview section id is a TS change in `ipc.ts` | `MainWindowSectionId` is mirrored by the Rust `MainWindowSection` enum in `src-tauri/src/main_window.rs:39` (serde camelCase) | Add `Overview` on both sides in slice 1 |
-| `getProviderUsage()` is callable from the main window | `src-tauri/capabilities/main.json` grants `allow-get-live-usage` but **not** `allow-get-provider-usage`; only the popover capability set has it | Add the capability entry in slice 2, plus one for the new daily command |
-| Payload types live in `ipc.ts` | They live in `src/lib/providerUsageIpc.ts` (`ProviderUsageSummaryPayload`, `LiveProviderUsagePayload`, …); `ipc.ts` re-exports and owns the `invoke` wrappers | Types go in `providerUsageIpc.ts` |
-| Daily buckets need a new series | Confirmed: `provider_usage::summarize` only fills `today / week / month_to_date / last_30_days` buckets from `updated_at_epoch` (`provider_usage/mod.rs:483`) | New `days` series in slice 2 |
-| Recent sessions can come from `MainActivitySession` | Its list only loads once a viewer subscribes *actively* (`subscribeInactive` never starts the load). Subscribing actively from Overview would also start its selection/analysis machinery | Overview loads its own three rows with `listRecentSessions()` (same command the popover uses) |
-| Session rows are reusable | `SessionRow` is a private function inside `SessionList.tsx:305`; `SessionList` itself is virtualized with grouping and a toolbar | Export the row from `SessionList.tsx`; do not mount the full list for three rows |
-| Burn findings can open "with the check selected" | `BurnChecksReport` has no external selection API; each `CheckRow` owns its own `open` state (`BurnChecksReport.tsx:67`) | v1 navigates to the Burn checks section; a `focusDetector` request on `BurnChecksSession` is a small follow-up (see Decisions) |
-| Burn checks summary can share `BurnChecksSession` | The session only becomes `active` with an active subscriber **and** a visible window, and an active subscriber also fires the `burn_checks` surface-exposure analytics | Overview reads the report with its own consumer id and never counts as a Burn checks exposure |
-| Chart needs a library decision | `recharts` 3.10.1 is already a dependency (`ContextTokensChart.tsx`), but its bars are not keyboard-focusable | Plain DOM bars (30 buttons) — see Decisions |
+| Handoff assumption                                    | Reality                                                                                                                                                                                   | Effect on the plan                                                                                                             |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Overview section id is a TS change in `ipc.ts`        | `MainWindowSectionId` is mirrored by the Rust `MainWindowSection` enum in `src-tauri/src/main_window.rs:39` (serde camelCase)                                                             | Add `Overview` on both sides in slice 1                                                                                        |
+| `getProviderUsage()` is callable from the main window | `src-tauri/capabilities/main.json` grants `allow-get-live-usage` but **not** `allow-get-provider-usage`; only the popover capability set has it                                           | Add the capability entry in slice 2, plus one for the new daily command                                                        |
+| Payload types live in `ipc.ts`                        | They live in `src/lib/providerUsageIpc.ts` (`ProviderUsageSummaryPayload`, `LiveProviderUsagePayload`, …); `ipc.ts` re-exports and owns the `invoke` wrappers                             | Types go in `providerUsageIpc.ts`                                                                                              |
+| Daily buckets need a new series                       | Confirmed: `provider_usage::summarize` only fills `today / week / month_to_date / last_30_days` buckets from `updated_at_epoch` (`provider_usage/mod.rs:483`)                             | New `days` series in slice 2                                                                                                   |
+| Recent sessions can come from `MainActivitySession`   | Its list only loads once a viewer subscribes _actively_ (`subscribeInactive` never starts the load). Subscribing actively from Overview would also start its selection/analysis machinery | Overview loads its own three rows with `listRecentSessions()` (same command the popover uses)                                  |
+| Session rows are reusable                             | `SessionRow` is a private function inside `SessionList.tsx:305`; `SessionList` itself is virtualized with grouping and a toolbar                                                          | Export the row from `SessionList.tsx`; do not mount the full list for three rows                                               |
+| Burn findings can open "with the check selected"      | `BurnChecksReport` has no external selection API; each `CheckRow` owns its own `open` state (`BurnChecksReport.tsx:67`)                                                                   | v1 navigates to the Burn checks section; a `focusDetector` request on `BurnChecksSession` is a small follow-up (see Decisions) |
+| Burn checks summary can share `BurnChecksSession`     | The session only becomes `active` with an active subscriber **and** a visible window, and an active subscriber also fires the `burn_checks` surface-exposure analytics                    | Overview reads the report with its own consumer id and never counts as a Burn checks exposure                                  |
+| Chart needs a library decision                        | `recharts` 3.10.1 is already a dependency (`ContextTokensChart.tsx`), but its bars are not keyboard-focusable                                                                             | Plain DOM bars (30 buttons) — see Decisions                                                                                    |
 
 ## Decisions (proposed, for Keith to confirm)
 
@@ -38,14 +38,14 @@ Checked against `origin/main` on 2026-09-14.
    payload grows by 30 small rows for every caller, including the popover; that is
    cheap. The alternative, a separate `get_provider_usage_days` command, is only
    worth it if the popover must never see the series.
-   *Keith (u-1): "cheap vers, then we'll review".* Decided: the existing summary.
+   _Keith (u-1): "cheap vers, then we'll review"._ Decided: the existing summary.
 2. **Bars are plain DOM, not recharts.** Thirty `<button>` elements in a flex row,
    heights from the day's `estimatedUsd` as a percentage of the y-axis max, roving
    `tabindex` with arrow keys. This gives hover and keyboard focus the same
    selected-day detail line for free, renders identically in tests, and keeps the
    chart on semantic utilities. `ContextTokensChart` stays on recharts; the two
    charts do different jobs.
-   *Keith (u-2): "some subtle growth animation in would be optimal".* So the bars
+   _Keith (u-2): "some subtle growth animation in would be optimal"._ So the bars
    grow in once on first paint: each bar transitions `height` from 0 over
    `--duration-slow` (300ms, the token `design.md` reserves for "a meter or bar
    that fills"), with a small per-bar stagger left to right so the chart reads as
@@ -66,7 +66,7 @@ Checked against `origin/main` on 2026-09-14.
 5. **Finding rows navigate to Burn checks, not to a specific check, in v1.**
    Deep-linking would need a `focusDetector(id)` request on `BurnChecksSession`
    that `CheckRow` honours by opening and scrolling.
-   *Keith (u-4): "I think we may need to re think burn checks a later day".* So
+   _Keith (u-4): "I think we may need to re think burn checks a later day"._ So
    slice 4b is dropped from this stack. Finding rows land on the Burn checks
    section and nothing more; the Overview side of the checks panel stays thin
    (title, count, verified savings, top three findings) so a later rethink of
@@ -133,6 +133,48 @@ Layout, top to bottom, at 1040px comfortable density, 16px panel padding:
    them (status line, title, models, repo · time, fail wash).
 6. **Both themes** verified at every version; no new token was needed.
 
+## Round 2 feedback (2026-09-14, in-app via notate)
+
+Keith tested the built page in the running app and pinned thirteen notes with
+`notate` (captures `notate-2026-09-14-12.42.20` and `notate-2026-09-14-12.43.45`).
+Each note and the change it produced, applied on top of the settled design above:
+
+1. "Lets try with chart on the top" → the chart is first; the totals sit under it.
+2. "This 'estimated spend' label seems redundant" (chart heading) → heading removed.
+   The section keeps its accessible name.
+3. "This is redundant. Remove." (selected-day line under the chart) → the line shows
+   only when a day other than today is selected; today's reading is the totals.
+4. "remove" ("Local sessions" caption) → removed, with the "Estimated" kicker row.
+   The totals cells carry their own labels.
+5. "Key needs better home" (legend collided with the top guide figure) → the key
+   moves to a footer row under the axis, right-aligned, on the same line as the
+   selected-day reading.
+6. "These are spaced out way too much" (meter dots) → 32 segments, the popover's
+   count, and each provider group is capped at 300px so the dots pack the same.
+7. "Remove this" ("More →") → removed. The summary header is the button to the
+   report instead.
+8. "Use the actual new radial display here" → the flame mark is the report hero's
+   `SegmentedRadialDial` (butt caps, no gap, burn in `brand-tint` over `measure`)
+   at 44px, with the same minimum-arc rule.
+9. "Is there a compact version of these?" (session rows) → `SessionRow` gains a
+   `compact` prop: one line with the status, title, first model, time and cost.
+   Overview uses it; the Sessions list is unchanged.
+10. "How to make this view more prominent." (Burn checks) → the burn percent is the
+    headline in `type-title-2`; "N findings · M passed" is the detail line.
+11. "This space is stupid" (empty area under the checks card) → the panel row is
+    now Burn checks beside Recent sessions, two blocks of about the same height,
+    stretched to one height. Provider limits moves to a full-width panel under
+    them, with the provider groups side by side. The limits card was the tall
+    one; beside anything shorter it always left a hole.
+12. "More lines" (chart guides) → guides at 100/75/50/25 percent, each with a figure.
+13. "Recent sessions is totally below fold. We'll need to be more compact vertically"
+    → page gap `space-xl` instead of `space-2xl`, no chart heading, no totals
+    kicker row, compact session rows, the day reading only on demand, and the
+    sessions panel in the third row instead of the fourth.
+
+Layout after this round, top to bottom: chart, totals, Burn checks beside Recent
+sessions, Provider limits.
+
 ## Slices
 
 Each slice is one PR of roughly a few hundred lines, stacked on the one before
@@ -166,9 +208,10 @@ Goal: Overview exists, is the default, and shows a truthful placeholder.
 Goal: the cost-led top of the page, on real data.
 
 Rust:
+
 - `apps/desktop/src-tauri/src/dto.rs` — add `ProviderUsageDay { local_date: String,
-  tokens_in, tokens_out, cache_read, estimated_usd: Option<f64>, cost_complete: bool,
-  session_count: u32 }` and `days: Vec<ProviderUsageDay>` on `ProviderUsageSummary`.
+tokens_in, tokens_out, cache_read, estimated_usd: Option<f64>, cost_complete: bool,
+session_count: u32 }` and `days: Vec<ProviderUsageDay>` on `ProviderUsageSummary`.
 - `apps/desktop/src-tauri/src/provider_usage/mod.rs` — add
   `previous_30_days_start` to `WindowBounds` (and to `earliest()`), and a
   `previous_30_days` membership flag. In `summarize`, keep two `[Bucket; 30]` arrays
@@ -184,6 +227,7 @@ Rust:
 - `apps/desktop/src-tauri/capabilities/main.json` — add `allow-get-provider-usage`.
 
 TypeScript:
+
 - `apps/desktop/src/lib/providerUsageIpc.ts` — `ProviderUsageDayPayload` and
   `days?: ProviderUsageDayPayload[]` on `ProviderUsageSummaryPayload` (optional so
   the popover-peek fixtures keep compiling). `EMPTY_PROVIDER_USAGE` in `ipc.ts`
@@ -309,15 +353,15 @@ switch.
 
 ## Status
 
-| Step | State |
-|---|---|
-| Worktree reset onto `origin/main` | done (2026-09-14) |
-| Code audited against the handoff | done |
-| Implementation plan written | done |
-| Plan reviewed by Keith | done (2026-09-14, discuss, six threads resolved) |
-| Design prototypes v1–v7 reviewed by Keith | v1–v6 done (2026-09-14, discuss); v7 open |
-| Slice 1 — navigation shell | done (2026-09-14) |
-| Slice 2 — totals and daily chart | done (2026-09-14) |
-| Slice 3 — provider limits | done (2026-09-14) |
-| Slice 4 — burn checks and recent sessions | done (2026-09-14) |
-| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); awaiting Keith's hands-on test and `/design-review` on a live instance |
+| Step                                          | State                                                                                                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Worktree reset onto `origin/main`             | done (2026-09-14)                                                                                                                                                              |
+| Code audited against the handoff              | done                                                                                                                                                                           |
+| Implementation plan written                   | done                                                                                                                                                                           |
+| Plan reviewed by Keith                        | done (2026-09-14, discuss, six threads resolved)                                                                                                                               |
+| Design prototypes v1–v7 reviewed by Keith     | v1–v6 done (2026-09-14, discuss); v7 open                                                                                                                                      |
+| Slice 1 — navigation shell                    | done (2026-09-14)                                                                                                                                                              |
+| Slice 2 — totals and daily chart              | done (2026-09-14)                                                                                                                                                              |
+| Slice 3 — provider limits                     | done (2026-09-14)                                                                                                                                                              |
+| Slice 4 — burn checks and recent sessions     | done (2026-09-14)                                                                                                                                                              |
+| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first hands-on test done (2026-09-14, 13 notate pins applied, see Round 2); awaiting his second look and `/design-review` on a live instance |

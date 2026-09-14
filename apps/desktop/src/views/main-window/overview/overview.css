@@ -160,11 +160,13 @@
   padding-inline-end: var(--space-lg);
 }
 
+/* The two panels share one height, so the shorter card never leaves a
+   hole under itself beside the taller one. */
 .overview-panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: var(--space-2xl);
+  align-items: stretch;
+  gap: var(--space-xl);
 }
 
 @container (max-width: 700px) {

@@ -27,8 +27,9 @@ const SPANS: ReadonlyArray<{
 /**
  * The Overview's headline: estimated local spend today, this week, and over
  * the trailing thirty days, each as a hero figure over its token count and
- * session count. An unpriced window leads with its token count instead of a
- * zero-dollar figure, and a partly priced one says so.
+ * session count. The cells carry their own labels; there is no heading. An
+ * unpriced window leads with its token count instead of a zero-dollar
+ * figure, and a partly priced one says so.
  */
 export function OverviewSpendTotals({
   totals,
@@ -39,11 +40,7 @@ export function OverviewSpendTotals({
 }) {
   return (
     <section aria-label="Estimated local spend" aria-busy={loading || undefined}>
-      <div className="flex items-baseline justify-between gap-[var(--space-md)]">
-        <p className="type-callout text-label-secondary">Estimated</p>
-        <p className="type-caption text-label-tertiary">Local sessions</p>
-      </div>
-      <dl className="overview-totals mt-[var(--space-sm)]">
+      <dl className="overview-totals">
         {SPANS.map((span) => (
           <div key={span.key} className="overview-totals-cell min-w-0 border-separator">
             <dt className="type-callout text-label-secondary">

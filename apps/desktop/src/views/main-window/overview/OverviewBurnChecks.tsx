@@ -1,20 +1,29 @@
-import { ArrowRight, CheckCircle2, CircleDashed, Flame } from "lucide-react"
+import { CheckCircle2, CircleDashed } from "lucide-react"
 
 import type { ChecksCategoryPayload, ChecksReportPayload } from "../../../lib/insightsIpc"
 import { checksPresentation, formatTokenBurnPercent } from "../../../lib/presentation/checks"
 import { sessionCountLabel } from "../../../lib/presentation/providerUsage"
 import { checkRowPresentation } from "../../checks/checkUi"
 
+import { SegmentedRadialDial } from "../../../components/ui/SegmentedRadialDial"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
 /** The most finding rows the panel lists. The full report has the rest. */
 const OVERVIEW_FINDING_ROWS = 2
 
+/** The report hero's dial at half its size, with the same stroke ratio. */
+const OVERVIEW_DIAL_SIZE = 44
+const OVERVIEW_DIAL_STROKE = 4
+/** The shortest visible arc, in pixels, so a small burn never vanishes. */
+const MIN_BURN_ARC_LENGTH = 4
+const MIN_BURN_BASIS_POINTS =
+  (MIN_BURN_ARC_LENGTH / (Math.PI * (OVERVIEW_DIAL_SIZE - OVERVIEW_DIAL_STROKE))) * 10_000
+
 type OverviewChecksState = "findings" | "passed" | "pending"
 
 interface OverviewChecksSummary {
   state: OverviewChecksState
-  /** The one-line result, for example "2 findings · 7 passed". */
+  /** The prominent line: the burn estimate when known, else the result. */
   headline: string
   /** The muted line under the headline, or null when nothing adds to it. */
   detail: string | null
@@ -50,17 +59,26 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
   const passed = presentation.wins.length
   if (failures.length > 0) {
     const burn = report.estimatedTokenBurnBasisPoints
+    const result = [
+      countLabel(failures.length, "finding"),
+      passed > 0 ? `${passed} passed` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    if (burn != null) {
+      return {
+        state: "findings",
+        headline: `${formatTokenBurnPercent(burn)} estimated token burn`,
+        detail: result,
+        rows: failures.slice(0, OVERVIEW_FINDING_ROWS),
+      }
+    }
     return {
       state: "findings",
-      headline: [countLabel(failures.length, "finding"), passed > 0 ? `${passed} passed` : null]
-        .filter(Boolean)
-        .join(" · "),
-      detail:
-        burn != null
-          ? `${formatTokenBurnPercent(burn)} estimated token burn`
-          : report.evidenceSettled
-            ? null
-            : `Still assessing ${sessionCountLabel(report.pendingEvidence)}`,
+      headline: result,
+      detail: report.evidenceSettled
+        ? null
+        : `Still assessing ${sessionCountLabel(report.pendingEvidence)}`,
       rows: failures.slice(0, OVERVIEW_FINDING_ROWS),
     }
   }
@@ -82,17 +100,36 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
   }
 }
 
-const STATE_ICON = { findings: Flame, passed: CheckCircle2, pending: CircleDashed } as const
-
-const STATE_MARK_CLASS: Record<OverviewChecksState, string> = {
-  findings: "bg-brand-tint/15 text-brand",
-  passed: "bg-burn-check-pass-fill/15 text-burn-check-pass-fill",
-  pending: "bg-surface-tertiary text-label-tertiary",
+/** The report hero's dial: the burn share over the rest, or a grey ring. */
+function BurnDial({ report }: { report: ChecksReportPayload | null }) {
+  const burn = report?.estimatedTokenBurnBasisPoints ?? null
+  const displayed = burn != null && burn > 0 ? Math.max(burn, MIN_BURN_BASIS_POINTS) : burn
+  return (
+    <SegmentedRadialDial
+      size={OVERVIEW_DIAL_SIZE}
+      strokeWidth={OVERVIEW_DIAL_STROKE}
+      gapAngle={0}
+      strokeLinecap="butt"
+      segments={
+        displayed == null
+          ? [{ id: "unknown", value: 1, className: "text-surface-tertiary" }]
+          : [
+              { id: "burn", value: displayed, className: "text-brand-tint" },
+              {
+                id: "remainder",
+                value: Math.max(0, 10_000 - displayed),
+                className: "text-measure",
+              },
+            ]
+      }
+    />
+  )
 }
 
 /**
- * The Burn checks panel: one rollup line with a "More" link, then at most
- * two finding rows. Every control opens the full Burn checks section.
+ * The Burn checks panel: the report hero's dial beside the burn estimate,
+ * then at most two finding rows. The header and every row are buttons that
+ * open the full Burn checks section.
  */
 export function OverviewBurnChecks({
   report,
@@ -104,44 +141,42 @@ export function OverviewBurnChecks({
   onOpen: () => void
 }) {
   const summary = report ? overviewChecksSummary(report) : null
-  const Icon = STATE_ICON[summary?.state ?? "pending"]
+  const FooterIcon = summary?.state === "passed" ? CheckCircle2 : CircleDashed
   return (
     <section
       aria-label="Burn checks"
       aria-busy={loading || undefined}
       className="rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
     >
-      <div className="flex items-center gap-[var(--space-md)]">
-        <span
-          aria-hidden="true"
-          className={`grid h-9 w-9 shrink-0 place-items-center rounded-[9999px] ${STATE_MARK_CLASS[summary?.state ?? "pending"]}`}
-        >
-          <Icon size={18} strokeWidth={2} />
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={summary ? `Open Burn checks: ${summary.headline}` : "Open Burn checks"}
+        className="group flex w-full items-center gap-[var(--space-md)] rounded-control text-left"
+      >
+        <span aria-hidden="true" className="grid shrink-0 place-items-center">
+          <BurnDial report={report} />
         </span>
-        <div className="min-w-0 flex-1">
+        <span className="min-w-0 flex-1">
           {summary ? (
             <>
-              <p className="truncate type-body font-semibold! text-label">{summary.headline}</p>
+              <span className="block truncate type-title-2 text-label group-hover:text-brand">
+                {summary.headline}
+              </span>
               {summary.detail && (
-                <p className="truncate type-caption text-label-secondary">{summary.detail}</p>
+                <span className="block truncate type-callout text-label-secondary">
+                  {summary.detail}
+                </span>
               )}
             </>
           ) : (
             <>
-              <Skeleton className="h-3.5 w-36" />
+              <Skeleton className="h-4 w-36" />
               <Skeleton className="mt-1.5 h-3 w-24" />
             </>
           )}
-        </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="inline-flex shrink-0 items-center gap-1 self-start type-caption text-label-secondary hover:text-label hover:underline hover:underline-offset-[3px]"
-        >
-          More
-          <ArrowRight size={12} strokeWidth={2} aria-hidden="true" />
-        </button>
-      </div>
+        </span>
+      </button>
       {summary?.state === "findings" && (
         <ul className="mt-[var(--space-md)] divide-y divide-separator border-t border-separator">
           {summary.rows.map((check) => {
@@ -175,7 +210,7 @@ export function OverviewBurnChecks({
             summary.state === "passed" ? "text-burn-check-pass-fill" : "text-label-secondary"
           }`}
         >
-          <Icon size={14} strokeWidth={2} aria-hidden="true" />
+          <FooterIcon size={14} strokeWidth={2} aria-hidden="true" />
           {summary.state === "passed"
             ? "Nothing to review right now."
             : "Findings appear here once the scan finishes."}

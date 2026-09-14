@@ -32,9 +32,13 @@ describe("OverviewSpendChart", () => {
     expect(buttons[29]).toHaveAttribute("aria-pressed", "true")
     expect(buttons[29]).toHaveAttribute("tabindex", "0")
     expect(buttons[0]).toHaveAttribute("tabindex", "-1")
-    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
+    // Today's reading is the totals under the chart, so the chart writes
+    // no line of its own for it.
+    expect(buttons[29]).toHaveAttribute(
+      "aria-label",
       "Today · $14.50 · 900 tokens · 2 sessions · +$13.50 vs 30 days before",
     )
+    expect(screen.queryByTestId("overview-chart-detail")).toBeNull()
   })
 
   it("walks the days with the arrow keys and updates the reading", () => {

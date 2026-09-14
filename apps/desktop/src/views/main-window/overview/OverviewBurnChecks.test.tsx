@@ -50,7 +50,7 @@ describe("OverviewBurnChecks", () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Excess cache rehydration4 sessions")
     expect(rows[1]).toHaveTextContent("Unused MCP servers12 sessions")
-    fireEvent.click(within(panel).getByRole("button", { name: "More" }))
+    fireEvent.click(within(panel).getByRole("button", { name: /^Open Burn checks/ }))
     fireEvent.click(within(rows[0]!).getByRole("button"))
     expect(onOpen).toHaveBeenCalledTimes(2)
   })

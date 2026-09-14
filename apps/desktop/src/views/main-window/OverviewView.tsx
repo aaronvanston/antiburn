@@ -14,9 +14,10 @@ import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 import "./overview/overview.css"
 
 /**
- * The main window's landing section: local spend, provider limits, Burn
- * checks, and recent sessions on one page. The Burn checks and Sessions
- * panels are summaries; their controls leave for the full sections.
+ * The main window's landing section: the daily spend chart, local spend
+ * totals, Burn checks beside recent sessions, and provider limits on one
+ * page. The Burn checks and Sessions panels are summaries; their controls
+ * leave for the full sections.
  */
 export function OverviewView({
   active,
@@ -68,35 +69,35 @@ export function OverviewView({
             role="region"
             aria-label={loading ? "Loading Overview" : "Overview"}
             aria-busy={loading || undefined}
-            className="overview-page flex w-full flex-col gap-[var(--space-2xl)] px-8 py-6"
+            className="overview-page flex w-full flex-col gap-[var(--space-xl)] px-8 py-6"
           >
             {loading && (
               <p role="status" className="sr-only">
                 Loading Overview.
               </p>
             )}
-            <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
             <OverviewSpendChart
               days={usage?.days ?? []}
               previousDays={usage?.previousDays ?? []}
               loading={loading}
             />
+            <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
             <div className="overview-panels">
-              <OverviewProviderLimits
-                live={state.liveUsage}
-                loading={loading && !state.liveUsage}
-              />
               <OverviewBurnChecks
                 report={state.report}
                 loading={loading && !state.report}
                 onOpen={onOpenBurnChecks}
               />
+              <OverviewRecentSessions
+                entries={state.recentSessions}
+                loading={loading && !state.recentSessions}
+                onSelect={onSelectSession}
+                onOpenAll={onOpenSessions}
+              />
             </div>
-            <OverviewRecentSessions
-              entries={state.recentSessions}
-              loading={loading && !state.recentSessions}
-              onSelect={onSelectSession}
-              onOpenAll={onOpenSessions}
+            <OverviewProviderLimits
+              live={state.liveUsage}
+              loading={loading && !state.liveUsage}
             />
           </div>
         </ScrollPane>
