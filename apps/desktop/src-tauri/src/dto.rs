@@ -1982,6 +1982,8 @@ fn quota_limit_kind_str(kind: QuotaLimitKind) -> &'static str {
         QuotaLimitKind::ModelSpecific => "modelSpecific",
         QuotaLimitKind::WeightedUsage => "weightedUsage",
         QuotaLimitKind::RateLimit => "rateLimit",
+        QuotaLimitKind::UsageLimit => "usageLimit",
+        QuotaLimitKind::ProviderCapacity => "providerCapacity",
     }
 }
 
