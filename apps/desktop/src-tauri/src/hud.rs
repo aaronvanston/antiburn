@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use antiburn_hud::Placement;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 use crate::store::Store;
 
@@ -51,14 +53,6 @@ pub fn save_placement(store: &Store, placement: Placement) {
     if let Ok(raw) = serde_json::to_string(&stored) {
         store.set_internal_value(PLACEMENTS_KEY, &raw);
     }
-}
-
-/// Remember where the HUD is now. Called when a drag settles.
-pub fn record_position(app: &AppHandle) {
-    let Some(placement) = antiburn_hud::current_placement(app) else {
-        return;
-    };
-    save_placement(&app.state::<Store>(), placement);
 }
 
 /// Move the HUD when a display connects or disconnects.
