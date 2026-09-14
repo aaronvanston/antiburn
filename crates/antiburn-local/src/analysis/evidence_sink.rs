@@ -7,11 +7,12 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::analysis::evidence::{
     CacheEvidence, ChurnCounts, CompactionEvidence, ContextEvidence, ContextSourceEvidence,
     CoverageReason, EVIDENCE_STRING_CAP, EvidenceCoverage, EvidenceSource, EvidenceValue,
-    LoadedSource, MAX_CONTEXT_SOURCES, MAX_EVIDENCE_EXAMPLES, MAX_QUOTA_INCIDENTS,
-    MAX_SUBAGENT_CHILDREN, MAX_TOOL_NAMES, MAX_UNRECOGNIZED_TYPES, ModelControlObservation,
-    ModelEvidence, OrderingObservation, ParseDiagnostics, QuotaIncident, RelationConfidence,
-    RepeatedContext, RepeatedContextAccounting, SessionCoverageRecord, SessionEvidence,
-    SessionEvidenceIdentity, SessionProvenance, SessionQuotaEvidence, SourceAcceptance,
+    LoadedSource, MAX_CONTEXT_SOURCES, MAX_EVIDENCE_EXAMPLES, MAX_PROVIDER_INCIDENTS,
+    MAX_QUOTA_INCIDENTS, MAX_SUBAGENT_CHILDREN, MAX_TOOL_NAMES, MAX_UNRECOGNIZED_TYPES,
+    ModelControlObservation, ModelEvidence, OrderingObservation, ParseDiagnostics,
+    ProviderIncident, QuotaIncident, RelationConfidence, RepeatedContext,
+    RepeatedContextAccounting, SessionCoverageRecord, SessionEvidence, SessionEvidenceIdentity,
+    SessionProvenance, SessionProviderEvidence, SessionQuotaEvidence, SourceAcceptance,
     SourceCapabilities, SourceKind, SubagentChild, SubagentEvidence, SubagentExample, ToolClass,
     ToolDefinition, ToolEvidence, ToolUse, cap_string, insert_diagnostic_field,
     record_diagnostic_set_cap,
@@ -154,6 +155,12 @@ pub struct SessionEvidenceAccumulator {
     /// True when a `QuotaIncident` observation overflowed
     /// [`MAX_QUOTA_INCIDENTS`].
     quota_incidents_capped: bool,
+    /// Transcript-observed provider incidents, from a `ProviderIncident`
+    /// observation. Bounded by [`MAX_PROVIDER_INCIDENTS`].
+    provider_incidents: Vec<ProviderIncident>,
+    /// True when a `ProviderIncident` observation overflowed
+    /// [`MAX_PROVIDER_INCIDENTS`].
+    provider_incidents_capped: bool,
 }
 
 impl SessionEvidenceAccumulator {
@@ -192,6 +199,8 @@ impl SessionEvidenceAccumulator {
             child_loss_reason: None,
             quota_incidents: Vec::new(),
             quota_incidents_capped: false,
+            provider_incidents: Vec::new(),
+            provider_incidents_capped: false,
         }
     }
 
@@ -455,6 +464,14 @@ impl SessionEvidenceAccumulator {
                 } else {
                     self.quota_incidents_capped = true;
                     self.note_collection_cap("quota_incidents.incidents");
+                }
+            }
+            EvidenceObservation::ProviderIncident(incident) => {
+                if self.provider_incidents.len() < MAX_PROVIDER_INCIDENTS {
+                    self.provider_incidents.push(incident.clone());
+                } else {
+                    self.provider_incidents_capped = true;
+                    self.note_collection_cap("provider_incidents.incidents");
                 }
             }
             EvidenceObservation::UnrecognizedType {
@@ -930,6 +947,8 @@ impl SessionEvidenceAccumulator {
             child_loss_reason: self.child_loss_reason,
             quota_incidents: self.quota_incidents.clone(),
             quota_incidents_capped: self.quota_incidents_capped,
+            provider_incidents: self.provider_incidents.clone(),
+            provider_incidents_capped: self.provider_incidents_capped,
         }
     }
 
@@ -1009,6 +1028,8 @@ impl SessionEvidenceAccumulator {
             child_loss_reason: record.child_loss_reason,
             quota_incidents: record.quota_incidents,
             quota_incidents_capped: record.quota_incidents_capped,
+            provider_incidents: record.provider_incidents,
+            provider_incidents_capped: record.provider_incidents_capped,
         }
     }
 
@@ -1386,6 +1407,14 @@ impl SessionEvidenceAccumulator {
                 self.capabilities.quota_incidents,
                 child_dependent_partial,
                 self.quota_incidents_capped,
+            ),
+            provider_incidents: self.supported_value(
+                SessionProviderEvidence {
+                    incidents: self.provider_incidents.clone(),
+                },
+                self.capabilities.provider_incidents,
+                child_dependent_partial,
+                self.provider_incidents_capped,
             ),
         }
     }
@@ -1994,6 +2023,25 @@ mod tests {
         let evidence = accumulator.evidence(&TurnFacts::default());
         assert!(matches!(
             evidence.quota_incidents,
+            EvidenceValue::Unsupported
+        ));
+    }
+
+    #[test]
+    fn provider_incidents_stay_unsupported_when_the_source_capability_is_false() {
+        use crate::analysis::evidence::ProviderIncidentKind;
+
+        // Claude does not claim `provider_incidents`, so a pushed incident
+        // must not leak into a supported group.
+        let mut accumulator = accumulator(true);
+        accumulator.observe_observation(&EvidenceObservation::ProviderIncident(ProviderIncident {
+            ts_ms: 100,
+            kind: ProviderIncidentKind::Capacity,
+            model: None,
+        }));
+        let evidence = accumulator.evidence(&TurnFacts::default());
+        assert!(matches!(
+            evidence.provider_incidents,
             EvidenceValue::Unsupported
         ));
     }

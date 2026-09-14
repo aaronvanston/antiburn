@@ -252,13 +252,13 @@ mod tests {
     }
 
     #[test]
-    fn provider_capacity_and_usage_limit_hits_key_their_own_bucket() {
+    fn rate_limit_and_usage_limit_hits_key_their_own_bucket() {
         let mut accumulator = QuotaPressureAccumulator::default();
         accumulator.observe_session(
             &identity("s1"),
             &EvidenceValue::Complete(SessionQuotaEvidence {
                 incidents: vec![
-                    incident(100, QuotaLimitKind::ProviderCapacity, "gpt-6-astra"),
+                    incident(100, QuotaLimitKind::RateLimit, "gpt-6-astra"),
                     incident(200, QuotaLimitKind::UsageLimit, "gpt-6-astra"),
                 ],
             }),
@@ -271,7 +271,7 @@ mod tests {
         assert_eq!(
             findings.hits_by_limit_kind,
             BTreeMap::from([
-                (QuotaLimitKind::ProviderCapacity, 1),
+                (QuotaLimitKind::RateLimit, 1),
                 (QuotaLimitKind::UsageLimit, 1),
             ])
         );

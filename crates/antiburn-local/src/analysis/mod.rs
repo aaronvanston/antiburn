@@ -60,12 +60,13 @@ pub use evidence::{
     ContextSourceEvidence, CoverageReason, DepthExample, EVIDENCE_STRING_CAP, EligibilityEvidence,
     EvidenceCoverage, EvidenceSource, EvidenceValue, FAST_SPEED_KEY, LoadedSource,
     ModelControlObservation, ModelEvidence, ModelTokens, ModelTransition, OrderingObservation,
-    ParseDiagnostics, QuotaConfidence, QuotaHitSeverity, QuotaIncident, QuotaLimitKind,
-    RelationConfidence, RepeatedContext, RepeatedContextAccounting, SessionCoverageRecord,
-    SessionEvidence, SessionEvidenceIdentity, SessionProvenance, SessionQuotaEvidence,
-    SessionTimeRange, SignalCoverage, SourceAcceptance, SourceCapabilities, SourceFormat,
-    SourceKind, SubagentChild, SubagentEvidence, SubagentExample, ToolClass, ToolDefinition,
-    ToolEvidence, ToolUse, TurnCounts,
+    ParseDiagnostics, ProviderIncident, ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity,
+    QuotaIncident, QuotaLimitKind, RelationConfidence, RepeatedContext, RepeatedContextAccounting,
+    SessionCoverageRecord, SessionEvidence, SessionEvidenceIdentity, SessionProvenance,
+    SessionProviderEvidence, SessionQuotaEvidence, SessionTimeRange, SignalCoverage,
+    SourceAcceptance, SourceCapabilities, SourceFormat, SourceKind, SubagentChild,
+    SubagentEvidence, SubagentExample, ToolClass, ToolDefinition, ToolEvidence, ToolUse,
+    TurnCounts,
 };
 pub use evidence_query::{
     FenceScope, PublishedScope, TurnFacts, query_model_breakdown, query_model_runs,
@@ -262,7 +263,8 @@ pub const METRICS_SCHEMA_REVISION: i64 = 8;
 // harness version, and model-associated speed and effort evidence.
 // +1 for source-surface formats and fail-closed skill alias attribution.
 // +1 for nested resource evidence and paired parent-call and child-model observations.
-pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
+// +1 for the provider_incidents evidence group.
+pub const EVIDENCE_SCHEMA_REVISION: i64 = 19;
 /// Versions [`evidence::SessionCoverageRecord`]'s own shape, separately
 /// from [`EVIDENCE_SCHEMA_REVISION`]: the record is an internal input to
 /// evidence replay, not the published `SessionEvidence` shape itself.
@@ -271,7 +273,7 @@ pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
 // +1 for source format and repeated-context accounting capabilities.
 // +1 for dedicated source-surface capability contracts.
 // +1 for nested resources, paired subagent models, and incomplete linkage state.
-// +1 for Codex quota incidents and their bounded-collection cap flag.
+// +1 for Codex quota and provider incidents and their bounded-collection cap flags.
 pub const COVERAGE_SCHEMA_REVISION: i64 = 5;
 /// Versions [`resume::StreamSnapshot`]'s own shape. [`resume::StreamSnapshot::is_current`]
 /// rejects a persisted snapshot stamped with an older revision.
@@ -290,7 +292,7 @@ pub const COVERAGE_SCHEMA_REVISION: i64 = 5;
 // This batch also changes retained nested resource and paired subagent state.
 // +1 for the bounded Codex cross-format usage matcher in adapter snapshots.
 // Reject snapshots that can retain duplicate usage totals.
-// +1 because the evidence sink now carries Codex quota incidents.
+// +1 because the evidence sink now carries Codex quota and provider incidents.
 pub const RESUME_SNAPSHOT_REVISION: i64 = 9;
 
 /// Normalize and analyze a batch of live sessions into one averaged summary.
