@@ -286,7 +286,7 @@ function meterNote({
     provider,
     meter.detection ?? "unknown",
     on,
-    meter.carrier,
+    meter.carrierLabel,
     sessionsSeen,
   )
 }

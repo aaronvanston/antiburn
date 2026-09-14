@@ -20,7 +20,7 @@
  */
 
 import type {
-  LiveLoginCarrier,
+  LiveUsageMeterPayload,
   LiveUsageSourceErrorDetail,
   LiveProviderUsagePayload,
   LiveUsageDetection,
@@ -609,23 +609,84 @@ function liveProviderDisplayName(provider?: string): string | null {
         : null
 }
 
-/** The tool a login carrier belongs to, as the reader would name it. */
-function liveCarrierLabel(carrier: LiveLoginCarrier): string {
-  switch (carrier) {
-    case "claudeCredentialsFile":
-      return "the Claude Code CLI"
-    case "claudeKeychain":
-      return "the Claude Code CLI (Keychain)"
-    case "pi":
-      return "Pi"
-    case "codexAuthFile":
-      return "the Codex CLI"
-    case "agyToken":
-      return "the agy CLI"
-    case "antigravityIde":
-      return "the Antigravity IDE"
-    case "antigravityKeyring":
-      return "the agy CLI (keyring)"
+/**
+ * What each metered provider's login tool is called, for the detection
+ * copy. One row per provider: add a provider here and every sentence
+ * below learns it. Carrier names are not here — they ride the wire as
+ * `carrierLabel`, named by the backend enum that owns them.
+ */
+interface LiveTool {
+  /** The tool, as a noun: "Claude Code". */
+  tool: string
+  /** The command to run once, or null when the tool has no CLI to name. */
+  cli: string | null
+  /** Where antiburn reads the login from: "the Claude Code CLI". */
+  source: string
+  /** The app people confuse it with, which keeps its own login. */
+  desktopApp: string | null
+  /** The article before `tool`: "an Antigravity", "a Codex". */
+  article: "a" | "an"
+  /** The name the scanner's sessions go by: "Claude sessions". */
+  sessions: string
+}
+
+const LIVE_TOOLS: Readonly<Record<string, LiveTool>> = {
+  [ANTHROPIC]: {
+    tool: "Claude Code",
+    cli: "claude",
+    source: "the Claude Code CLI",
+    desktopApp: "the Claude desktop app",
+    article: "a",
+    sessions: "Claude",
+  },
+  [GOOGLE]: {
+    tool: "Antigravity",
+    cli: "agy",
+    source: "the Antigravity IDE or `agy` CLI",
+    desktopApp: "the Gemini app",
+    article: "an",
+    sessions: "Antigravity",
+  },
+  [OPENAI]: {
+    tool: "Codex",
+    cli: "codex",
+    source: "the Codex CLI",
+    desktopApp: "the ChatGPT app",
+    article: "a",
+    sessions: "Codex",
+  },
+}
+
+const FALLBACK_TOOL: LiveTool = {
+  tool: "your coding tool",
+  cli: null,
+  source: "your coding tool",
+  desktopApp: null,
+  article: "a",
+  sessions: "its",
+}
+
+/** The tool's name for a detection marker, or the meter's own display name. */
+function liveToolName(meter: Pick<LiveUsageMeterPayload, "provider" | "displayName">): string {
+  return LIVE_TOOLS[meter.provider]?.tool ?? meter.displayName
+}
+
+/**
+ * A one-glyph summary of a meter's detection for a compact line, or null
+ * when there is nothing definite to say.
+ */
+export function liveDetectionMarker(
+  meter: Pick<LiveUsageMeterPayload, "provider" | "displayName" | "detection" | "carrierLabel">,
+): string | null {
+  const via = meter.carrierLabel === "Pi" ? " via Pi" : ""
+  switch (meter.detection) {
+    case "signedIn":
+      return `${liveToolName(meter)} ✓${via}`
+    case "notInstalled":
+    case "installedNotSignedIn":
+      return `${liveToolName(meter)} ✗${via}`
+    default:
+      return via ? `${liveToolName(meter)} ?${via}` : null
   }
 }
 
@@ -641,66 +702,41 @@ export function liveDetectionNote(
   provider: string,
   detection: LiveUsageDetection | undefined,
   shown: boolean,
-  carrier?: LiveLoginCarrier,
+  carrierLabel?: string,
   sessionsSeen?: number,
 ): string {
   if (!shown) return "Turn the switch above back on to ask for current plan limits."
-  const tool =
-    provider === ANTHROPIC
-      ? "Claude Code"
-      : provider === GOOGLE
-        ? "Antigravity"
-        : provider === OPENAI
-          ? "Codex"
-          : "your coding tool"
+  const t = LIVE_TOOLS[provider] ?? FALLBACK_TOOL
+  const viaPi = carrierLabel === "Pi"
   if (detection === "signedIn") {
-    const from = carrier ? ` through ${liveCarrierLabel(carrier)}` : ""
-    const article = provider === GOOGLE ? "an" : "a"
-    return `antiburn found ${article} ${tool} login${from} but hasn't verified it yet. Refresh to ask ${tool} for limits.`
+    const from = carrierLabel ? ` through ${carrierLabel}` : ""
+    return `antiburn found ${t.article} ${t.tool} login${from} but hasn't verified it yet. Refresh to ask ${t.tool} for limits.`
   }
-  if (carrier === "pi") {
-    return `antiburn found a Pi login file. If Pi is signed in to ${tool}, readings appear on the next check. Otherwise sign in with the ${tool} CLI once.`
+  if (detection === "installedNotSignedIn" && viaPi) {
+    return `antiburn found Pi, but Pi has no working ${t.tool} login. Sign in to ${t.tool} in Pi again, or run ${t.cli ? `\`${t.cli}\`` : `the ${t.tool} CLI`} once.`
   }
-  const hasSessions = (sessionsSeen ?? 0) > 0
-  if (provider === ANTHROPIC) {
-    if (detection === "notInstalled") {
-      return hasSessions
-        ? "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the CLI only. Install it and run `claude` once."
-        : "antiburn didn't find Claude Code on this Mac. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once."
-    }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically."
-    }
+  if (viaPi) {
+    return `antiburn found a Pi login file. If Pi is signed in to ${t.tool}, readings appear on the next check. Otherwise sign in with ${t.source} once.`
   }
-  if (provider === GOOGLE) {
-    if (detection === "notInstalled") {
-      return hasSessions
-        ? "antiburn sees Antigravity sessions but no login it can reuse. It reads the login from the Antigravity IDE or `agy` CLI — sign in there once."
-        : "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app."
+  const runOnce = t.cli
+    ? `Install it and run \`${t.cli}\` once.`
+    : `Install it and sign in once.`
+  if (detection === "notInstalled") {
+    if ((sessionsSeen ?? 0) > 0) {
+      return t.desktopApp
+        ? `antiburn sees ${t.sessions} sessions but no ${t.tool} CLI login — are you using ${t.desktopApp}? antiburn reads the login from ${t.source} only. ${runOnce}`
+        : `antiburn sees ${t.sessions} sessions but no login it can reuse. It reads the login from ${t.source} — sign in there once.`
     }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found Antigravity but no login. Sign in inside Antigravity or run `agy` once."
-    }
+    return t.desktopApp
+      ? `antiburn didn't find ${t.tool} on this machine. It reads the login from ${t.source}, not ${t.desktopApp}. ${runOnce}`
+      : `antiburn didn't find ${t.tool} on this machine. It reads the login from ${t.source}. ${runOnce}`
   }
-  if (provider === OPENAI) {
-    if (detection === "notInstalled") {
-      return hasSessions
-        ? "antiburn sees Codex sessions but no Codex CLI login — are you using the ChatGPT app? antiburn reads the login from the CLI only. Install it and run `codex` once."
-        : "antiburn didn't find the Codex CLI on this Mac. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once."
-    }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found the Codex CLI but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically."
-    }
+  if (detection === "installedNotSignedIn") {
+    return t.cli
+      ? `antiburn found ${t.tool} but no login. Run \`${t.cli}\` in a terminal and log in — antiburn picks it up automatically.`
+      : `antiburn found ${t.tool} but no login. Sign in there once — antiburn picks it up automatically.`
   }
-  const source =
-    provider === ANTHROPIC
-      ? "the Claude Code CLI"
-      : provider === GOOGLE
-        ? "the Antigravity IDE or `agy` CLI"
-        : provider === OPENAI
-          ? "the Codex CLI"
-          : "your coding tool"
-  return `No readings yet. antiburn reuses the login from ${source} — run it once, then refresh.`
+  return `No readings yet. antiburn reuses the login from ${t.source} — run it once, then refresh.`
 }
 
 /** One action for a failed source, with the provider name when it is known. */

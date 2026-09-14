@@ -49,6 +49,21 @@ pub enum LoginCarrier {
     AntigravityKeyring,
 }
 
+impl LoginCarrier {
+    /// The tool the reader would name, for "found a login through …".
+    pub fn display_name(self) -> &'static str {
+        match self {
+            LoginCarrier::ClaudeCredentialsFile => "the Claude Code CLI",
+            LoginCarrier::ClaudeKeychain => "the Claude Code CLI (Keychain)",
+            LoginCarrier::Pi => "Pi",
+            LoginCarrier::CodexAuthFile => "the Codex CLI",
+            LoginCarrier::AgyToken => "the agy CLI",
+            LoginCarrier::AntigravityIde => "the Antigravity IDE",
+            LoginCarrier::AntigravityKeyring => "the agy CLI (keyring)",
+        }
+    }
+}
+
 /// What one source's `detect()` found: a rank, and where it looked when it
 /// found a carrier.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]

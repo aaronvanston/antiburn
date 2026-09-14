@@ -2348,6 +2348,9 @@ pub struct LiveUsageMeter {
     /// `signedIn` upgrade so the note can name the tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub carrier: Option<LoginCarrier>,
+    /// `carrier`'s display name, so the views never restate the enum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier_label: Option<String>,
 }
 
 /// Live provider usage, as one snapshot.

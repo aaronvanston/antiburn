@@ -1049,7 +1049,7 @@ pub async fn get_live_usage(
         let detection_app = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
             if let Some(live) = detection_app.try_state::<crate::usage_alerts::LiveUsage>() {
-                let detection = provider_usage::live::detect_all(&live.sources);
+                let detection = provider_usage::live::detect_all(&live.sources, false);
                 live.store_detection(detection);
             }
         })

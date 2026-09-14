@@ -992,7 +992,7 @@ impl LiveUsageSource for Detected {
         self.0
     }
 
-    fn detect(&self) -> Presence {
+    fn detect(&self, _online: bool) -> Presence {
         Presence::new(self.1.expect("roster must not call detect"))
     }
 
@@ -1015,7 +1015,7 @@ fn the_roster_defaults_to_unknown_without_detecting() {
             .all(|meter| meter.detection == Detection::Unknown)
     );
     assert_eq!(
-        Fixed("default-detector", vec![]).detect(),
+        Fixed("default-detector", vec![]).detect(true),
         Presence::UNKNOWN
     );
 }
@@ -1037,7 +1037,7 @@ fn detection_keeps_the_strongest_evidence_in_either_source_order() {
                     Box::new(Detected("google", Some(Detection::Unknown))),
                 ];
                 assert_eq!(
-                    detect_all(&sources),
+                    detect_all(&sources, false),
                     DetectionMap::from([
                         ("anthropic".into(), Presence::new(stronger)),
                         ("google".into(), Presence::UNKNOWN),
@@ -1046,7 +1046,7 @@ fn detection_keeps_the_strongest_evidence_in_either_source_order() {
             }
         }
     }
-    assert!(detect_all(&[]).is_empty());
+    assert!(detect_all(&[], true).is_empty());
 }
 
 #[test]
@@ -1061,6 +1061,23 @@ fn a_tie_keeps_the_first_carrier_and_a_stronger_rank_replaces_it() {
         pi.strongest(Presence::new(Detection::NotInstalled)).carrier,
         None
     );
+}
+
+#[test]
+fn the_roster_labels_the_carrier_for_the_views() {
+    let sources: Vec<Box<dyn LiveUsageSource>> = vec![Box::new(Detected("anthropic", None))];
+    let detection = DetectionMap::from([(
+        "anthropic".into(),
+        Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain),
+    )]);
+    let meters = roster(&sources, &HiddenMeters::default(), &detection);
+    assert_eq!(meters[0].carrier, Some(LoginCarrier::ClaudeKeychain));
+    assert_eq!(
+        meters[0].carrier_label.as_deref(),
+        Some("the Claude Code CLI (Keychain)")
+    );
+    let unlabelled = roster(&sources, &HiddenMeters::default(), &DetectionMap::default());
+    assert_eq!(unlabelled[0].carrier_label, None);
 }
 
 #[test]

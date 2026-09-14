@@ -254,7 +254,7 @@ describe("OnboardingView", () => {
         ],
       })
     })
-    expect(await screen.findByText("Detected: Codex CLI ✓ · Claude Code ✗")).toBeInTheDocument()
+    expect(await screen.findByText("Detected: Codex ✓ · Claude Code ✗")).toBeInTheDocument()
   })
 
   it("says when a login comes through Pi, proven or not", async () => {
@@ -277,6 +277,7 @@ describe("OnboardingView", () => {
             shown: true,
             detection: "signedIn",
             carrier: "pi",
+            carrierLabel: "Pi",
           },
           {
             provider: "anthropic",
@@ -284,12 +285,13 @@ describe("OnboardingView", () => {
             shown: true,
             detection: "unknown",
             carrier: "pi",
+            carrierLabel: "Pi",
           },
         ],
       })
     })
     expect(
-      await screen.findByText("Detected: Codex CLI ✓ via Pi · Claude Code ? via Pi"),
+      await screen.findByText("Detected: Codex ✓ via Pi · Claude Code ? via Pi"),
     ).toBeInTheDocument()
   })
 

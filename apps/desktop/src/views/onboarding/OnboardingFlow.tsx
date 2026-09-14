@@ -14,6 +14,7 @@ import { ScrollPane } from "../../components/ui/ScrollPane"
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch"
 import { renderAgentIcon } from "../../lib/agentIcon"
 import { AGENT_SLUGS, agentDisplayName } from "../../lib/presentation/agents"
+import { liveDetectionMarker } from "../../lib/presentation/liveUsage"
 import { sessionHygieneCheckName } from "../../lib/presentation/sessionHygiene"
 import {
   getConsentDiagnostics,
@@ -159,28 +160,7 @@ function AgentsDetected({
   const quiet = AGENT_SLUGS.filter((slug) => !detectedSlugs.has(slug))
   const isEnabled = (slug: string) => !disabledAgents.includes(slug)
   const liveDetections = (liveUsageMeters ?? [])
-    .flatMap((meter) => {
-      const marker =
-        meter.detection === "signedIn"
-          ? meter.carrier === "pi"
-            ? "✓ via Pi"
-            : "✓"
-          : meter.detection === "notInstalled" || meter.detection === "installedNotSignedIn"
-            ? "✗"
-            : meter.carrier === "pi"
-              ? "? via Pi"
-              : null
-      if (!marker) return []
-      const name =
-        meter.provider === "anthropic"
-          ? "Claude Code"
-          : meter.provider === "google"
-            ? "Antigravity"
-            : meter.provider === "openai"
-              ? "Codex CLI"
-              : meter.displayName
-      return [`${name} ${marker}`]
-    })
+    .flatMap((meter) => liveDetectionMarker(meter) ?? [])
     .join(" · ")
 
   return (

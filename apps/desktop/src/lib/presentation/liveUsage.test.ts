@@ -671,7 +671,7 @@ describe("live detection notes", () => {
     [
       "anthropic",
       "notInstalled",
-      "antiburn didn't find Claude Code on this Mac. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once.",
+      "antiburn didn't find Claude Code on this machine. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once.",
     ],
     [
       "anthropic",
@@ -691,12 +691,12 @@ describe("live detection notes", () => {
     [
       "google",
       "notInstalled",
-      "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app.",
+      "antiburn didn't find Antigravity on this machine. It reads the login from the Antigravity IDE or `agy` CLI, not the Gemini app. Install it and run `agy` once.",
     ],
     [
       "google",
       "installedNotSignedIn",
-      "antiburn found Antigravity but no login. Sign in inside Antigravity or run `agy` once.",
+      "antiburn found Antigravity but no login. Run `agy` in a terminal and log in — antiburn picks it up automatically.",
     ],
     [
       "google",
@@ -711,12 +711,12 @@ describe("live detection notes", () => {
     [
       "openai",
       "notInstalled",
-      "antiburn didn't find the Codex CLI on this Mac. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once.",
+      "antiburn didn't find Codex on this machine. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once.",
     ],
     [
       "openai",
       "installedNotSignedIn",
-      "antiburn found the Codex CLI but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically.",
+      "antiburn found Codex but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically.",
     ],
     [
       "openai",
@@ -733,32 +733,37 @@ describe("live detection notes", () => {
   )
 
   it("names the tool the login came from", () => {
-    expect(liveDetectionNote("anthropic", "signedIn", true, "claudeKeychain")).toBe(
+    expect(
+      liveDetectionNote("anthropic", "signedIn", true, "the Claude Code CLI (Keychain)"),
+    ).toBe(
       "antiburn found a Claude Code login through the Claude Code CLI (Keychain) but hasn't verified it yet. Refresh to ask Claude Code for limits.",
     )
-    expect(liveDetectionNote("openai", "signedIn", true, "pi")).toBe(
+    expect(liveDetectionNote("openai", "signedIn", true, "Pi")).toBe(
       "antiburn found a Codex login through Pi but hasn't verified it yet. Refresh to ask Codex for limits.",
     )
-    expect(liveDetectionNote("google", "signedIn", true, "antigravityIde")).toBe(
+    expect(liveDetectionNote("google", "signedIn", true, "the Antigravity IDE")).toBe(
       "antiburn found an Antigravity login through the Antigravity IDE but hasn't verified it yet. Refresh to ask Antigravity for limits.",
     )
   })
 
-  it("explains an unproven Pi login file", () => {
-    expect(liveDetectionNote("anthropic", "unknown", true, "pi")).toBe(
+  it("explains an unproven Pi login file, and one Pi says is dead", () => {
+    expect(liveDetectionNote("anthropic", "unknown", true, "Pi")).toBe(
       "antiburn found a Pi login file. If Pi is signed in to Claude Code, readings appear on the next check. Otherwise sign in with the Claude Code CLI once.",
+    )
+    expect(liveDetectionNote("anthropic", "installedNotSignedIn", true, "Pi")).toBe(
+      "antiburn found Pi, but Pi has no working Claude Code login. Sign in to Claude Code in Pi again, or run `claude` once.",
     )
   })
 
   it("points a reader with sessions but no CLI login at the desktop app", () => {
     expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 12)).toBe(
-      "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the CLI only. Install it and run `claude` once.",
+      "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the Claude Code CLI only. Install it and run `claude` once.",
     )
     expect(liveDetectionNote("openai", "notInstalled", true, undefined, 3)).toContain(
       "are you using the ChatGPT app?",
     )
     expect(liveDetectionNote("google", "notInstalled", true, undefined, 1)).toContain(
-      "sees Antigravity sessions",
+      "are you using the Gemini app?",
     )
     // Zero sessions keeps the plain wording.
     expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 0)).toContain(

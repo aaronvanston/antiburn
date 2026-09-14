@@ -183,7 +183,7 @@ impl LiveUsageSource for AntigravityDirectFetch {
         true
     }
 
-    fn detect(&self) -> Presence {
+    fn detect(&self, _online: bool) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]

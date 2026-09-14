@@ -112,11 +112,17 @@ pub trait LiveUsageSource: Send + Sync {
         false
     }
 
-    /// Read metadata only, without reading credential file contents or running commands that return secrets.
+    /// Say whether this tool's login carrier is here, without reading a secret.
     ///
-    /// Detection never causes a Keychain prompt and is safe before online opt-in.
-    /// Subprocesses can block for bounded time. Call this method off the IPC thread.
-    fn detect(&self) -> Presence {
+    /// With `online` false — before onboarding finishes, or with live usage
+    /// switched off — this reads metadata only: no credential file is opened
+    /// and no Keychain prompt can appear. With `online` true a source may go
+    /// one step further and ask the owning tool through its own CLI (Pi's
+    /// `auth check --no-refresh`), which still never passes a token through
+    /// this process. Subprocesses block for a bounded time. Call this off
+    /// the IPC thread.
+    fn detect(&self, online: bool) -> Presence {
+        let _ = online;
         Presence::UNKNOWN
     }
 
@@ -253,10 +259,10 @@ pub type DetectionMap = BTreeMap<String, Presence>;
 /// Read metadata for all sources and keep the strongest evidence per provider.
 ///
 /// This operation can block. Run it off the IPC thread.
-pub fn detect_all(sources: &[Box<dyn LiveUsageSource>]) -> DetectionMap {
+pub fn detect_all(sources: &[Box<dyn LiveUsageSource>], online: bool) -> DetectionMap {
     let mut detection = DetectionMap::new();
     for source in sources {
-        let value = source.detect();
+        let value = source.detect(online);
         detection
             .entry(source.provider().to_string())
             .and_modify(|current| *current = current.strongest(value))
@@ -291,6 +297,9 @@ pub fn roster(
                 shown: !hidden.contains(source.provider()),
                 detection: presence.detection,
                 carrier: presence.carrier,
+                carrier_label: presence
+                    .carrier
+                    .map(|carrier| carrier.display_name().to_string()),
             }
         })
         .collect();

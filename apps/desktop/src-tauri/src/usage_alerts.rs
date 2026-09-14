@@ -370,7 +370,7 @@ pub(crate) fn refresh_publish_and_evaluate(
         .map(|settings| &settings.live_usage_hidden_providers)
         .cloned()
         .unwrap_or_default();
-    let detection = provider_usage::live::detect_all(&live.sources);
+    let detection = provider_usage::live::detect_all(&live.sources, online);
     live.store_detection(detection.clone());
     let collected = provider_usage::live::sources::collect(&live.sources, online, &hidden, max_age);
     let snapshots: Vec<provider_usage::live::milestones::LiveUsageSnapshot> =

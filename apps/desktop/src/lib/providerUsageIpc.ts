@@ -206,6 +206,8 @@ export interface LiveUsageMeterPayload {
   detection?: LiveUsageDetection
   /** Where the login was found, when a carrier was. Mirrors Rust `LoginCarrier`. */
   carrier?: LiveLoginCarrier
+  /** `carrier` as the reader would name it, e.g. "the Claude Code CLI (Keychain)". */
+  carrierLabel?: string
 }
 
 export type LiveLoginCarrier =

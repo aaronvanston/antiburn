@@ -114,7 +114,7 @@ use super::codex_app_server;
 use super::cooldown::{Cooldown, FetchFailure};
 use super::http;
 use super::pi_auth;
-use super::pi_refresh::{PiRefresher, Recovery};
+use super::pi_refresh::{PiRefresher, PiStatus, Recovery};
 use super::presence::{self, PresenceProbe, SystemPresenceProbe};
 
 /// `auth.json` is a small, purpose-built token store — cap the read
@@ -156,13 +156,15 @@ fn default_sessions_root() -> Option<PathBuf> {
 const BINARY: &str = "codex";
 
 /// Presence rules, in order: `auth.json` is a login; the shared Pi file is
-/// inconclusive; the Codex home directory or the binary is an install
-/// without a login; nothing is no install. The Codex CLI keeps no Keychain
-/// item, so this never spawns a process.
+/// answered by `pi_status` — Pi's own verdict when the caller may ask,
+/// inconclusive otherwise; the Codex home directory or the binary is an
+/// install without a login; nothing is no install. The Codex CLI keeps no
+/// Keychain item, so the metadata path never spawns a process.
 fn detect_presence(
     probe: &impl PresenceProbe,
     auth_path: Option<&Path>,
     pi_auth_path: Option<&Path>,
+    pi_status: impl FnOnce() -> PiStatus,
 ) -> Presence {
     let Some(auth_path) = auth_path else {
         return Presence::UNKNOWN;
@@ -172,10 +174,17 @@ fn detect_presence(
         Ok(false) => {}
         Err(_) => return Presence::UNKNOWN,
     }
-    // The shared Pi file does not prove an OpenAI login.
     if let Some(path) = pi_auth_path {
         match presence::path_exists(probe, path) {
-            Ok(true) => return Presence::via(Detection::Unknown, LoginCarrier::Pi),
+            Ok(true) => {
+                return match pi_status() {
+                    PiStatus::Ready => Presence::via(Detection::SignedIn, LoginCarrier::Pi),
+                    PiStatus::NotReady => {
+                        Presence::via(Detection::InstalledNotSignedIn, LoginCarrier::Pi)
+                    }
+                    PiStatus::Unknown => Presence::via(Detection::Unknown, LoginCarrier::Pi),
+                };
+            }
             Ok(false) => {}
             Err(_) => return Presence::UNKNOWN,
         }
@@ -505,7 +514,7 @@ impl LiveUsageSource for CodexDirectFetch {
         true
     }
 
-    fn detect(&self) -> Presence {
+    fn detect(&self, online: bool) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]
@@ -513,6 +522,10 @@ impl LiveUsageSource for CodexDirectFetch {
             },
             self.auth_path.as_deref(),
             self.pi_auth_path.as_deref(),
+            || match (online, self.pi_auth_path.as_deref()) {
+                (true, Some(path)) => self.pi_refresh.status(path, pi_auth::CODEX_KEY),
+                _ => PiStatus::Unknown,
+            },
         )
     }
 
@@ -830,6 +843,7 @@ mod tests {
             probe,
             Some(Path::new(PRESENCE_AUTH)),
             Some(Path::new(PRESENCE_PI)),
+            || PiStatus::Unknown,
         )
     }
 
@@ -869,7 +883,7 @@ mod tests {
         let path = dir.path().join("auth.json");
         fs::write(&path, "not valid JSON").unwrap();
         assert_eq!(
-            CodexDirectFetch::at(path).detect(),
+            CodexDirectFetch::at(path).detect(true),
             Presence::via(Detection::SignedIn, LoginCarrier::CodexAuthFile)
         );
     }
@@ -883,6 +897,49 @@ mod tests {
             Presence::via(Detection::Unknown, LoginCarrier::Pi)
         );
         assert_eq!(probe.calls.borrow().len(), 2);
+    }
+
+    #[test]
+    fn online_detection_lets_pi_answer_for_its_codex_entry() {
+        use super::super::pi_refresh::RunOutcome;
+        for (store, outcome, expected) in [
+            (
+                r#"{"openai-codex":{}}"#,
+                RunOutcome::Completed,
+                Detection::SignedIn,
+            ),
+            (
+                r#"{"openai-codex":{}}"#,
+                RunOutcome::Rejected,
+                Detection::InstalledNotSignedIn,
+            ),
+            (
+                r#"{"anthropic":{}}"#,
+                RunOutcome::Completed,
+                Detection::InstalledNotSignedIn,
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let pi = dir.path().join("auth.json");
+            fs::write(&pi, store).unwrap();
+            let source = CodexDirectFetch::with_paths(
+                Some(dir.path().join(".codex/auth.json")),
+                Some(pi),
+                Box::new(AlwaysFails),
+            )
+            .with_pi_refresh(PiRefresher::with_runner(Box::new(FakePiRunner {
+                outcome,
+                rewrite: None,
+            })));
+            assert_eq!(
+                source.detect(true),
+                Presence::via(expected, LoginCarrier::Pi)
+            );
+            assert_eq!(
+                source.detect(false),
+                Presence::via(Detection::Unknown, LoginCarrier::Pi)
+            );
+        }
     }
 
     #[test]
@@ -1415,6 +1472,9 @@ mod tests {
             }
             self.outcome
         }
+        fn check(&self, _provider_key: &str) -> super::super::pi_refresh::RunOutcome {
+            self.outcome
+        }
     }
 
     #[test]
@@ -1504,6 +1564,9 @@ mod tests {
         struct PanicRunner;
         impl super::super::pi_refresh::RefreshRunner for PanicRunner {
             fn run(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                panic!("a live Pi entry must never spawn the refresh")
+            }
+            fn check(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
                 panic!("a live Pi entry must never spawn the refresh")
             }
         }

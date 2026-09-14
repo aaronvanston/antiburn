@@ -140,7 +140,7 @@ describe("UsagePane", () => {
         shown: true,
         detection: "notInstalled",
       },
-      note: "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app.",
+      note: "antiburn didn't find Antigravity on this machine. It reads the login from the Antigravity IDE or `agy` CLI, not the Gemini app. Install it and run `agy` once.",
     },
     {
       meter: {
@@ -186,6 +186,7 @@ describe("UsagePane", () => {
             shown: true,
             detection: "signedIn",
             carrier: "pi",
+            carrierLabel: "Pi",
           },
         ],
       }),

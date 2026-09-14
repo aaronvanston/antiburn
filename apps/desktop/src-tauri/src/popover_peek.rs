@@ -687,6 +687,7 @@ mod tests {
                         shown: true,
                         detection: Default::default(),
                         carrier: None,
+                        carrier_label: None,
                     },
                     LiveUsageMeter {
                         provider: "openai".to_string(),
@@ -694,6 +695,7 @@ mod tests {
                         shown: true,
                         detection: Default::default(),
                         carrier: None,
+                        carrier_label: None,
                     },
                 ],
                 generated_at: "now".to_string(),

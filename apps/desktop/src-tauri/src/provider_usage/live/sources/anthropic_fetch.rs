@@ -129,7 +129,7 @@ use super::claude_touch;
 use super::cooldown::{self, Cooldown, FetchFailure};
 use super::http;
 use super::pi_auth;
-use super::pi_refresh::{PiRefresher, Recovery};
+use super::pi_refresh::{PiRefresher, PiStatus, Recovery};
 #[cfg(target_os = "macos")]
 use super::presence::KeychainMetadata;
 use super::presence::{self, PresenceProbe, SystemPresenceProbe};
@@ -190,13 +190,15 @@ const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const BINARY: &str = "claude";
 
 /// Presence rules, in order: the credentials file is a login; the Keychain
-/// item is a login; the shared Pi file is inconclusive, because it can hold
-/// any provider's entry and detection never opens it; the config directory
-/// or the binary is an install without a login; nothing is no install.
+/// item is a login; the shared Pi file is answered by `pi_status` — Pi's own
+/// verdict when the caller may ask, inconclusive otherwise; the config
+/// directory or the binary is an install without a login; nothing is no
+/// install.
 fn detect_presence(
     probe: &impl PresenceProbe,
     credentials_path: Option<&Path>,
     pi_auth_path: Option<&Path>,
+    pi_status: impl FnOnce() -> PiStatus,
 ) -> Presence {
     let Some(credentials_path) = credentials_path else {
         return Presence::UNKNOWN;
@@ -218,7 +220,7 @@ fn detect_presence(
     }
     if let Some(path) = pi_auth_path {
         match presence::path_exists(probe, path) {
-            Ok(true) => return Presence::via(Detection::Unknown, LoginCarrier::Pi),
+            Ok(true) => return pi_presence(pi_status()),
             Ok(false) => {}
             Err(_) => return Presence::UNKNOWN,
         }
@@ -231,6 +233,15 @@ fn detect_presence(
         Err(_) => Presence::UNKNOWN,
         Ok(false) if probe.binary_present(BINARY) => Presence::new(Detection::InstalledNotSignedIn),
         Ok(false) => Presence::new(Detection::NotInstalled),
+    }
+}
+
+/// What Pi's answer about its own entry means for this meter.
+fn pi_presence(status: PiStatus) -> Presence {
+    match status {
+        PiStatus::Ready => Presence::via(Detection::SignedIn, LoginCarrier::Pi),
+        PiStatus::NotReady => Presence::via(Detection::InstalledNotSignedIn, LoginCarrier::Pi),
+        PiStatus::Unknown => Presence::via(Detection::Unknown, LoginCarrier::Pi),
     }
 }
 
@@ -910,7 +921,7 @@ impl LiveUsageSource for ClaudeDirectFetch {
         true
     }
 
-    fn detect(&self) -> Presence {
+    fn detect(&self, online: bool) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]
@@ -918,6 +929,10 @@ impl LiveUsageSource for ClaudeDirectFetch {
             },
             self.credentials_path.as_deref(),
             self.pi_auth_path.as_deref(),
+            || match (online, self.pi_auth_path.as_deref()) {
+                (true, Some(path)) => self.pi_refresh.status(path, pi_auth::ANTHROPIC_KEY),
+                _ => PiStatus::Unknown,
+            },
         )
     }
 
@@ -1412,6 +1427,7 @@ mod tests {
             probe,
             Some(Path::new(PRESENCE_CREDENTIALS)),
             Some(Path::new(PRESENCE_PI)),
+            || PiStatus::Unknown,
         )
     }
 
@@ -1474,7 +1490,7 @@ mod tests {
         let path = dir.path().join(".credentials.json");
         fs::write(&path, "not valid JSON").unwrap();
         assert_eq!(
-            ClaudeDirectFetch::at(path).detect(),
+            ClaudeDirectFetch::at(path).detect(true),
             Presence::via(Detection::SignedIn, LoginCarrier::ClaudeCredentialsFile)
         );
     }
@@ -1493,6 +1509,119 @@ mod tests {
             probe.calls.borrow().last().unwrap(),
             &format!("path_exists:{PRESENCE_PI}")
         );
+    }
+
+    #[test]
+    fn pi_answers_for_its_own_file_when_asked() {
+        for (status, expected) in [
+            (PiStatus::Ready, Detection::SignedIn),
+            (PiStatus::NotReady, Detection::InstalledNotSignedIn),
+            (PiStatus::Unknown, Detection::Unknown),
+        ] {
+            let mut probe = RecordingPresence::default();
+            probe.paths.insert(PRESENCE_PI.into(), Ok(true));
+            assert_eq!(
+                detect_presence(
+                    &probe,
+                    Some(Path::new(PRESENCE_CREDENTIALS)),
+                    Some(Path::new(PRESENCE_PI)),
+                    || status,
+                ),
+                Presence::via(expected, LoginCarrier::Pi)
+            );
+        }
+    }
+
+    #[test]
+    fn pi_is_never_asked_offline_or_without_its_file() {
+        let asked = std::cell::Cell::new(false);
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_PI.into(), Ok(false));
+        detect_presence(
+            &probe,
+            Some(Path::new(PRESENCE_CREDENTIALS)),
+            Some(Path::new(PRESENCE_PI)),
+            || {
+                asked.set(true);
+                PiStatus::Ready
+            },
+        );
+        assert!(!asked.get());
+
+        let dir = tempfile::tempdir().unwrap();
+        let pi = dir.path().join("auth.json");
+        fs::write(&pi, r#"{"anthropic":{}}"#).unwrap();
+        struct PanicRunner;
+        impl super::super::pi_refresh::RefreshRunner for PanicRunner {
+            fn run(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                panic!("offline detection must not spawn pi")
+            }
+            fn check(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                panic!("offline detection must not spawn pi")
+            }
+        }
+        let mut source = ClaudeDirectFetch::with_pi(
+            pi,
+            Box::new(UnreachableTransport),
+            PiRefresher::with_runner(Box::new(PanicRunner)),
+        );
+        source.credentials_path = Some(dir.path().join(".claude/.credentials.json"));
+        assert_eq!(
+            source.detect(false),
+            Presence::via(Detection::Unknown, LoginCarrier::Pi)
+        );
+    }
+
+    #[test]
+    fn online_detection_lets_pi_answer_for_its_own_entry() {
+        struct Answer(super::super::pi_refresh::RunOutcome);
+        impl super::super::pi_refresh::RefreshRunner for Answer {
+            fn run(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                panic!("detection must use the no-refresh check")
+            }
+            fn check(&self, provider: &str) -> super::super::pi_refresh::RunOutcome {
+                assert_eq!(provider, pi_auth::ANTHROPIC_KEY);
+                self.0
+            }
+        }
+        use super::super::pi_refresh::RunOutcome;
+        for (store, outcome, expected) in [
+            (
+                r#"{"anthropic":{}}"#,
+                RunOutcome::Completed,
+                Detection::SignedIn,
+            ),
+            (
+                r#"{"anthropic":{}}"#,
+                RunOutcome::Rejected,
+                Detection::InstalledNotSignedIn,
+            ),
+            (
+                r#"{"anthropic":{}}"#,
+                RunOutcome::Unavailable,
+                Detection::Unknown,
+            ),
+            // No anthropic key: answered from the key names alone, no spawn.
+            (
+                r#"{"openai-codex":{}}"#,
+                RunOutcome::Completed,
+                Detection::InstalledNotSignedIn,
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let pi = dir.path().join("auth.json");
+            fs::write(&pi, store).unwrap();
+            let mut source = ClaudeDirectFetch::with_pi(
+                pi,
+                Box::new(UnreachableTransport),
+                PiRefresher::with_runner(Box::new(Answer(outcome))),
+            );
+            source.credentials_path = Some(dir.path().join(".claude/.credentials.json"));
+            assert_eq!(
+                source.detect(true),
+                Presence::via(expected, LoginCarrier::Pi)
+            );
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -1573,7 +1702,10 @@ mod tests {
     #[test]
     fn detection_keeps_an_unresolved_credentials_path_unknown() {
         let probe = RecordingPresence::default();
-        assert_eq!(detect_presence(&probe, None, None), Presence::UNKNOWN);
+        assert_eq!(
+            detect_presence(&probe, None, None, || PiStatus::Ready),
+            Presence::UNKNOWN
+        );
         assert!(probe.calls.borrow().is_empty());
     }
 
@@ -2070,6 +2202,9 @@ mod tests {
         /// answers a clean completion.
         struct RotatingRunner(PathBuf);
         impl super::super::pi_refresh::RefreshRunner for RotatingRunner {
+            fn check(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                super::super::pi_refresh::RunOutcome::Unavailable
+            }
             fn run(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
                 fs::write(
                     &self.0,
@@ -2121,6 +2256,9 @@ mod tests {
         struct PanicRunner;
         impl super::super::pi_refresh::RefreshRunner for PanicRunner {
             fn run(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
+                panic!("a live Pi entry must never spawn the refresh")
+            }
+            fn check(&self, _: &str) -> super::super::pi_refresh::RunOutcome {
                 panic!("a live Pi entry must never spawn the refresh")
             }
         }
