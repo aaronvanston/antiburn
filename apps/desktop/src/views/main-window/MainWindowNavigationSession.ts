@@ -13,8 +13,8 @@ export type MainWindowNavigationSnapshot = {
 /** Own cross-window section requests for the retained main renderer. */
 export class MainWindowNavigationSession {
   private snapshot: MainWindowNavigationSnapshot = {
-    selected: "burnChecks",
-    visited: ["burnChecks"],
+    selected: "overview",
+    visited: ["overview"],
   }
   private revision = 0
   private generation = 0
