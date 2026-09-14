@@ -26,6 +26,7 @@ pub mod config;
 #[cfg(feature = "analytics")]
 mod delivery;
 pub mod event;
+pub mod ingested_incidents;
 #[cfg(feature = "analytics")]
 mod resources;
 
