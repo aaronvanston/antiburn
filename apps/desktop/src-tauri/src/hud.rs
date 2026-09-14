@@ -53,14 +53,6 @@ pub fn save_placement(store: &Store, placement: Placement) {
     }
 }
 
-/// Remember where the HUD is now. Called when a drag settles.
-pub fn record_position(app: &AppHandle) {
-    let Some(placement) = antiburn_hud::current_placement(app) else {
-        return;
-    };
-    save_placement(&app.state::<Store>(), placement);
-}
-
 /// Move the HUD when a display connects or disconnects.
 ///
 /// The watcher only reads the remembered list. A display that goes away makes

@@ -16,10 +16,9 @@
 //!
 //! # Concurrency
 //!
-//! The connection lives behind a mutex and every method is short and
-//! synchronous. Callers that hold the runtime's attention (the scan task) run
-//! their long work — reading transcripts, analyzing them — outside the lock and
-//! come here only to write the result.
+//! The connection lives behind a mutex and database methods are synchronous.
+//! Native callbacks read a separate last-committed settings snapshot. Callers
+//! run long work outside the connection lock and come here to write the result.
 
 pub(crate) mod codex_rollout_checkpoint;
 pub mod model;
@@ -41,7 +40,7 @@ mod tests;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, TryLockError};
+use std::sync::{Arc, Mutex, RwLock, TryLockError};
 use std::time::Duration;
 
 use antiburn_local::analysis::{
@@ -190,6 +189,7 @@ pub fn open_read_only(data_dir: &Path, busy_timeout: Duration) -> Result<Connect
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
+    settings_snapshot: Arc<RwLock<AppSettings>>,
     limit_factor_learn: Arc<Mutex<()>>,
     remediation_turn: Arc<AtomicBool>,
     /// The directory the engine's own state files (scan roots, ignored paths)
@@ -319,11 +319,13 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", true)?;
         let store = Store {
             connection: Arc::new(Mutex::new(connection)),
+            settings_snapshot: Arc::new(RwLock::new(AppSettings::default())),
             limit_factor_learn: Arc::new(Mutex::new(())),
             remediation_turn: Arc::new(AtomicBool::new(true)),
             state_dir,
         };
         store.migrate()?;
+        store.update_settings_snapshot(&store.settings()?);
         Ok(store)
     }
 
@@ -479,6 +481,21 @@ impl Store {
         read_settings(&connection)
     }
 
+    /// Return the last committed preferences without waiting for the database.
+    pub fn settings_snapshot(&self) -> AppSettings {
+        self.settings_snapshot
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn update_settings_snapshot(&self, settings: &AppSettings) {
+        *self
+            .settings_snapshot
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = settings.clone();
+    }
+
     /// Replace every preference, returning what was there and what was stored.
     ///
     /// Reading and writing share one transaction so callers can decide which
@@ -511,6 +528,7 @@ impl Store {
         write_settings(&tx, &saved)?;
         let result = apply(&tx, &previous, &saved)?;
         tx.commit()?;
+        self.update_settings_snapshot(&saved);
         Ok((previous, saved, result))
     }
 
@@ -538,6 +556,7 @@ impl Store {
         let saved = saved.normalized();
         write_settings(&tx, &saved)?;
         tx.commit()?;
+        self.update_settings_snapshot(&saved);
         Ok((previous, saved))
     }
 
@@ -556,6 +575,7 @@ impl Store {
             [],
         )?;
         tx.commit()?;
+        self.update_settings_snapshot(&saved);
         Ok((previous, saved))
     }
 
