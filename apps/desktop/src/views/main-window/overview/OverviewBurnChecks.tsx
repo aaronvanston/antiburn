@@ -1,23 +1,22 @@
 import { CheckCircle2, CircleDashed } from "lucide-react"
 
 import type { ChecksCategoryPayload, ChecksReportPayload } from "../../../lib/insightsIpc"
+import {
+  aggregateBurnCheckPresentation,
+  emptyBurnCheckPresentation,
+} from "../../../lib/presentation/burnChecks"
 import { checksPresentation, formatTokenBurnPercent } from "../../../lib/presentation/checks"
 import { sessionCountLabel } from "../../../lib/presentation/providerUsage"
 import { checkRowPresentation } from "../../checks/checkUi"
 
-import { SegmentedRadialDial } from "../../../components/ui/SegmentedRadialDial"
+import { BurnCheckIndicator } from "../../../components/burn-checks/BurnCheckIndicator"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
 /** The most finding rows the panel lists. The full report has the rest. */
 const OVERVIEW_FINDING_ROWS = 2
 
-/** The report hero's dial at half its size, with the same stroke ratio. */
+/** The session list's check dial, at a size that carries a two-line title. */
 const OVERVIEW_DIAL_SIZE = 44
-const OVERVIEW_DIAL_STROKE = 4
-/** The shortest visible arc, in pixels, so a small burn never vanishes. */
-const MIN_BURN_ARC_LENGTH = 4
-const MIN_BURN_BASIS_POINTS =
-  (MIN_BURN_ARC_LENGTH / (Math.PI * (OVERVIEW_DIAL_SIZE - OVERVIEW_DIAL_STROKE))) * 10_000
 
 type OverviewChecksState = "findings" | "passed" | "pending"
 
@@ -68,7 +67,7 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
     if (burn != null) {
       return {
         state: "findings",
-        headline: `${formatTokenBurnPercent(burn)} estimated token burn`,
+        headline: `${formatTokenBurnPercent(burn).replace("<", "Less than ")} estimated burn`,
         detail: result,
         rows: failures.slice(0, OVERVIEW_FINDING_ROWS),
       }
@@ -100,35 +99,21 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
   }
 }
 
-/** The report hero's dial: the burn share over the rest, or a grey ring. */
-function BurnDial({ report }: { report: ChecksReportPayload | null }) {
-  const burn = report?.estimatedTokenBurnBasisPoints ?? null
-  const displayed = burn != null && burn > 0 ? Math.max(burn, MIN_BURN_BASIS_POINTS) : burn
-  return (
-    <SegmentedRadialDial
-      size={OVERVIEW_DIAL_SIZE}
-      strokeWidth={OVERVIEW_DIAL_STROKE}
-      gapAngle={0}
-      strokeLinecap="butt"
-      segments={
-        displayed == null
-          ? [{ id: "unknown", value: 1, className: "text-surface-tertiary" }]
-          : [
-              { id: "burn", value: displayed, className: "text-brand-tint" },
-              {
-                id: "remainder",
-                value: Math.max(0, 10_000 - displayed),
-                className: "text-measure",
-              },
-            ]
-      }
-    />
-  )
+/**
+ * The session list's segmented check dial for the whole report: one arc per
+ * check, failed in the finding colour and passed in the clean colour. A
+ * missing report draws the pending mark.
+ */
+function ChecksDial({ report }: { report: ChecksReportPayload | null }) {
+  const presentation = report
+    ? aggregateBurnCheckPresentation(report)
+    : emptyBurnCheckPresentation("pending")
+  return <BurnCheckIndicator presentation={presentation} size={OVERVIEW_DIAL_SIZE} />
 }
 
 /**
- * The Burn checks panel: the report hero's dial beside the burn estimate,
- * then at most two finding rows. The header and every row are buttons that
+ * The Burn checks panel: the check dial beside the burn estimate, then at
+ * most two finding rows. The header and every row are buttons that
  * open the full Burn checks section.
  */
 export function OverviewBurnChecks({
@@ -155,7 +140,7 @@ export function OverviewBurnChecks({
         className="group flex w-full items-center gap-[var(--space-md)] rounded-control text-left"
       >
         <span aria-hidden="true" className="grid shrink-0 place-items-center">
-          <BurnDial report={report} />
+          <ChecksDial report={report} />
         </span>
         <span className="min-w-0 flex-1">
           {summary ? (

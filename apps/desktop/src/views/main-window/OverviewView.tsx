@@ -14,10 +14,11 @@ import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 import "./overview/overview.css"
 
 /**
- * The main window's landing section: the daily spend chart, local spend
- * totals, Burn checks beside recent sessions, and provider limits on one
- * page. The Burn checks and Sessions panels are summaries; their controls
- * leave for the full sections.
+ * The main window's landing section: local spend totals, Burn checks beside
+ * recent sessions, provider limits, and the daily spend chart along the
+ * bottom, where it takes any height the window has to spare. The Burn
+ * checks and Sessions panels are summaries; their controls leave for the
+ * full sections.
  */
 export function OverviewView({
   active,
@@ -76,11 +77,6 @@ export function OverviewView({
                 Loading Overview.
               </p>
             )}
-            <OverviewSpendChart
-              days={usage?.days ?? []}
-              previousDays={usage?.previousDays ?? []}
-              loading={loading}
-            />
             <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
             <div className="overview-panels">
               <OverviewBurnChecks
@@ -98,6 +94,11 @@ export function OverviewView({
             <OverviewProviderLimits
               live={state.liveUsage}
               loading={loading && !state.liveUsage}
+            />
+            <OverviewSpendChart
+              days={usage?.days ?? []}
+              previousDays={usage?.previousDays ?? []}
+              loading={loading}
             />
           </div>
         </ScrollPane>

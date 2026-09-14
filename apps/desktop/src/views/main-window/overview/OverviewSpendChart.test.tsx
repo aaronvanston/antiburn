@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest"
 import type { ProviderUsageDayPayload } from "../../../lib/providerUsageIpc"
 import { OverviewSpendChart } from "./OverviewSpendChart"
 
+const IDLE_HINT = "Hover a day for its reading"
+
 function day(offset: number, usd: number | null, tokens = 900): ProviderUsageDayPayload {
   const date = new Date(2026, 8, 14 - (29 - offset))
   const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
@@ -24,49 +26,64 @@ const days = Array.from({ length: 30 }, (_, index) =>
 const previousDays = Array.from({ length: 30 }, (_, index) => day(index, 1))
 
 describe("OverviewSpendChart", () => {
-  it("draws a button for each of the thirty days and selects today", () => {
+  it("draws a button for each of the thirty days and reads the hovered day", () => {
     render(<OverviewSpendChart days={days} previousDays={previousDays} />)
     const group = screen.getByRole("group", { name: "Estimated spend for the past 30 days" })
     const buttons = within(group).getAllByRole("button")
     expect(buttons).toHaveLength(30)
-    expect(buttons[29]).toHaveAttribute("aria-pressed", "true")
     expect(buttons[29]).toHaveAttribute("tabindex", "0")
     expect(buttons[0]).toHaveAttribute("tabindex", "-1")
-    // Today's reading is the totals under the chart, so the chart writes
-    // no line of its own for it.
     expect(buttons[29]).toHaveAttribute(
       "aria-label",
-      "Today · $14.50 · 900 tokens · 2 sessions · +$13.50 vs 30 days before",
+      "Today · $14.50 · 900 · 2 sessions · +$13.50 vs 30 days before",
     )
-    expect(screen.queryByTestId("overview-chart-detail")).toBeNull()
+    // Nothing is under the pointer yet, so the line holds the hint.
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(IDLE_HINT)
+    fireEvent.mouseEnter(buttons[29]!)
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
+      "Today · $14.50 · 900 · 2 sessions · +$13.50 vs 30 days before",
+    )
+    fireEvent.mouseEnter(buttons[28]!)
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
+      /^Sun 13 Sep · \$14\.00/,
+    )
+    fireEvent.mouseLeave(group)
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(IDLE_HINT)
   })
 
-  it("walks the days with the arrow keys and updates the reading", () => {
+  it("walks the days with the arrow keys and reads the focused day", () => {
     render(<OverviewSpendChart days={days} previousDays={previousDays} />)
     const group = screen.getByRole("group", { name: "Estimated spend for the past 30 days" })
     const buttons = within(group).getAllByRole("button")
+    buttons[29]!.focus()
+    fireEvent.focus(buttons[29]!)
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(/^Today/)
     fireEvent.keyDown(buttons[29]!, { key: "ArrowLeft" })
-    expect(buttons[28]).toHaveAttribute("aria-pressed", "true")
     expect(document.activeElement).toBe(buttons[28])
+    expect(buttons[28]).toHaveAttribute("tabindex", "0")
+    expect(buttons[29]).toHaveAttribute("tabindex", "-1")
     expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
       /^Sun 13 Sep · \$14\.00/,
     )
     fireEvent.keyDown(buttons[28]!, { key: "Home" })
-    expect(buttons[0]).toHaveAttribute("aria-pressed", "true")
+    expect(document.activeElement).toBe(buttons[0])
     expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
-      "Sun 16 Aug · $0.00 · 900 tokens · 2 sessions · −$1.00 vs 30 days before",
+      "Sun 16 Aug · $0.00 · 900 · 2 sessions · −$1.00 vs 30 days before",
     )
     fireEvent.keyDown(buttons[0]!, { key: "ArrowLeft" })
-    expect(buttons[0]).toHaveAttribute("aria-pressed", "true")
+    expect(document.activeElement).toBe(buttons[0])
+    buttons[0]!.blur()
+    fireEvent.blur(buttons[0]!)
+    expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(IDLE_HINT)
   })
 
   it("marks an unpriced day as not priced instead of zero", () => {
     render(<OverviewSpendChart days={days} previousDays={previousDays} />)
     const group = screen.getByRole("group", { name: "Estimated spend for the past 30 days" })
     const buttons = within(group).getAllByRole("button")
-    fireEvent.click(buttons[3]!)
+    fireEvent.mouseEnter(buttons[3]!)
     expect(screen.getByTestId("overview-chart-detail")).toHaveTextContent(
-      "Wed 19 Aug · not priced · 900 tokens · 2 sessions",
+      "Wed 19 Aug · not priced · 900 · 2 sessions",
     )
     expect(screen.getByTestId("overview-chart-detail")).not.toHaveTextContent(
       "vs 30 days before",

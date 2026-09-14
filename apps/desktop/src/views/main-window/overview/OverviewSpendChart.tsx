@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type KeyboardEvent } from "react"
+import { useState, type CSSProperties, type FocusEvent, type KeyboardEvent } from "react"
 
 import type { ProviderUsageDayPayload } from "../../../lib/providerUsageIpc"
 import {
@@ -67,8 +67,7 @@ function dayDetail(
         ? "not priced"
         : "no sessions"
   const parts = [isToday ? "Today" : dayLabel(day.localDate), figure]
-  if (tokens > 0)
-    parts.push(`${formatTokenFigure(tokens)} tokens`, sessionCountLabel(day.sessionCount))
+  if (tokens > 0) parts.push(formatTokenFigure(tokens), sessionCountLabel(day.sessionCount))
   const delta = spendDeltaLabel(day, previous)
   if (delta) parts.push(`${delta} vs 30 days before`)
   return parts.join(" · ")
@@ -76,10 +75,9 @@ function dayDetail(
 
 /**
  * Thirty days of estimated local spend as paired pill bars: this period in
- * front, the thirty days before it behind in a quiet neutral. Each day is a
- * button, and the arrow keys walk the days. A selected past day writes its
- * reading on the line under the chart. Today has no line there: the totals
- * under the chart already show it.
+ * front, the thirty days before it behind in a quiet neutral. A day under
+ * the pointer, or the day with keyboard focus, writes its reading on the
+ * line under the chart. Each day is a button, and the arrow keys walk them.
  *
  * A day with tokens but no price draws an outlined dot and says "not priced",
  * so it is never mistaken for a day at zero.
@@ -93,22 +91,27 @@ export function OverviewSpendChart({
   previousDays: ReadonlyArray<ProviderUsageDayPayload>
   loading?: boolean
 }) {
-  // The selection follows the date, not the index, so a refresh that adds a
-  // day keeps the reader's day selected. A date the series no longer holds
-  // falls back to today.
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  // The keyboard's place in the row follows the date, not the index, so a
+  // refresh that adds a day keeps the reader's day. A date the series no
+  // longer holds falls back to today.
+  const [focusDate, setFocusDate] = useState<string | null>(null)
+  const [hoverDate, setHoverDate] = useState<string | null>(null)
+  const [focusWithin, setFocusWithin] = useState(false)
   const lastIndex = days.length - 1
-  const foundIndex =
-    selectedDate == null ? -1 : days.findIndex((day) => day.localDate === selectedDate)
-  const selectedIndex = foundIndex >= 0 ? foundIndex : lastIndex
-  const selected = days[selectedIndex]
+  const indexOf = (date: string | null) =>
+    date == null ? -1 : days.findIndex((day) => day.localDate === date)
+  const foundFocus = indexOf(focusDate)
+  const focusIndex = foundFocus >= 0 ? foundFocus : lastIndex
+  const hoverIndex = indexOf(hoverDate)
+  const activeIndex = hoverIndex >= 0 ? hoverIndex : focusWithin ? focusIndex : -1
+  const active = days[activeIndex]
   const ceiling = niceCeiling(seriesMax(days, previousDays))
 
-  function select(index: number, list: HTMLElement | null): void {
+  function focusDay(index: number, list: HTMLElement | null): void {
     const clamped = Math.max(0, Math.min(lastIndex, index))
     const day = days[clamped]
     if (!day) return
-    setSelectedDate(day.localDate)
+    setFocusDate(day.localDate)
     const button = list?.querySelector<HTMLButtonElement>(`[data-day="${day.localDate}"]`)
     button?.focus()
   }
@@ -127,7 +130,11 @@ export function OverviewSpendChart({
               : null
     if (target == null) return
     event.preventDefault()
-    select(target, list)
+    focusDay(target, list)
+  }
+
+  function onGroupBlur(event: FocusEvent<HTMLDivElement>): void {
+    if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false)
   }
 
   return (
@@ -137,35 +144,39 @@ export function OverviewSpendChart({
       aria-busy={loading || undefined}
     >
       {loading || days.length === 0 ? (
-        <Skeleton className="block h-[var(--overview-chart-height)] w-full" />
+        <Skeleton className="block min-h-[var(--overview-chart-height)] w-full flex-1" />
       ) : (
         <>
           <div className="overview-chart-scroll">
             <div className="overview-chart-body">
               <div className="overview-plot">
-                <div className="relative">
+                <div className="relative h-full">
+                  <Legend />
                   <Guides />
                   <div
                     role="group"
                     aria-label="Estimated spend for the past 30 days"
                     className="overview-days relative"
+                    onMouseLeave={() => setHoverDate(null)}
+                    onFocus={() => setFocusWithin(true)}
+                    onBlur={onGroupBlur}
                   >
                     {days.map((day, index) => {
                       const previous = previousDays[index]
                       const now = barGeometry(day, ceiling)
                       const before = barGeometry(previous, ceiling)
                       const isToday = index === lastIndex
-                      const isSelected = index === selectedIndex
                       return (
                         <button
                           key={day.localDate}
                           type="button"
                           data-day={day.localDate}
-                          aria-pressed={isSelected}
+                          data-active={index === activeIndex ? "" : undefined}
                           aria-label={dayDetail(day, previous, isToday)}
-                          tabIndex={isSelected ? 0 : -1}
+                          tabIndex={index === focusIndex ? 0 : -1}
                           className="overview-day"
-                          onClick={() => setSelectedDate(day.localDate)}
+                          onMouseEnter={() => setHoverDate(day.localDate)}
+                          onFocus={() => setFocusDate(day.localDate)}
                           onKeyDown={(event) => onKeyDown(event, index)}
                           style={{ "--overview-bar-index": index } as CSSProperties}
                         >
@@ -207,32 +218,29 @@ export function OverviewSpendChart({
               </div>
             </div>
           </div>
-          <div className="mt-[var(--space-sm)] flex items-baseline justify-between gap-[var(--space-md)]">
-            {selected && selectedIndex !== lastIndex ? (
-              <p
-                role="status"
-                className="type-caption min-w-0 truncate text-label-secondary"
-                data-testid="overview-chart-detail"
-              >
-                <SegmentFigure>
-                  {dayDetail(selected, previousDays[selectedIndex], false)}
-                </SegmentFigure>
-              </p>
+          <p
+            role="status"
+            className="type-caption mt-[var(--space-sm)] min-w-0 truncate text-label-secondary"
+            data-testid="overview-chart-detail"
+          >
+            {active ? (
+              <SegmentFigure>
+                {dayDetail(active, previousDays[activeIndex], activeIndex === lastIndex)}
+              </SegmentFigure>
             ) : (
-              <span aria-hidden="true" />
+              <span aria-hidden="true">Hover a day for its reading</span>
             )}
-            <Legend />
-          </div>
+          </p>
         </>
       )}
     </section>
   )
 }
 
-/** The key for the two series, at the right edge under the axis. */
+/** The key for the two series, over the top-left corner of the plot. */
 function Legend() {
   return (
-    <p className="type-caption flex shrink-0 items-center gap-[var(--space-md)] text-label-tertiary">
+    <p className="overview-legend type-caption flex items-center gap-[var(--space-md)] text-label-secondary">
       <span className="inline-flex items-center gap-[var(--space-xs)]">
         <span aria-hidden="true" className="h-2 w-2 rounded-small bg-token-in" />
         Last 30 days

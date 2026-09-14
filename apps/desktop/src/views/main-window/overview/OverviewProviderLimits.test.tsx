@@ -94,7 +94,7 @@ describe("OverviewProviderLimits", () => {
     expect(
       Array.from(dots).filter((dot) => dot.className.includes("bg-brand-tint")),
     ).toHaveLength(13)
-    expect(screen.getByText("Live")).toHaveClass("text-label-tertiary")
+    expect(screen.queryByText("Live")).toBeNull()
     expect(screen.queryByText(/\$/)).toBeNull()
   })
 

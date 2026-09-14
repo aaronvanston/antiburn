@@ -38,14 +38,14 @@ describe("OverviewBurnChecks", () => {
             category("oldModelUsage", 1, 10, null),
             category("unusedSkills", 0, 20),
           ],
-          { estimatedTokenBurnBasisPoints: 640 },
+          { estimatedTokenBurnBasisPoints: 40 },
         )}
         onOpen={onOpen}
       />,
     )
     const panel = screen.getByRole("region", { name: "Burn checks" })
     expect(within(panel).getByText("3 findings · 1 passed")).toBeVisible()
-    expect(within(panel).getByText("6% estimated token burn")).toBeVisible()
+    expect(within(panel).getByText("Less than 1% estimated burn")).toBeVisible()
     const rows = within(panel).getAllByRole("listitem")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Excess cache rehydration4 sessions")

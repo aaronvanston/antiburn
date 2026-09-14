@@ -175,6 +175,43 @@ Each note and the change it produced, applied on top of the settled design above
 Layout after this round, top to bottom: chart, totals, Burn checks beside Recent
 sessions, Provider limits.
 
+## Round 3 feedback (2026-09-14, in chat and via notate)
+
+Keith's second look, in chat and one more `notate` capture
+(`notate-2026-09-14-13.10.18`). Each note and the change it produced:
+
+1. "Lets run chart along bottom. That can be what expands when window sizes
+   taller." → the chart is the last block and grows with the window. The page is
+   a flex column that fills the scroll viewport; the chart keeps its minimum
+   height in a short window and takes every spare pixel in a tall one. The
+   Radix viewport wrapper has no set height, so the page's percent height could
+   not resolve through it; `overview.css` makes that wrapper a flex column.
+2. "Instead of click on chart, make hover for info" → the day reading follows the
+   pointer. No day is selected any more; keyboard users get the same reading by
+   focusing a bar and moving with the arrow keys. The reading line under the axis
+   holds a "Hover a day for its reading" hint when nothing is under the pointer,
+   so the page does not jump.
+3. "Use the segmented radial chart that marty made for the token burn. Also say
+   'less than' not the symbol" → the Burn checks hero is `BurnCheckIndicator`,
+   the segmented dial from the session list, at 44px. The headline reads
+   "Less than 1% estimated burn" instead of "<1%".
+4. "Remove all the word 'tokens' and 'token' from this screen. It's redundant.
+   Its an app about tokens." → the totals captions read "900k · 2 sessions", the
+   day reading reads "Today · $14.50 · 900 · 2 sessions · …", and the checks
+   headline reads "estimated burn".
+5. "Dont show 'live'" → the limits card shows a "Stale" tag only when a reading
+   is stale. Fresh readings carry no tag.
+6. "move chart key to top left of chart, on top of chart, with some subtle
+   white container around it" → the key sits over the top-left corner of the
+   plot in a translucent `surface-card` pill with the card outline. It ignores
+   the pointer so the bars under it still hover.
+7. "this view is messy - needs more alignment. propose some solutions" (the Burn
+   checks card beside the compact session rows) → proposals only, no change
+   yet. See the note in chat; the decision goes here once Keith picks one.
+
+Layout after this round, top to bottom: totals, Burn checks beside Recent
+sessions, Provider limits, chart.
+
 ## Slices
 
 Each slice is one PR of roughly a few hundred lines, stacked on the one before
@@ -364,4 +401,4 @@ switch.
 | Slice 2 — totals and daily chart              | done (2026-09-14)                                                                                                                                                              |
 | Slice 3 — provider limits                     | done (2026-09-14)                                                                                                                                                              |
 | Slice 4 — burn checks and recent sessions     | done (2026-09-14)                                                                                                                                                              |
-| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first hands-on test done (2026-09-14, 13 notate pins applied, see Round 2); awaiting his second look and `/design-review` on a live instance |
+| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first two hands-on tests done (2026-09-14, see Round 2 and Round 3); alignment proposals for the checks/sessions row pending his pick; `/design-review` on a live instance still to run |

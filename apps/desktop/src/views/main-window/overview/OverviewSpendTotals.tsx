@@ -75,12 +75,11 @@ function SpendCell({ window }: { window: ProviderUsageWindowPayload }) {
         <SegmentFigure>
           {hasCost ? formatSpendFigure(window.estimatedUsd ?? 0) : formatTokenFigure(tokens)}
         </SegmentFigure>
-        {!hasCost && <span className="sr-only"> tokens</span>}
       </dd>
       <dd className="type-caption mt-[var(--space-xs)] whitespace-nowrap text-label-tertiary">
         {hasCost && (
           <>
-            <SegmentFigure>{formatTokenFigure(tokens)}</SegmentFigure> tokens
+            <SegmentFigure>{formatTokenFigure(tokens)}</SegmentFigure>
             <span aria-hidden="true"> · </span>
           </>
         )}

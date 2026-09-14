@@ -56,11 +56,11 @@ export function OverviewProviderLimits({
       aria-busy={loading || undefined}
       className="relative rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
     >
-      {limited.length > 0 && (
+      {limited.length > 0 && stale && (
         <p
-          className={`type-caption absolute top-[var(--space-lg)] right-[var(--space-lg)] ${liveFreshnessToneClass(stale ? "stale" : "fresh")}`}
+          className={`type-caption absolute top-[var(--space-lg)] right-[var(--space-lg)] ${liveFreshnessToneClass("stale")}`}
         >
-          {stale ? "Stale" : "Live"}
+          Stale
         </p>
       )}
       {loading || !live ? (
