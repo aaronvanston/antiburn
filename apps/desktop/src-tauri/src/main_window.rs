@@ -1,7 +1,7 @@
 //! Shell policy for the ordinary main window.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -306,12 +306,58 @@ struct Presentation {
     pending: Option<(OpenKind, Instant)>,
 }
 
+#[derive(Default)]
+struct PlacementWriteQueue {
+    pending: Option<String>,
+    active: bool,
+    terminal_action: Option<PlacementTerminalAction>,
+}
+
+impl PlacementWriteQueue {
+    fn enqueue(
+        &mut self,
+        encoded: Option<String>,
+        terminal_action: Option<PlacementTerminalAction>,
+    ) -> (bool, Option<PlacementTerminalAction>) {
+        if let Some(encoded) = encoded {
+            self.pending = Some(encoded);
+        }
+        if terminal_action.is_some() {
+            self.terminal_action = terminal_action;
+        }
+        if self.active {
+            return (false, None);
+        }
+        if self.pending.is_none() {
+            return (false, self.terminal_action.take());
+        }
+        self.active = true;
+        (true, None)
+    }
+
+    fn next(&mut self) -> (Option<String>, Option<PlacementTerminalAction>) {
+        if let Some(encoded) = self.pending.take() {
+            return (Some(encoded), None);
+        }
+        self.active = false;
+        (None, self.terminal_action.take())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlacementTerminalAction {
+    Exit,
+    Restart,
+}
+
 /// Renderer, presentation, recovery, target, and placement state.
 pub struct MainWindowState {
     readiness: Mutex<WindowReadiness>,
     presentation: Mutex<Presentation>,
     placement: Mutex<Option<Placement>>,
     placement_generation: AtomicU64,
+    placement_writes: Mutex<PlacementWriteQueue>,
+    terminal_requested: AtomicBool,
     recovery: Mutex<RecoveryLedger>,
     renderer_status: Mutex<Option<(u64, RendererStatus)>>,
     failure_reports: Mutex<(u64, u32)>,
@@ -333,6 +379,8 @@ impl MainWindowState {
                     .and_then(|raw| serde_json::from_str(&raw).ok()),
             ),
             placement_generation: AtomicU64::new(0),
+            placement_writes: Mutex::new(PlacementWriteQueue::default()),
+            terminal_requested: AtomicBool::new(false),
             recovery: Mutex::new(RecoveryLedger::default()),
             renderer_status: Mutex::new(None),
             failure_reports: Mutex::new((0, 0)),
@@ -342,6 +390,10 @@ impl MainWindowState {
             section_target_revision: AtomicU64::new(0),
             sample_targets: Mutex::new(VecDeque::new()),
         }
+    }
+
+    fn begin_terminal_action(&self) -> bool {
+        !self.terminal_requested.swap(true, Ordering::AcqRel)
     }
 
     pub fn issue_sample_handle(
@@ -681,7 +733,7 @@ pub(crate) fn on_main(app: &AppHandle, task: impl FnOnce(&AppHandle) + Send + 's
 }
 
 /// Compute one command value on the main thread without blocking it.
-async fn on_main_value<T: Send + 'static>(
+pub(crate) async fn on_main_value<T: Send + 'static>(
     app: &AppHandle,
     task: impl FnOnce(&AppHandle) -> T + Send + 'static,
 ) -> Result<T, String> {
@@ -847,7 +899,7 @@ fn sample_surface(surface: &str) -> BurnCheckSampleSurface {
 
 /// Resolve one opaque sample route and use the standard revisioned session controller.
 #[tauri::command]
-pub fn open_burn_check_sample(
+pub async fn open_burn_check_sample(
     window: WebviewWindow,
     app: AppHandle,
     navigation_handle: String,
@@ -855,16 +907,22 @@ pub fn open_burn_check_sample(
     if window.label() != LABEL {
         return Err("burn check samples are unavailable to this window".to_owned());
     }
-    let target = match resolve_sample_for_open(
-        &app.state::<MainWindowState>(),
-        &app.state::<Store>(),
-        &navigation_handle,
-        Instant::now(),
-    )? {
+    let action_app = app.clone();
+    let target = match tauri::async_runtime::spawn_blocking(move || {
+        resolve_sample_for_open(
+            &action_app.state::<MainWindowState>(),
+            &action_app.state::<Store>(),
+            &navigation_handle,
+            Instant::now(),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())??
+    {
         Ok(target) => target,
         Err(outcome) => return Ok(outcome),
     };
-    route_session_target(&app, target)?;
+    on_main_value(&app, move |app| route_session_target(app, target)).await??;
     Ok(OpenBurnCheckSampleOutcome::Opened)
 }
 
@@ -1654,36 +1712,103 @@ pub fn schedule_placement_save(app: &AppHandle) {
             return;
         }
         let persist_app = app.clone();
-        let _ = app.run_on_main_thread(move || persist_current(&persist_app));
+        let _ = app.run_on_main_thread(move || {
+            let encoded = capture_current_placement(&persist_app, false);
+            queue_placement_write(&persist_app, encoded, None);
+        });
     });
 }
 
-/// Persist the latest normal bounds before hide or quit.
+/// Capture the latest normal bounds and queue a durable write.
 pub fn flush_placement(app: &AppHandle) {
     app.state::<MainWindowState>()
         .placement_generation
         .fetch_add(1, Ordering::AcqRel);
-    persist_current(app);
+    let encoded = capture_current_placement(app, true);
+    queue_placement_write(app, encoded, None);
 }
 
-fn persist_current(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return;
-    };
+/// Persist the final placement before a deliberate exit.
+pub fn exit_after_placement_flush(app: &AppHandle) {
     let state = app.state::<MainWindowState>();
-    let previous = state.placement();
-    let Some(placement) = antiburn_main_window::capture(&window, previous.as_ref()) else {
-        return;
-    };
-    if previous.as_ref() == Some(&placement) {
+    if !state.begin_terminal_action() {
         return;
     }
-    let Ok(encoded) = serde_json::to_string(&placement) else {
+    state.placement_generation.fetch_add(1, Ordering::AcqRel);
+    let encoded = capture_current_placement(app, true);
+    queue_placement_write(app, encoded, Some(PlacementTerminalAction::Exit));
+}
+
+/// Persist the final placement before an update restart.
+pub fn restart_after_placement_flush(app: &AppHandle) {
+    let restart_app = app.clone();
+    if let Err(error) =
+        app.run_on_main_thread(move || restart_after_placement_flush_on_main(&restart_app))
+    {
+        ::tracing::error!(event = "application_restart_schedule_failed", error = %error);
+    }
+}
+
+fn restart_after_placement_flush_on_main(app: &AppHandle) {
+    let state = app.state::<MainWindowState>();
+    if !state.begin_terminal_action() {
         return;
-    };
-    *lock(&state.placement) = Some(placement);
-    app.state::<Store>()
-        .set_internal_value(PLACEMENT_KEY, &encoded);
+    }
+    state.placement_generation.fetch_add(1, Ordering::AcqRel);
+    let encoded = capture_current_placement(app, true);
+    queue_placement_write(app, encoded, Some(PlacementTerminalAction::Restart));
+}
+
+fn capture_current_placement(app: &AppHandle, include_unchanged: bool) -> Option<String> {
+    let window = app.get_webview_window(LABEL)?;
+    let state = app.state::<MainWindowState>();
+    let previous = state.placement();
+    let placement = antiburn_main_window::capture(&window, previous.as_ref())?;
+    let changed = previous.as_ref() != Some(&placement);
+    if changed {
+        *lock(&state.placement) = Some(placement.clone());
+    }
+    (changed || include_unchanged)
+        .then(|| serde_json::to_string(&placement).ok())
+        .flatten()
+}
+
+fn queue_placement_write(
+    app: &AppHandle,
+    encoded: Option<String>,
+    terminal_action: Option<PlacementTerminalAction>,
+) {
+    let (start_worker, immediate_action) =
+        lock(&app.state::<MainWindowState>().placement_writes).enqueue(encoded, terminal_action);
+    if let Some(action) = immediate_action {
+        run_terminal_action(app, action);
+        return;
+    }
+    if !start_worker {
+        return;
+    }
+    let worker_app = app.clone();
+    let store = (*app.state::<Store>()).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        loop {
+            let (encoded, terminal_action) =
+                lock(&worker_app.state::<MainWindowState>().placement_writes).next();
+            let Some(encoded) = encoded else {
+                if let Some(action) = terminal_action {
+                    run_terminal_action(&worker_app, action);
+                }
+                break;
+            };
+            store.set_internal_value(PLACEMENT_KEY, &encoded);
+        }
+    });
+}
+
+fn run_terminal_action(app: &AppHandle, action: PlacementTerminalAction) {
+    match action {
+        PlacementTerminalAction::Exit => app.exit(0),
+        PlacementTerminalAction::Restart => app.restart(),
+    }
 }
 
 #[cfg(test)]
@@ -1697,6 +1822,8 @@ mod tests {
             presentation: Mutex::new(Presentation::default()),
             placement: Mutex::new(None),
             placement_generation: AtomicU64::new(0),
+            placement_writes: Mutex::new(PlacementWriteQueue::default()),
+            terminal_requested: AtomicBool::new(false),
             recovery: Mutex::new(RecoveryLedger::default()),
             renderer_status: Mutex::new(None),
             failure_reports: Mutex::new((0, 0)),
@@ -1726,6 +1853,35 @@ mod tests {
         }
         state.readiness().renderer_ready(generation, now);
         generation
+    }
+
+    #[test]
+    fn a_terminal_action_starts_once() {
+        let state = state();
+
+        assert!(state.begin_terminal_action());
+        assert!(!state.begin_terminal_action());
+    }
+
+    #[test]
+    fn placement_writes_coalesce_before_a_terminal_action() {
+        let mut queue = PlacementWriteQueue::default();
+
+        assert_eq!(queue.enqueue(Some("first".to_owned()), None), (true, None));
+        assert_eq!(queue.next(), (Some("first".to_owned()), None));
+        assert_eq!(
+            queue.enqueue(Some("second".to_owned()), None),
+            (false, None)
+        );
+        assert_eq!(
+            queue.enqueue(
+                Some("latest".to_owned()),
+                Some(PlacementTerminalAction::Restart)
+            ),
+            (false, None)
+        );
+        assert_eq!(queue.next(), (Some("latest".to_owned()), None));
+        assert_eq!(queue.next(), (None, Some(PlacementTerminalAction::Restart)));
     }
 
     #[test]

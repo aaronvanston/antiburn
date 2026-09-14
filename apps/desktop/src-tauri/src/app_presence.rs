@@ -199,7 +199,7 @@ fn apply_dock(app: &AppHandle, visible: bool) {
         tokio::time::sleep(DOCK_HIDE_RETRY).await;
         let retry_app = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
-            let settings = retry_app.state::<crate::store::Store>().settings().ok();
+            let settings = Some(retry_app.state::<crate::store::Store>().settings_snapshot());
             let visible = dock_retry_visibility(settings.as_ref());
             DESIRED_DOCK_VISIBLE.store(visible, std::sync::atomic::Ordering::Release);
             request_native_dock_visibility(&retry_app, visible);
