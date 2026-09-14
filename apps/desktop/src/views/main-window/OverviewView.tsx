@@ -11,6 +11,8 @@ import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
 import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 
+import "./overview/overview.css"
+
 /**
  * The main window's landing section: local spend, provider limits, Burn
  * checks, and recent sessions on one page. The Burn checks and Sessions
@@ -66,7 +68,7 @@ export function OverviewView({
             role="region"
             aria-label={loading ? "Loading Overview" : "Overview"}
             aria-busy={loading || undefined}
-            className="flex w-full flex-col gap-[var(--space-2xl)] px-8 py-6"
+            className="overview-page flex w-full flex-col gap-[var(--space-2xl)] px-8 py-6"
           >
             {loading && (
               <p role="status" className="sr-only">
@@ -79,7 +81,7 @@ export function OverviewView({
               previousDays={usage?.previousDays ?? []}
               loading={loading}
             />
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--space-2xl)]">
+            <div className="overview-panels">
               <OverviewProviderLimits
                 live={state.liveUsage}
                 loading={loading && !state.liveUsage}

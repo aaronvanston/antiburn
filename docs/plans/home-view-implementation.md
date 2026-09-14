@@ -262,9 +262,13 @@ TypeScript:
 
 ### Slice 5 — Polish and review
 
-- Responsive: provider and checks panels stack below a measured width
-  (`useElementWidth`); totals stack at very narrow widths; date ticks thin before
-  the chart ever scrolls.
+- Responsive: provider and checks panels stack below a measured width; totals
+  stack at very narrow widths; date ticks thin before the chart ever scrolls.
+  Built with CSS container queries on the page (`overview.css`), the same
+  pattern as `session-detail.css`, because no `useElementWidth` hook exists.
+  Panels stack below 700px, totals below 540px. The axis labels sit at a fixed
+  pitch per day, so they never collide and need no thinning; below the chart's
+  natural width the chart scrolls sideways instead of shrinking the bars.
 - Light, dark, increased text size, reduced motion (the bar grow-in is clamped
   by `motion.css`; confirm nothing else moves), keyboard pass through nav →
   bars → finding rows → session rows with visible focus.
@@ -316,4 +320,4 @@ switch.
 | Slice 2 — totals and daily chart | done (2026-09-14) |
 | Slice 3 — provider limits | done (2026-09-14) |
 | Slice 4 — burn checks and recent sessions | done (2026-09-14) |
-| Slice 5 — polish, design review, Keith's test | not started |
+| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); awaiting Keith's hands-on test and `/design-review` on a live instance |

@@ -19,6 +19,25 @@
   --overview-bar-stagger: 12ms;
   /* Room for the scale figures to the right of the bars. */
   --overview-scale-gutter: 44px;
+  --overview-day-count: 30;
+  /* The bars, the gaps, and the gutter at their natural size. */
+  --overview-min-width: calc(
+    var(--overview-day-count) * (2 * var(--overview-bar-width) + var(--overview-pair-gap)) +
+      var(--overview-day-count) * var(--overview-day-gap) + var(--overview-scale-gutter)
+  );
+}
+
+/* The bars keep one size at every width. When the page is narrower than
+   the chart, the chart scrolls sideways instead of shrinking the bars. The
+   padding keeps a focused day's ring inside the scroll box. */
+.overview-chart-scroll {
+  margin: calc(-1 * var(--space-xs));
+  padding: var(--space-xs);
+  overflow-x: auto;
+}
+
+.overview-chart-body {
+  min-inline-size: var(--overview-min-width);
 }
 
 /* The bars and the scale figures side by side, at the chart height. */
@@ -78,6 +97,15 @@
   }
 }
 
+/* The global clamp in motion.css shortens the grow-in but keeps its delay,
+   which would show the bars one after another. Remove the delay too, so
+   every bar is present on first paint. */
+@media (prefers-reduced-motion: reduce) {
+  .overview-bar {
+    animation-delay: 0s !important;
+  }
+}
+
 /* The x-axis: one cell per day; a label sits at the left edge of its cell,
    and the last label hangs from the right edge so "Today" ends on the bar. */
 .overview-axis {
@@ -103,4 +131,62 @@
 .overview-axis-day:last-child .overview-axis-label {
   inset-inline-start: auto;
   inset-inline-end: 0;
+}
+
+/* ==========================================================================
+   Overview page width.
+
+   The page measures itself as a container. The three spend totals sit in a
+   row and stack below 540px, where three hero figures no longer fit. The
+   limits and checks panels sit in a row and stack below 700px, where the
+   meter dots of the limits panel no longer fit beside the checks.
+   ========================================================================== */
+
+.overview-page {
+  container-type: inline-size;
+}
+
+.overview-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.overview-totals-cell + .overview-totals-cell {
+  border-left-width: 1px;
+  padding-inline: var(--space-lg);
+}
+
+.overview-totals-cell:first-child {
+  padding-inline-end: var(--space-lg);
+}
+
+.overview-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-2xl);
+}
+
+@container (max-width: 700px) {
+  .overview-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 540px) {
+  .overview-totals {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-md);
+  }
+
+  .overview-totals-cell:first-child {
+    padding-inline-end: 0;
+  }
+
+  .overview-totals-cell + .overview-totals-cell {
+    border-left-width: 0;
+    border-top-width: 1px;
+    padding-inline: 0;
+    padding-block-start: var(--space-md);
+  }
 }

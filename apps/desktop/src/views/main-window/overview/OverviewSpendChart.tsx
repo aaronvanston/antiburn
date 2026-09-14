@@ -141,68 +141,72 @@ export function OverviewSpendChart({
         <Skeleton className="mt-[var(--space-md)] block h-[var(--overview-chart-height)] w-full" />
       ) : (
         <>
-          <div className="overview-plot mt-[var(--space-md)]">
-            <div className="relative">
-              <Guides />
+          <div className="overview-chart-scroll mt-[var(--space-md)]">
+            <div className="overview-chart-body">
+              <div className="overview-plot">
+                <div className="relative">
+                  <Guides />
+                  <div
+                    role="group"
+                    aria-label="Estimated spend for the past 30 days"
+                    className="overview-days relative"
+                  >
+                    {days.map((day, index) => {
+                      const previous = previousDays[index]
+                      const now = barGeometry(day, ceiling)
+                      const before = barGeometry(previous, ceiling)
+                      const isToday = index === lastIndex
+                      const isSelected = index === selectedIndex
+                      return (
+                        <button
+                          key={day.localDate}
+                          type="button"
+                          data-day={day.localDate}
+                          aria-pressed={isSelected}
+                          aria-label={dayDetail(day, previous, isToday)}
+                          tabIndex={isSelected ? 0 : -1}
+                          className="overview-day"
+                          onClick={() => setSelectedDate(day.localDate)}
+                          onKeyDown={(event) => onKeyDown(event, index)}
+                          style={{ "--overview-bar-index": index } as CSSProperties}
+                        >
+                          <Bar
+                            fraction={before.fraction}
+                            unpriced={before.unpriced}
+                            className="bg-label-tertiary/30 text-label-tertiary/30"
+                          />
+                          <Bar
+                            fraction={now.fraction}
+                            unpriced={now.unpriced}
+                            className={
+                              isToday
+                                ? "bg-token-in text-token-in"
+                                : "bg-token-in text-token-in opacity-70"
+                            }
+                          />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <GuideLabels ceiling={ceiling} />
+              </div>
               <div
-                role="group"
-                aria-label="Estimated spend for the past 30 days"
-                className="overview-days relative"
+                className="overview-axis type-caption mt-[var(--space-xs)] text-label-tertiary"
+                aria-hidden="true"
               >
-                {days.map((day, index) => {
-                  const previous = previousDays[index]
-                  const now = barGeometry(day, ceiling)
-                  const before = barGeometry(previous, ceiling)
-                  const isToday = index === lastIndex
-                  const isSelected = index === selectedIndex
-                  return (
-                    <button
-                      key={day.localDate}
-                      type="button"
-                      data-day={day.localDate}
-                      aria-pressed={isSelected}
-                      aria-label={dayDetail(day, previous, isToday)}
-                      tabIndex={isSelected ? 0 : -1}
-                      className="overview-day"
-                      onClick={() => setSelectedDate(day.localDate)}
-                      onKeyDown={(event) => onKeyDown(event, index)}
-                      style={{ "--overview-bar-index": index } as CSSProperties}
-                    >
-                      <Bar
-                        fraction={before.fraction}
-                        unpriced={before.unpriced}
-                        className="bg-label-tertiary/30 text-label-tertiary/30"
-                      />
-                      <Bar
-                        fraction={now.fraction}
-                        unpriced={now.unpriced}
-                        className={
-                          isToday
-                            ? "bg-token-in text-token-in"
-                            : "bg-token-in text-token-in opacity-70"
-                        }
-                      />
-                    </button>
-                  )
-                })}
+                {days.map((day, index) => (
+                  <span key={day.localDate} className="overview-axis-day">
+                    {index === lastIndex ? (
+                      <span className="overview-axis-label">Today</span>
+                    ) : index % AXIS_LABEL_STEP === 0 &&
+                      index < lastIndex - AXIS_LABEL_CLEARANCE ? (
+                      <span className="overview-axis-label">{axisDayLabel(day.localDate)}</span>
+                    ) : null}
+                  </span>
+                ))}
               </div>
             </div>
-            <GuideLabels ceiling={ceiling} />
-          </div>
-          <div
-            className="overview-axis type-caption mt-[var(--space-xs)] text-label-tertiary"
-            aria-hidden="true"
-          >
-            {days.map((day, index) => (
-              <span key={day.localDate} className="overview-axis-day">
-                {index === lastIndex ? (
-                  <span className="overview-axis-label">Today</span>
-                ) : index % AXIS_LABEL_STEP === 0 &&
-                  index < lastIndex - AXIS_LABEL_CLEARANCE ? (
-                  <span className="overview-axis-label">{axisDayLabel(day.localDate)}</span>
-                ) : null}
-              </span>
-            ))}
           </div>
           {selected && (
             <p

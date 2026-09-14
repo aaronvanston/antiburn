@@ -12,6 +12,8 @@ import {
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
+import "./overview.css"
+
 const SPANS: ReadonlyArray<{
   key: keyof ProviderUsageWindowsPayload
   label: string
@@ -41,16 +43,9 @@ export function OverviewSpendTotals({
         <p className="type-callout text-label-secondary">Estimated</p>
         <p className="type-caption text-label-tertiary">Local sessions</p>
       </div>
-      <dl className="mt-[var(--space-sm)] grid grid-cols-3">
-        {SPANS.map((span, index) => (
-          <div
-            key={span.key}
-            className={
-              index === 0
-                ? "min-w-0 pr-[var(--space-lg)]"
-                : "min-w-0 border-l border-separator px-[var(--space-lg)]"
-            }
-          >
+      <dl className="overview-totals mt-[var(--space-sm)]">
+        {SPANS.map((span) => (
+          <div key={span.key} className="overview-totals-cell min-w-0 border-separator">
             <dt className="type-callout text-label-secondary">
               <span aria-hidden="true">{span.label}</span>
               <span className="sr-only">{span.accessibleLabel}</span>
