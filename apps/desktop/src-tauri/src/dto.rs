@@ -10,7 +10,7 @@
 //! around them belongs to the views — so these payloads carry values and facts,
 //! never labels.
 
-use crate::provider_usage::live::{Detection, SourceErrorDetail};
+use crate::provider_usage::live::{Detection, LoginCarrier, SourceErrorDetail};
 use antiburn_local::analysis::{
     ActiveSessionsSummary, EfficiencyTotals, EvidenceValue, FAST_SPEED_KEY, ModelRun,
     QuotaLimitKind, RepeatedContextAccounting, SessionCost, SessionEvidence, SourceFormat,
@@ -2344,6 +2344,10 @@ pub struct LiveUsageMeter {
     pub shown: bool,
     #[serde(default)]
     pub detection: Detection,
+    /// Where the login was found, when a carrier was. Kept through the
+    /// `signedIn` upgrade so the note can name the tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<LoginCarrier>,
 }
 
 /// Live provider usage, as one snapshot.

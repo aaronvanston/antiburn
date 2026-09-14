@@ -28,6 +28,68 @@ pub enum Detection {
     SignedIn,
 }
 
+/// Where a login carrier was found. Names the tool that wrote it, so the
+/// reader can see which sign-in antiburn reuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LoginCarrier {
+    /// `~/.claude/.credentials.json`, written by the Claude Code CLI.
+    ClaudeCredentialsFile,
+    /// The `Claude Code-credentials` Keychain item, written by the Claude Code CLI.
+    ClaudeKeychain,
+    /// Pi's shared auth store. Its presence does not say which providers it holds.
+    Pi,
+    /// `~/.codex/auth.json`, written by the Codex CLI.
+    CodexAuthFile,
+    /// The `agy` CLI's token file.
+    AgyToken,
+    /// The Antigravity IDE's state database.
+    AntigravityIde,
+    /// The `gemini` keyring entry the `agy` CLI writes.
+    AntigravityKeyring,
+}
+
+/// What one source's `detect()` found: a rank, and where it looked when it
+/// found a carrier.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Presence {
+    pub detection: Detection,
+    /// Set when `detection` rests on a carrier, including the inconclusive
+    /// Pi file. `None` when nothing was found or nothing could be checked.
+    pub carrier: Option<LoginCarrier>,
+}
+
+impl Presence {
+    pub const UNKNOWN: Presence = Presence {
+        detection: Detection::Unknown,
+        carrier: None,
+    };
+
+    pub fn new(detection: Detection) -> Presence {
+        Presence {
+            detection,
+            carrier: None,
+        }
+    }
+
+    pub fn via(detection: Detection, carrier: LoginCarrier) -> Presence {
+        Presence {
+            detection,
+            carrier: Some(carrier),
+        }
+    }
+
+    /// The stronger of two, by rank. A tie keeps `self`, so the first
+    /// source registered for a provider names the carrier.
+    pub fn strongest(self, other: Presence) -> Presence {
+        if other.detection > self.detection {
+            other
+        } else {
+            self
+        }
+    }
+}
+
 /// Epistemic strength of a fact, independent of how recently it was observed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Confidence {

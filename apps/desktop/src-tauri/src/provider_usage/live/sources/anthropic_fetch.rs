@@ -119,7 +119,8 @@ use time::OffsetDateTime;
 use crate::provider_usage::live::SourceErrorDetail;
 use crate::provider_usage::live::anthropic;
 use crate::provider_usage::live::model::{
-    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
+    Confidence, Detection, Freshness, LoginCarrier, Presence, ProviderUsageError,
+    ProviderUsageSnapshot, UsageSource,
 };
 use crate::provider_usage::live::{LiveUsageSource, SourceOutcome};
 
@@ -188,44 +189,48 @@ const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 /// The CLI's own executable name on `PATH`.
 const BINARY: &str = "claude";
 
-/// Presence rules, in order: the credentials file is a login; the shared Pi
-/// file is inconclusive and ends detection before any subprocess; the
-/// Keychain item is a login; the config directory or the binary is an
-/// install without a login; nothing is no install.
+/// Presence rules, in order: the credentials file is a login; the Keychain
+/// item is a login; the shared Pi file is inconclusive, because it can hold
+/// any provider's entry and detection never opens it; the config directory
+/// or the binary is an install without a login; nothing is no install.
 fn detect_presence(
     probe: &impl PresenceProbe,
     credentials_path: Option<&Path>,
     pi_auth_path: Option<&Path>,
-) -> Detection {
+) -> Presence {
     let Some(credentials_path) = credentials_path else {
-        return Detection::Unknown;
+        return Presence::UNKNOWN;
     };
     match presence::path_exists(probe, credentials_path) {
-        Ok(true) => return Detection::SignedIn,
-        Ok(false) => {}
-        Err(_) => return Detection::Unknown,
-    }
-    // The shared Pi file does not prove an Anthropic login. Avoid a subprocess when this file exists.
-    if let Some(path) = pi_auth_path {
-        match presence::path_exists(probe, path) {
-            Ok(false) => {}
-            Ok(true) | Err(_) => return Detection::Unknown,
+        Ok(true) => {
+            return Presence::via(Detection::SignedIn, LoginCarrier::ClaudeCredentialsFile);
         }
+        Ok(false) => {}
+        Err(_) => return Presence::UNKNOWN,
     }
     #[cfg(target_os = "macos")]
     match probe.keychain_metadata(KEYCHAIN_SERVICE, None) {
-        KeychainMetadata::Found(_) => return Detection::SignedIn,
+        KeychainMetadata::Found(_) => {
+            return Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain);
+        }
         KeychainMetadata::Absent => {}
-        KeychainMetadata::Unreadable => return Detection::Unknown,
+        KeychainMetadata::Unreadable => return Presence::UNKNOWN,
+    }
+    if let Some(path) = pi_auth_path {
+        match presence::path_exists(probe, path) {
+            Ok(true) => return Presence::via(Detection::Unknown, LoginCarrier::Pi),
+            Ok(false) => {}
+            Err(_) => return Presence::UNKNOWN,
+        }
     }
     let Some(config_dir) = credentials_path.parent() else {
-        return Detection::Unknown;
+        return Presence::UNKNOWN;
     };
     match presence::path_exists(probe, config_dir) {
-        Ok(true) => Detection::InstalledNotSignedIn,
-        Err(_) => Detection::Unknown,
-        Ok(false) if probe.binary_present(BINARY) => Detection::InstalledNotSignedIn,
-        Ok(false) => Detection::NotInstalled,
+        Ok(true) => Presence::new(Detection::InstalledNotSignedIn),
+        Err(_) => Presence::UNKNOWN,
+        Ok(false) if probe.binary_present(BINARY) => Presence::new(Detection::InstalledNotSignedIn),
+        Ok(false) => Presence::new(Detection::NotInstalled),
     }
 }
 
@@ -905,7 +910,7 @@ impl LiveUsageSource for ClaudeDirectFetch {
         true
     }
 
-    fn detect(&self) -> Detection {
+    fn detect(&self) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]
@@ -1402,12 +1407,16 @@ mod tests {
     const PRESENCE_PI: &str = "/fixture/.pi/agent/auth.json";
     const PRESENCE_CONFIG: &str = "/fixture/.claude";
 
-    fn detected(probe: &impl PresenceProbe) -> Detection {
+    fn presence(probe: &impl PresenceProbe) -> Presence {
         detect_presence(
             probe,
             Some(Path::new(PRESENCE_CREDENTIALS)),
             Some(Path::new(PRESENCE_PI)),
         )
+    }
+
+    fn detected(probe: &impl PresenceProbe) -> Detection {
+        presence(probe).detection
     }
 
     #[test]
@@ -1416,9 +1425,9 @@ mod tests {
         assert_eq!(detected(&probe), Detection::NotInstalled);
         let expected = vec![
             format!("path_exists:{PRESENCE_CREDENTIALS}"),
-            format!("path_exists:{PRESENCE_PI}"),
             #[cfg(target_os = "macos")]
             "keychain_metadata".into(),
+            format!("path_exists:{PRESENCE_PI}"),
             format!("path_exists:{PRESENCE_CONFIG}"),
             "binary_present".into(),
         ];
@@ -1464,20 +1473,46 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".credentials.json");
         fs::write(&path, "not valid JSON").unwrap();
-        assert_eq!(ClaudeDirectFetch::at(path).detect(), Detection::SignedIn);
+        assert_eq!(
+            ClaudeDirectFetch::at(path).detect(),
+            Presence::via(Detection::SignedIn, LoginCarrier::ClaudeCredentialsFile)
+        );
     }
 
     #[test]
-    fn detection_of_the_shared_pi_file_is_inconclusive_and_skips_keychain() {
+    fn detection_of_the_shared_pi_file_is_inconclusive_but_names_pi() {
         let mut probe = RecordingPresence::default();
         probe.paths.insert(PRESENCE_PI.into(), Ok(true));
-        assert_eq!(detected(&probe), Detection::Unknown);
         assert_eq!(
-            *probe.calls.borrow(),
-            [
-                format!("path_exists:{PRESENCE_CREDENTIALS}"),
-                format!("path_exists:{PRESENCE_PI}"),
-            ]
+            presence(&probe),
+            Presence::via(Detection::Unknown, LoginCarrier::Pi)
+        );
+        // Detection ends at the Pi file: the config directory and the
+        // binary would add nothing to an inconclusive answer.
+        assert_eq!(
+            probe.calls.borrow().last().unwrap(),
+            &format!("path_exists:{PRESENCE_PI}")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_keychain_login_outranks_the_pi_file() {
+        let mut probe = RecordingPresence {
+            keychain: Some(KeychainMetadata::Found(b"synthetic attributes".to_vec())),
+            ..Default::default()
+        };
+        probe.paths.insert(PRESENCE_PI.into(), Ok(true));
+        assert_eq!(
+            presence(&probe),
+            Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain)
+        );
+        assert!(
+            !probe
+                .calls
+                .borrow()
+                .iter()
+                .any(|c| c.ends_with(PRESENCE_PI))
         );
     }
 
@@ -1488,9 +1523,12 @@ mod tests {
             keychain: Some(KeychainMetadata::Found(b"synthetic attributes".to_vec())),
             ..Default::default()
         };
-        assert_eq!(detected(&probe), Detection::SignedIn);
+        assert_eq!(
+            presence(&probe),
+            Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain)
+        );
         assert_eq!(probe.calls.borrow().last().unwrap(), "keychain_metadata");
-        assert_eq!(probe.calls.borrow().len(), 3);
+        assert_eq!(probe.calls.borrow().len(), 2);
     }
 
     #[cfg(target_os = "macos")]
@@ -1503,7 +1541,7 @@ mod tests {
         };
         assert_eq!(detected(&probe), Detection::Unknown);
         assert_eq!(probe.calls.borrow().last().unwrap(), "keychain_metadata");
-        assert_eq!(probe.calls.borrow().len(), 3);
+        assert_eq!(probe.calls.borrow().len(), 2);
     }
 
     #[test]
@@ -1535,7 +1573,7 @@ mod tests {
     #[test]
     fn detection_keeps_an_unresolved_credentials_path_unknown() {
         let probe = RecordingPresence::default();
-        assert_eq!(detect_presence(&probe, None, None), Detection::Unknown);
+        assert_eq!(detect_presence(&probe, None, None), Presence::UNKNOWN);
         assert!(probe.calls.borrow().is_empty());
     }
 

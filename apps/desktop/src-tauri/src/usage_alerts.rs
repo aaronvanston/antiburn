@@ -639,13 +639,19 @@ mod tests {
 
     #[test]
     fn an_inactive_roster_uses_cached_detection() {
-        use provider_usage::live::{Detection, DetectionMap, roster};
+        use provider_usage::live::{Detection, DetectionMap, LoginCarrier, Presence, roster};
 
         let live = LiveUsage::new();
         assert!(live.detection_snapshot().is_empty());
         let detection = DetectionMap::from([
-            ("anthropic".into(), Detection::SignedIn),
-            ("google".into(), Detection::InstalledNotSignedIn),
+            (
+                "anthropic".into(),
+                Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain),
+            ),
+            (
+                "google".into(),
+                Presence::new(Detection::InstalledNotSignedIn),
+            ),
         ]);
         live.store_detection(detection.clone());
         let mut detached = live.detection_snapshot();
@@ -658,10 +664,9 @@ mod tests {
             &live.detection_snapshot(),
         );
         for meter in meters {
-            assert_eq!(
-                meter.detection,
-                detection.get(&meter.provider).copied().unwrap_or_default()
-            );
+            let presence = detection.get(&meter.provider).copied().unwrap_or_default();
+            assert_eq!(meter.detection, presence.detection);
+            assert_eq!(meter.carrier, presence.carrier);
             assert_eq!(meter.shown, meter.provider != "anthropic");
         }
         live.store_detection(DetectionMap::default());

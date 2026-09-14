@@ -257,6 +257,42 @@ describe("OnboardingView", () => {
     expect(await screen.findByText("Detected: Codex CLI ✓ · Claude Code ✗")).toBeInTheDocument()
   })
 
+  it("says when a login comes through Pi, proven or not", async () => {
+    let resolveUsage!: (usage: LiveUsageSummaryPayload) => void
+    mockCommands({
+      get_live_usage: new Promise<LiveUsageSummaryPayload>((resolve) => {
+        resolveUsage = resolve
+      }),
+    })
+    render(<OnboardingView />)
+    fireEvent.click(await screen.findByRole("button", { name: "Continue" }))
+    await screen.findByRole("heading", { name: "Scan Locations: Agents" })
+    await act(async () => {
+      resolveUsage({
+        ...LIVE_USAGE,
+        meters: [
+          {
+            provider: "openai",
+            displayName: "Codex",
+            shown: true,
+            detection: "signedIn",
+            carrier: "pi",
+          },
+          {
+            provider: "anthropic",
+            displayName: "Claude",
+            shown: true,
+            detection: "unknown",
+            carrier: "pi",
+          },
+        ],
+      })
+    })
+    expect(
+      await screen.findByText("Detected: Codex CLI ✓ via Pi · Claude Code ? via Pi"),
+    ).toBeInTheDocument()
+  })
+
   it("still reaches Ready when the detection request rejects", async () => {
     mockCommands({ get_live_usage: () => Promise.reject(new Error("detection unavailable")) })
     render(<OnboardingView />)

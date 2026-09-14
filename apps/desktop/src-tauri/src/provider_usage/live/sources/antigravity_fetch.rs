@@ -29,8 +29,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::provider_usage::live::antigravity;
 use crate::provider_usage::live::model::{
-    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, SourceErrorDetail,
-    UsageSource,
+    Confidence, Detection, Freshness, LoginCarrier, Presence, ProviderUsageError,
+    ProviderUsageSnapshot, SourceErrorDetail, UsageSource,
 };
 use crate::provider_usage::live::{LiveUsageSource, SourceOutcome};
 
@@ -183,7 +183,7 @@ impl LiveUsageSource for AntigravityDirectFetch {
         true
     }
 
-    fn detect(&self) -> Detection {
+    fn detect(&self) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]
@@ -267,53 +267,57 @@ fn detect_presence(
     ide_state: &impl IdeStateProbe,
     agy_path: Option<&Path>,
     ide_paths: &[PathBuf],
-) -> Detection {
+) -> Presence {
     if let Some(path) = agy_path {
         match presence::path_exists(probe, path) {
-            Ok(true) => return Detection::SignedIn,
+            Ok(true) => return Presence::via(Detection::SignedIn, LoginCarrier::AgyToken),
             Ok(false) => {}
-            Err(_) => return Detection::Unknown,
+            Err(_) => return Presence::UNKNOWN,
         }
     }
     for path in ide_paths {
         match presence::path_exists(probe, path) {
             Ok(true) => match ide_state.ide_has_oauth_key(path) {
-                Ok(true) => return Detection::SignedIn,
+                Ok(true) => {
+                    return Presence::via(Detection::SignedIn, LoginCarrier::AntigravityIde);
+                }
                 Ok(false) => {}
-                Err(()) => return Detection::Unknown,
+                Err(()) => return Presence::UNKNOWN,
             },
             Ok(false) => {}
-            Err(_) => return Detection::Unknown,
+            Err(_) => return Presence::UNKNOWN,
         }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        Detection::Unknown
+        Presence::UNKNOWN
     }
     #[cfg(target_os = "macos")]
     {
         match probe.keychain_metadata(KEYCHAIN_SERVICE, Some(KEYCHAIN_ACCOUNT)) {
-            KeychainMetadata::Found(_) => return Detection::SignedIn,
+            KeychainMetadata::Found(_) => {
+                return Presence::via(Detection::SignedIn, LoginCarrier::AntigravityKeyring);
+            }
             KeychainMetadata::Absent => {}
-            KeychainMetadata::Unreadable => return Detection::Unknown,
+            KeychainMetadata::Unreadable => return Presence::UNKNOWN,
         }
         let Some(agy_dir) = agy_path.and_then(Path::parent) else {
-            return Detection::Unknown;
+            return Presence::UNKNOWN;
         };
         // IDE paths end with User/globalStorage/state.vscdb. Check the application support directory above them.
         let directories = std::iter::once(agy_dir)
             .chain(ide_paths.iter().filter_map(|path| path.ancestors().nth(3)));
         for directory in directories {
             match presence::path_exists(probe, directory) {
-                Ok(true) => return Detection::InstalledNotSignedIn,
+                Ok(true) => return Presence::new(Detection::InstalledNotSignedIn),
                 Ok(false) => {}
-                Err(_) => return Detection::Unknown,
+                Err(_) => return Presence::UNKNOWN,
             }
         }
         if probe.binary_present(BINARY) {
-            Detection::InstalledNotSignedIn
+            Presence::new(Detection::InstalledNotSignedIn)
         } else {
-            Detection::NotInstalled
+            Presence::new(Detection::NotInstalled)
         }
     }
 }
@@ -1107,7 +1111,7 @@ mod tests {
     }
 
     fn detected(probe: &RecordingPresence, agy: &Path, ide: &[PathBuf]) -> Detection {
-        detect_presence(probe, &RecordingIdeState(probe), Some(agy), ide)
+        detect_presence(probe, &RecordingIdeState(probe), Some(agy), ide).detection
     }
 
     fn presence_paths(root: &Path) -> (PathBuf, [PathBuf; 2]) {
@@ -1183,7 +1187,10 @@ mod tests {
         fs::create_dir_all(agy.parent().unwrap()).unwrap();
         fs::write(&agy, "not valid JSON").unwrap();
         let probe = probe();
-        assert_eq!(detected(&probe, &agy, &ide), Detection::SignedIn);
+        assert_eq!(
+            detect_presence(&probe, &RecordingIdeState(&probe), Some(&agy), &ide),
+            Presence::via(Detection::SignedIn, LoginCarrier::AgyToken)
+        );
         assert_eq!(
             *probe.calls.borrow(),
             [format!("path_exists:{}", agy.display())]
@@ -1198,7 +1205,10 @@ mod tests {
             write_presence_database(&ide[index], "antigravityUnifiedStateSync.oauthToken");
             let before = fs::read(&ide[index]).unwrap();
             let probe = probe();
-            assert_eq!(detected(&probe, &agy, &ide), Detection::SignedIn);
+            assert_eq!(
+                detect_presence(&probe, &RecordingIdeState(&probe), Some(&agy), &ide),
+                Presence::via(Detection::SignedIn, LoginCarrier::AntigravityIde)
+            );
             let mut expected = vec![format!("path_exists:{}", agy.display())];
             expected.extend(
                 ide[..=index]
@@ -1302,16 +1312,19 @@ mod tests {
         for (metadata, expected) in [
             (
                 KeychainMetadata::Found(b"synthetic attributes".to_vec()),
-                Detection::SignedIn,
+                Presence::via(Detection::SignedIn, LoginCarrier::AntigravityKeyring),
             ),
-            (KeychainMetadata::Unreadable, Detection::Unknown),
+            (KeychainMetadata::Unreadable, Presence::UNKNOWN),
         ] {
             let probe = RecordingPresence {
                 fallthrough: true,
                 keychain: Some(metadata),
                 ..Default::default()
             };
-            assert_eq!(detected(&probe, &agy, &ide), expected);
+            assert_eq!(
+                detect_presence(&probe, &RecordingIdeState(&probe), Some(&agy), &ide),
+                expected
+            );
             assert_eq!(probe.calls.borrow().last().unwrap(), "keychain_metadata");
             assert_eq!(probe.calls.borrow().len(), 4);
         }

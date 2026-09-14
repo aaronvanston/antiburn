@@ -162,10 +162,14 @@ function AgentsDetected({
     .flatMap((meter) => {
       const marker =
         meter.detection === "signedIn"
-          ? "✓"
+          ? meter.carrier === "pi"
+            ? "✓ via Pi"
+            : "✓"
           : meter.detection === "notInstalled" || meter.detection === "installedNotSignedIn"
             ? "✗"
-            : null
+            : meter.carrier === "pi"
+              ? "? via Pi"
+              : null
       if (!marker) return []
       const name =
         meter.provider === "anthropic"

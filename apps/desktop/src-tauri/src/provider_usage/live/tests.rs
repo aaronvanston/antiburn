@@ -15,8 +15,8 @@ use super::model::{
     UsageSource, UsageWindowKind, WindowRole,
 };
 use super::{
-    Detection, DetectionMap, LiveUsageSource, SourceOutcome, detect_all, roster, sources,
-    summarize, summarize_collected,
+    Detection, DetectionMap, LiveUsageSource, LoginCarrier, Presence, SourceOutcome, detect_all,
+    roster, sources, summarize, summarize_collected,
 };
 use crate::store::HiddenMeters;
 
@@ -992,8 +992,8 @@ impl LiveUsageSource for Detected {
         self.0
     }
 
-    fn detect(&self) -> Detection {
-        self.1.expect("roster must not call detect")
+    fn detect(&self) -> Presence {
+        Presence::new(self.1.expect("roster must not call detect"))
     }
 
     fn fetch(&self, _max_age: std::time::Duration) -> SourceOutcome {
@@ -1016,7 +1016,7 @@ fn the_roster_defaults_to_unknown_without_detecting() {
     );
     assert_eq!(
         Fixed("default-detector", vec![]).detect(),
-        Detection::Unknown
+        Presence::UNKNOWN
     );
 }
 
@@ -1039,14 +1039,28 @@ fn detection_keeps_the_strongest_evidence_in_either_source_order() {
                 assert_eq!(
                     detect_all(&sources),
                     DetectionMap::from([
-                        ("anthropic".into(), stronger),
-                        ("google".into(), Detection::Unknown),
+                        ("anthropic".into(), Presence::new(stronger)),
+                        ("google".into(), Presence::UNKNOWN),
                     ])
                 );
             }
         }
     }
     assert!(detect_all(&[]).is_empty());
+}
+
+#[test]
+fn a_tie_keeps_the_first_carrier_and_a_stronger_rank_replaces_it() {
+    let keychain = Presence::via(Detection::SignedIn, LoginCarrier::ClaudeKeychain);
+    let file = Presence::via(Detection::SignedIn, LoginCarrier::ClaudeCredentialsFile);
+    assert_eq!(keychain.strongest(file), keychain);
+    let pi = Presence::via(Detection::Unknown, LoginCarrier::Pi);
+    assert_eq!(pi.strongest(file), file);
+    assert_eq!(file.strongest(pi), file);
+    assert_eq!(
+        pi.strongest(Presence::new(Detection::NotInstalled)).carrier,
+        None
+    );
 }
 
 #[test]

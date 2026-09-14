@@ -20,6 +20,7 @@
  */
 
 import type {
+  LiveLoginCarrier,
   LiveUsageSourceErrorDetail,
   LiveProviderUsagePayload,
   LiveUsageDetection,
@@ -608,36 +609,42 @@ function liveProviderDisplayName(provider?: string): string | null {
         : null
 }
 
+/** The tool a login carrier belongs to, as the reader would name it. */
+export function liveCarrierLabel(carrier: LiveLoginCarrier): string {
+  switch (carrier) {
+    case "claudeCredentialsFile":
+      return "the Claude Code CLI"
+    case "claudeKeychain":
+      return "the Claude Code CLI (Keychain)"
+    case "pi":
+      return "Pi"
+    case "codexAuthFile":
+      return "the Codex CLI"
+    case "agyToken":
+      return "the agy CLI"
+    case "antigravityIde":
+      return "the Antigravity IDE"
+    case "antigravityKeyring":
+      return "the agy CLI (keyring)"
+  }
+}
+
+/**
+ * The one sentence a meter with no reading needs: which tool antiburn did
+ * or did not find, where the login came from, and what to do.
+ *
+ * `sessionsSeen` is the discovery scanner's count for this provider's
+ * agent, when the caller has it. It answers the one case detection cannot:
+ * sessions on disk with no CLI login usually means the desktop app.
+ */
 export function liveDetectionNote(
   provider: string,
   detection: LiveUsageDetection | undefined,
   shown: boolean,
+  carrier?: LiveLoginCarrier,
+  sessionsSeen?: number,
 ): string {
   if (!shown) return "Turn the switch above back on to ask for current plan limits."
-  if (provider === ANTHROPIC) {
-    if (detection === "notInstalled") {
-      return "antiburn didn't find Claude Code on this Mac. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once."
-    }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically."
-    }
-  }
-  if (provider === GOOGLE) {
-    if (detection === "notInstalled") {
-      return "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app."
-    }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found Antigravity but no login. Sign in inside Antigravity or run `agy` once."
-    }
-  }
-  if (provider === OPENAI) {
-    if (detection === "notInstalled") {
-      return "antiburn didn't find the Codex CLI on this Mac. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once."
-    }
-    if (detection === "installedNotSignedIn") {
-      return "antiburn found the Codex CLI but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically."
-    }
-  }
   const tool =
     provider === ANTHROPIC
       ? "Claude Code"
@@ -647,9 +654,45 @@ export function liveDetectionNote(
           ? "Codex"
           : "your coding tool"
   if (detection === "signedIn") {
-    return `antiburn found ${provider === GOOGLE ? "an" : "a"} ${tool} login but hasn't verified it yet. Refresh to ask ${tool} for limits.`
+    const from = carrier ? ` through ${liveCarrierLabel(carrier)}` : ""
+    const article = provider === GOOGLE ? "an" : "a"
+    return `antiburn found ${article} ${tool} login${from} but hasn't verified it yet. Refresh to ask ${tool} for limits.`
   }
-  const carrier =
+  if (carrier === "pi") {
+    return `antiburn found a Pi login file. If Pi is signed in to ${tool}, readings appear on the next check. Otherwise sign in with the ${tool} CLI once.`
+  }
+  const hasSessions = (sessionsSeen ?? 0) > 0
+  if (provider === ANTHROPIC) {
+    if (detection === "notInstalled") {
+      return hasSessions
+        ? "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the CLI only. Install it and run `claude` once."
+        : "antiburn didn't find Claude Code on this Mac. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically."
+    }
+  }
+  if (provider === GOOGLE) {
+    if (detection === "notInstalled") {
+      return hasSessions
+        ? "antiburn sees Antigravity sessions but no login it can reuse. It reads the login from the Antigravity IDE or `agy` CLI — sign in there once."
+        : "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found Antigravity but no login. Sign in inside Antigravity or run `agy` once."
+    }
+  }
+  if (provider === OPENAI) {
+    if (detection === "notInstalled") {
+      return hasSessions
+        ? "antiburn sees Codex sessions but no Codex CLI login — are you using the ChatGPT app? antiburn reads the login from the CLI only. Install it and run `codex` once."
+        : "antiburn didn't find the Codex CLI on this Mac. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found the Codex CLI but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically."
+    }
+  }
+  const source =
     provider === ANTHROPIC
       ? "the Claude Code CLI"
       : provider === GOOGLE
@@ -657,7 +700,7 @@ export function liveDetectionNote(
         : provider === OPENAI
           ? "the Codex CLI"
           : "your coding tool"
-  return `No readings yet. antiburn reuses the login from ${carrier} — run it once, then refresh.`
+  return `No readings yet. antiburn reuses the login from ${source} — run it once, then refresh.`
 }
 
 /** One action for a failed source, with the provider name when it is known. */

@@ -105,7 +105,8 @@ use time::OffsetDateTime;
 
 use crate::provider_usage::live::codex;
 use crate::provider_usage::live::model::{
-    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
+    Confidence, Detection, Freshness, LoginCarrier, Presence, ProviderUsageError,
+    ProviderUsageSnapshot, UsageSource,
 };
 use crate::provider_usage::live::{LiveUsageSource, SourceOutcome};
 
@@ -162,30 +163,31 @@ fn detect_presence(
     probe: &impl PresenceProbe,
     auth_path: Option<&Path>,
     pi_auth_path: Option<&Path>,
-) -> Detection {
+) -> Presence {
     let Some(auth_path) = auth_path else {
-        return Detection::Unknown;
+        return Presence::UNKNOWN;
     };
     match presence::path_exists(probe, auth_path) {
-        Ok(true) => return Detection::SignedIn,
+        Ok(true) => return Presence::via(Detection::SignedIn, LoginCarrier::CodexAuthFile),
         Ok(false) => {}
-        Err(_) => return Detection::Unknown,
+        Err(_) => return Presence::UNKNOWN,
     }
     // The shared Pi file does not prove an OpenAI login.
     if let Some(path) = pi_auth_path {
         match presence::path_exists(probe, path) {
+            Ok(true) => return Presence::via(Detection::Unknown, LoginCarrier::Pi),
             Ok(false) => {}
-            Ok(true) | Err(_) => return Detection::Unknown,
+            Err(_) => return Presence::UNKNOWN,
         }
     }
     let Some(home) = auth_path.parent() else {
-        return Detection::Unknown;
+        return Presence::UNKNOWN;
     };
     match presence::path_exists(probe, home) {
-        Ok(true) => Detection::InstalledNotSignedIn,
-        Err(_) => Detection::Unknown,
-        Ok(false) if probe.binary_present(BINARY) => Detection::InstalledNotSignedIn,
-        Ok(false) => Detection::NotInstalled,
+        Ok(true) => Presence::new(Detection::InstalledNotSignedIn),
+        Err(_) => Presence::UNKNOWN,
+        Ok(false) if probe.binary_present(BINARY) => Presence::new(Detection::InstalledNotSignedIn),
+        Ok(false) => Presence::new(Detection::NotInstalled),
     }
 }
 
@@ -503,7 +505,7 @@ impl LiveUsageSource for CodexDirectFetch {
         true
     }
 
-    fn detect(&self) -> Detection {
+    fn detect(&self) -> Presence {
         detect_presence(
             &SystemPresenceProbe {
                 #[cfg(target_os = "macos")]
@@ -823,12 +825,16 @@ mod tests {
     const PRESENCE_PI: &str = "/fixture/.pi/agent/auth.json";
     const PRESENCE_HOME: &str = "/fixture/.codex";
 
-    fn detected(probe: &impl PresenceProbe) -> Detection {
+    fn presence(probe: &impl PresenceProbe) -> Presence {
         detect_presence(
             probe,
             Some(Path::new(PRESENCE_AUTH)),
             Some(Path::new(PRESENCE_PI)),
         )
+    }
+
+    fn detected(probe: &impl PresenceProbe) -> Detection {
+        presence(probe).detection
     }
 
     #[test]
@@ -862,14 +868,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
         fs::write(&path, "not valid JSON").unwrap();
-        assert_eq!(CodexDirectFetch::at(path).detect(), Detection::SignedIn);
+        assert_eq!(
+            CodexDirectFetch::at(path).detect(),
+            Presence::via(Detection::SignedIn, LoginCarrier::CodexAuthFile)
+        );
     }
 
     #[test]
-    fn detection_of_the_shared_pi_file_is_inconclusive() {
+    fn detection_of_the_shared_pi_file_is_inconclusive_but_names_pi() {
         let mut probe = RecordingPresence::default();
         probe.paths.insert(PRESENCE_PI.into(), Ok(true));
-        assert_eq!(detected(&probe), Detection::Unknown);
+        assert_eq!(
+            presence(&probe),
+            Presence::via(Detection::Unknown, LoginCarrier::Pi)
+        );
         assert_eq!(probe.calls.borrow().len(), 2);
     }
 

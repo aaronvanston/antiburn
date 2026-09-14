@@ -732,6 +732,40 @@ describe("live detection notes", () => {
     },
   )
 
+  it("names the tool the login came from", () => {
+    expect(liveDetectionNote("anthropic", "signedIn", true, "claudeKeychain")).toBe(
+      "antiburn found a Claude Code login through the Claude Code CLI (Keychain) but hasn't verified it yet. Refresh to ask Claude Code for limits.",
+    )
+    expect(liveDetectionNote("openai", "signedIn", true, "pi")).toBe(
+      "antiburn found a Codex login through Pi but hasn't verified it yet. Refresh to ask Codex for limits.",
+    )
+    expect(liveDetectionNote("google", "signedIn", true, "antigravityIde")).toBe(
+      "antiburn found an Antigravity login through the Antigravity IDE but hasn't verified it yet. Refresh to ask Antigravity for limits.",
+    )
+  })
+
+  it("explains an unproven Pi login file", () => {
+    expect(liveDetectionNote("anthropic", "unknown", true, "pi")).toBe(
+      "antiburn found a Pi login file. If Pi is signed in to Claude Code, readings appear on the next check. Otherwise sign in with the Claude Code CLI once.",
+    )
+  })
+
+  it("points a reader with sessions but no CLI login at the desktop app", () => {
+    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 12)).toBe(
+      "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the CLI only. Install it and run `claude` once.",
+    )
+    expect(liveDetectionNote("openai", "notInstalled", true, undefined, 3)).toContain(
+      "are you using the ChatGPT app?",
+    )
+    expect(liveDetectionNote("google", "notInstalled", true, undefined, 1)).toContain(
+      "sees Antigravity sessions",
+    )
+    // Zero sessions keeps the plain wording.
+    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 0)).toContain(
+      "didn't find Claude Code",
+    )
+  })
+
   it.each(cases)("keeps the disabled note for %s detection %s", (provider, detection) => {
     expect(liveDetectionNote(provider, detection, false)).toBe(
       "Turn the switch above back on to ask for current plan limits.",

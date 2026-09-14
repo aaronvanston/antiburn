@@ -204,4 +204,15 @@ export interface LiveUsageMeterPayload {
   /** False when the reader turned this meter off. */
   shown: boolean
   detection?: LiveUsageDetection
+  /** Where the login was found, when a carrier was. Mirrors Rust `LoginCarrier`. */
+  carrier?: LiveLoginCarrier
 }
+
+export type LiveLoginCarrier =
+  | "claudeCredentialsFile"
+  | "claudeKeychain"
+  | "pi"
+  | "codexAuthFile"
+  | "agyToken"
+  | "antigravityIde"
+  | "antigravityKeyring"

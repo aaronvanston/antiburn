@@ -13,6 +13,10 @@ import { UsagePane } from "./UsagePane"
 const getLiveUsage = vi.hoisted(() => vi.fn())
 const refreshLiveUsage = vi.hoisted(() => vi.fn())
 const onLiveUsageChanged = vi.hoisted(() => vi.fn(async () => () => {}))
+const getScanStatus = vi.hoisted(() =>
+  vi.fn<() => Promise<Ipc.ScanStatus | null>>(async () => null),
+)
+const onScanEvent = vi.hoisted(() => vi.fn(async () => () => {}))
 
 const platform = vi.hoisted(() => ({ mac: false }))
 vi.mock("../../lib/platform", async (importOriginal) => {
@@ -52,7 +56,14 @@ vi.mock("../../lib/overlayWindow", async (importOriginal) => {
 
 vi.mock("../../lib/ipc", async () => {
   const actual = await vi.importActual<typeof Ipc>("../../lib/ipc")
-  return { ...actual, getLiveUsage, refreshLiveUsage, onLiveUsageChanged }
+  return {
+    ...actual,
+    getLiveUsage,
+    refreshLiveUsage,
+    onLiveUsageChanged,
+    getScanStatus,
+    onScanEvent,
+  }
 })
 
 const SETTINGS = { liveUsageEnabled: false } as unknown as AppSettings
@@ -163,6 +174,59 @@ describe("UsagePane", () => {
       ).toBeChecked()
     },
   )
+
+  it("names the tool a found login came from", async () => {
+    getLiveUsage.mockResolvedValue(
+      summary({
+        meters: [
+          {
+            provider: "anthropic",
+            displayName: "Claude",
+            shown: true,
+            detection: "signedIn",
+            carrier: "pi",
+          },
+        ],
+      }),
+    )
+    pane({ liveUsageEnabled: true })
+    expect(
+      await screen.findByText(
+        /antiburn found a Claude Code login through Pi but hasn't verified/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("points at the desktop app when the scanner sees sessions but no CLI login", async () => {
+    getScanStatus.mockResolvedValueOnce({
+      running: false,
+      completedAgents: 1,
+      totalAgents: 1,
+      sessions: 7,
+      finishedAt: null,
+      cancelled: false,
+      error: null,
+      agents: [{ agent: "claude-code", lastCompletedAt: null, sessionsSeen: 7 }],
+      listChanged: false,
+      reDescribed: 0,
+    })
+    getLiveUsage.mockResolvedValue(
+      summary({
+        meters: [
+          {
+            provider: "anthropic",
+            displayName: "Claude",
+            shown: true,
+            detection: "notInstalled",
+          },
+        ],
+      }),
+    )
+    pane({ liveUsageEnabled: true })
+    expect(
+      await screen.findByText(/antiburn sees Claude sessions but no Claude Code CLI login/),
+    ).toBeInTheDocument()
+  })
 
   it.each<{ error: LiveUsageSourceErrorPayload; note: string }>([
     {

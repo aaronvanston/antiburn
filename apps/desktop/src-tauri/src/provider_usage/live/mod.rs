@@ -59,8 +59,8 @@ pub use milestones::{MilestoneContent, MilestoneLedger, milestone_content};
 #[cfg(feature = "analytics")]
 pub use model::band_for_percent;
 pub use model::{
-    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, SourceErrorDetail,
-    UsageScope, UsageWindow, UsageWindowKind, WindowRole,
+    Confidence, Detection, Freshness, LoginCarrier, Presence, ProviderUsageError,
+    ProviderUsageSnapshot, SourceErrorDetail, UsageScope, UsageWindow, UsageWindowKind, WindowRole,
 };
 
 use std::collections::BTreeMap;
@@ -116,8 +116,8 @@ pub trait LiveUsageSource: Send + Sync {
     ///
     /// Detection never causes a Keychain prompt and is safe before online opt-in.
     /// Subprocesses can block for bounded time. Call this method off the IPC thread.
-    fn detect(&self) -> Detection {
-        Detection::Unknown
+    fn detect(&self) -> Presence {
+        Presence::UNKNOWN
     }
 
     /// Collect whatever this source can currently prove.
@@ -248,7 +248,7 @@ pub fn summarize(
 }
 
 /// Each key is a canonical provider id.
-pub type DetectionMap = BTreeMap<String, Detection>;
+pub type DetectionMap = BTreeMap<String, Presence>;
 
 /// Read metadata for all sources and keep the strongest evidence per provider.
 ///
@@ -259,7 +259,7 @@ pub fn detect_all(sources: &[Box<dyn LiveUsageSource>]) -> DetectionMap {
         let value = source.detect();
         detection
             .entry(source.provider().to_string())
-            .and_modify(|current| *current = (*current).max(value))
+            .and_modify(|current| *current = current.strongest(value))
             .or_insert(value);
     }
     detection
@@ -280,14 +280,18 @@ pub fn roster(
 ) -> Vec<LiveUsageMeter> {
     let mut meters: Vec<LiveUsageMeter> = sources
         .iter()
-        .map(|source| LiveUsageMeter {
-            provider: source.provider().to_string(),
-            display_name: super::providers::display_name(source.provider()).to_string(),
-            shown: !hidden.contains(source.provider()),
-            detection: detection
+        .map(|source| {
+            let presence = detection
                 .get(source.provider())
                 .copied()
-                .unwrap_or_default(),
+                .unwrap_or_default();
+            LiveUsageMeter {
+                provider: source.provider().to_string(),
+                display_name: super::providers::display_name(source.provider()).to_string(),
+                shown: !hidden.contains(source.provider()),
+                detection: presence.detection,
+                carrier: presence.carrier,
+            }
         })
         .collect();
     meters.sort_by(|a, b| a.provider.cmp(&b.provider));
