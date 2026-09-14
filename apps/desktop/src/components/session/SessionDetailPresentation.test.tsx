@@ -898,6 +898,216 @@ describe("SessionDetailPresentation — host actions", () => {
   })
 })
 
+describe("SessionDetailPresentation — copy path", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Click the copy control and let its clipboard promise settle. */
+  async function clickCopy() {
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Copy path"))
+    })
+  }
+
+  it("hides copy when the session has no source path", () => {
+    view()
+    expect(screen.queryByLabelText("Copy path")).toBeNull()
+  })
+
+  it("shows copy beside reveal when a source path exists", () => {
+    view({ onRevealSource: () => {}, onCopySourcePath: async () => {} })
+    expect(screen.getByLabelText("Reveal in file manager")).toBeTruthy()
+    expect(screen.getByLabelText("Copy path")).toBeTruthy()
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+  })
+
+  it("shows a tick for two seconds after a successful copy, then the copy icon again", async () => {
+    const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+    view({ onCopySourcePath })
+
+    await clickCopy()
+    expect(onCopySourcePath).toHaveBeenCalledOnce()
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+
+    act(() => vi.advanceTimersByTime(1_999))
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    expect(screen.getByLabelText("Copy path")).toBeTruthy()
+  })
+
+  it("shows no tick when the clipboard write fails", async () => {
+    const onCopySourcePath = vi.fn().mockRejectedValue(new Error("denied"))
+    view({ onCopySourcePath })
+
+    await clickCopy()
+    expect(onCopySourcePath).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+
+    // No timer was scheduled, so nothing can flip to success later.
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+  })
+
+  it("drops an earlier success tick when a repeated copy fails", async () => {
+    const onCopySourcePath = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("denied"))
+    view({ onCopySourcePath })
+
+    await clickCopy()
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+
+    await clickCopy()
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+  })
+
+  it("restarts the two-second window on a repeated successful copy", async () => {
+    const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+    view({ onCopySourcePath })
+
+    await clickCopy()
+    act(() => vi.advanceTimersByTime(1_500))
+    await clickCopy()
+    expect(onCopySourcePath).toHaveBeenCalledTimes(2)
+
+    // 1.5s after the second copy the restarted window is still open.
+    act(() => vi.advanceTimersByTime(1_500))
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+
+    act(() => vi.advanceTimersByTime(500))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+  })
+
+  it("ignores clicks while a copy is in flight", async () => {
+    let resolveCopy: () => void = () => {}
+    const onCopySourcePath = vi.fn(
+      () => new Promise<void>((resolve) => (resolveCopy = resolve)),
+    )
+    view({ onCopySourcePath })
+
+    fireEvent.click(screen.getByLabelText("Copy path"))
+    fireEvent.click(screen.getByLabelText("Copy path"))
+    expect(onCopySourcePath).toHaveBeenCalledOnce()
+
+    await act(async () => resolveCopy())
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+  })
+
+  it("resets the tick immediately when the session changes", async () => {
+    const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+    const { rerender } = view({ onCopySourcePath })
+
+    await clickCopy()
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+
+    rerender(
+      <SessionDetailPresentation
+        {...presentationProps({
+          onCopySourcePath,
+          session: {
+            agent: "claude-code",
+            sessionId: "session-2",
+            title: "Another session",
+            wslDistro: null,
+          },
+        })}
+      />,
+    )
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+
+    // The old session's timer is gone and cannot fire against the new one.
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+  })
+
+  it("ignores a copy that settles after the session changes", async () => {
+    let resolveCopy: () => void = () => {}
+    const onCopySourcePath = vi.fn(
+      () => new Promise<void>((resolve) => (resolveCopy = resolve)),
+    )
+    const { rerender } = view({ onCopySourcePath })
+
+    fireEvent.click(screen.getByLabelText("Copy path"))
+    rerender(
+      <SessionDetailPresentation
+        {...presentationProps({
+          onCopySourcePath,
+          session: {
+            agent: "claude-code",
+            sessionId: "session-2",
+            title: "Another session",
+            wslDistro: null,
+          },
+        })}
+      />,
+    )
+
+    await act(async () => resolveCopy())
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(["session-2", "session-1"])(
+    "isolates pending copies after navigating through session-2 to %s",
+    async (sessionId) => {
+      let resolveOldCopy: () => void = () => {}
+      let resolveNewCopy: () => void = () => {}
+      const oldCopy = vi.fn(() => new Promise<void>((resolve) => (resolveOldCopy = resolve)))
+      const newCopy = vi.fn(() => new Promise<void>((resolve) => (resolveNewCopy = resolve)))
+      const props = presentationProps({ onCopySourcePath: oldCopy })
+      const { rerender } = render(<SessionDetailPresentation {...props} />)
+
+      fireEvent.click(screen.getByLabelText("Copy path"))
+      expect(oldCopy).toHaveBeenCalledOnce()
+      rerender(
+        <SessionDetailPresentation
+          {...props}
+          session={{ ...props.session, sessionId: "session-2" }}
+          onCopySourcePath={newCopy}
+        />,
+      )
+      if (sessionId === "session-1") {
+        rerender(<SessionDetailPresentation {...props} onCopySourcePath={newCopy} />)
+      }
+
+      fireEvent.click(screen.getByLabelText("Copy path"))
+      expect(newCopy).toHaveBeenCalledOnce()
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+
+      await act(async () => resolveOldCopy())
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+      expect(screen.getByRole("status")).toBeEmptyDOMElement()
+      expect(vi.getTimerCount()).toBe(0)
+
+      await act(async () => resolveNewCopy())
+      expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+      expect(screen.getByRole("status")).toHaveTextContent("Path copied")
+    },
+  )
+
+  it("clears the pending tick timer on unmount", async () => {
+    const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+    const { unmount } = view({ onCopySourcePath })
+
+    await clickCopy()
+    expect(vi.getTimerCount()).toBe(1)
+
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
 describe("SessionDetailPresentation — embedded pane", () => {
   it("omits popover chrome and Back while retaining session content", () => {
     const { container } = view({ embedded: true, onBack: undefined })

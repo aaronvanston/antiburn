@@ -1,7 +1,9 @@
 import { isMacOS } from "../../lib/platform"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
+  Check,
   ChevronLeft,
+  Copy,
   FolderOpen,
   GitBranchPlus,
   GitFork,
@@ -11,6 +13,7 @@ import {
 } from "lucide-react"
 import {
   useCallback,
+  useRef,
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -20,7 +23,7 @@ import {
 import { cn } from "../../lib/cn"
 import { agentDisplayName } from "../../lib/presentation/agents"
 import type { SessionHygienePayload } from "../../lib/insightsIpc"
-import { sessionIdentityKey } from "../../lib/presentation/localIdentity"
+import { localSessionKey, sessionIdentityKey } from "../../lib/presentation/localIdentity"
 import { sessionHygieneChecks } from "../../lib/presentation/sessionHygiene"
 import {
   modelRunNames,
@@ -143,6 +146,8 @@ export interface SessionDetailPresentationProps {
   onDeleteSession: () => void
   /** Reveal the session's transcript on disk. Omitted hides the control. */
   onRevealSource?: () => void
+  /** Copy the session's transcript path to the clipboard. Omitted hides the control. */
+  onCopySourcePath?: () => Promise<void>
   renderAgentIcon: AgentIconRenderer
   /** Remove the popover surface when a host supplies the surrounding pane. */
   embedded?: boolean
@@ -250,19 +255,111 @@ function RelationControl({
   )
 }
 
+const COPY_PATH_TICK_MS = 2_000
+
+function CopySourcePathAction({
+  sessionKey,
+  onCopy,
+}: {
+  sessionKey: string
+  onCopy: () => Promise<void>
+}) {
+  const [feedback, setFeedback] = useState({ key: sessionKey, copied: false })
+  // The callback ref prevents late results from updating an unmounted control.
+  const liveKey = useRef("")
+  const writing = useRef(false)
+  const tickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  if (feedback.key !== sessionKey) setFeedback({ key: sessionKey, copied: false })
+
+  const bindKey = useCallback(
+    (node: HTMLButtonElement | null) => {
+      if (node) liveKey.current = sessionKey
+      else {
+        liveKey.current = ""
+        if (tickTimeout.current) {
+          clearTimeout(tickTimeout.current)
+          tickTimeout.current = null
+        }
+      }
+    },
+    [sessionKey],
+  )
+
+  const clearTick = () => {
+    if (tickTimeout.current) {
+      clearTimeout(tickTimeout.current)
+      tickTimeout.current = null
+    }
+  }
+
+  const copy = async () => {
+    if (writing.current) return
+    const startedKey = sessionKey
+    writing.current = true
+    try {
+      await onCopy()
+      if (liveKey.current !== startedKey) return
+      clearTick()
+      setFeedback({ key: startedKey, copied: true })
+      tickTimeout.current = setTimeout(() => {
+        tickTimeout.current = null
+        if (liveKey.current !== startedKey) return
+        setFeedback((value) => (value.key === startedKey ? { ...value, copied: false } : value))
+      }, COPY_PATH_TICK_MS)
+    } catch {
+      if (liveKey.current !== startedKey) return
+      clearTick()
+      setFeedback({ key: startedKey, copied: false })
+    } finally {
+      writing.current = false
+    }
+  }
+
+  const copied = feedback.key === sessionKey && feedback.copied
+  return (
+    <Tooltip label={copied ? "Copied" : "Copy path"}>
+      <button
+        ref={bindKey}
+        type="button"
+        onClick={() => void copy()}
+        aria-label="Copy path"
+        className="rounded-control p-1 text-label-tertiary hover:bg-surface-tertiary hover:text-label-secondary"
+      >
+        {copied ? (
+          <Check
+            size={14}
+            className="text-token-in"
+            data-testid="copy-path-tick"
+            aria-hidden="true"
+          />
+        ) : (
+          <Copy size={14} aria-hidden="true" />
+        )}
+        <span role="status" className="sr-only">
+          {copied ? "Path copied" : ""}
+        </span>
+      </button>
+    </Tooltip>
+  )
+}
+
 /** The toolbar holds the host actions. */
 function HostActions({
+  sessionKey,
   relations,
   refreshing = false,
   onOpenRelatedSession,
   onRevealSource,
+  onCopySourcePath,
   onDeleteSession,
   className,
 }: {
+  sessionKey: string
   relations: LocalSessionRelations | null
   refreshing?: boolean
   onOpenRelatedSession: (target: LocalSessionRelation, title: string) => void
   onRevealSource: (() => void) | undefined
+  onCopySourcePath: (() => Promise<void>) | undefined
   onDeleteSession: () => void
   className?: string
 }) {
@@ -284,6 +381,13 @@ function HostActions({
             <FolderOpen size={14} aria-hidden="true" />
           </button>
         </Tooltip>
+      )}
+      {onCopySourcePath && (
+        <CopySourcePathAction
+          key={sessionKey}
+          sessionKey={sessionKey}
+          onCopy={onCopySourcePath}
+        />
       )}
       <Tooltip label="Delete this session">
         <button
@@ -589,6 +693,7 @@ export function SessionDetailPresentation({
   onOpenRelatedSession,
   onDeleteSession,
   onRevealSource,
+  onCopySourcePath,
   renderAgentIcon,
   embedded = false,
   active = true,
@@ -695,10 +800,12 @@ export function SessionDetailPresentation({
   const heroTitle = relations?.title?.trim() || session.title?.trim() || "Session"
   const hostActions = (
     <HostActions
+      sessionKey={localSessionKey(session.agent, session.sessionId, session.wslDistro)}
       relations={relations}
       refreshing={refreshing}
       onOpenRelatedSession={onOpenRelatedSession}
       onRevealSource={onRevealSource}
+      onCopySourcePath={onCopySourcePath}
       onDeleteSession={onDeleteSession}
       className="session-detail-actions rounded-full bg-surface-card p-1"
     />

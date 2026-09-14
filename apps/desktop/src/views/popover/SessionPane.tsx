@@ -222,6 +222,12 @@ export function SessionPane({
     void revealSource(sourcePath)
   }, [sourcePath])
 
+  const handleCopyPath = useCallback(async () => {
+    if (!sourcePath) throw new Error("No source path")
+    if (!navigator.clipboard) throw new Error("Clipboard unavailable")
+    await navigator.clipboard.writeText(sourcePath)
+  }, [sourcePath])
+
   const hygieneIdentity = {
     agent: subject.agent,
     sessionId: subject.sessionId,
@@ -325,7 +331,9 @@ export function SessionPane({
       onOpenOrchestrator={openOrchestrator}
       onOpenRelatedSession={openRelated}
       onDeleteSession={() => void handleDelete()}
-      {...(sourcePath ? { onRevealSource: handleReveal } : {})}
+      {...(sourcePath
+        ? { onRevealSource: handleReveal, onCopySourcePath: handleCopyPath }
+        : {})}
       renderAgentIcon={renderAgentIcon}
       embedded={embedded}
       active={active}
