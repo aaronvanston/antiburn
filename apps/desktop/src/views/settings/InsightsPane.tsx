@@ -479,7 +479,8 @@ function ProviderIncidentsSection({
             <ul className="space-y-1">
               {incidents.findings.hitsByKind.map(({ kind, hits }) => (
                 <li key={kind} className="type-footnote text-label-secondary">
-                  {PROVIDER_INCIDENT_KIND_LABELS[kind] ?? kind}: {hits} {hits === 1 ? "hit" : "hits"}
+                  {PROVIDER_INCIDENT_KIND_LABELS[kind] ?? kind}: {hits}{" "}
+                  {hits === 1 ? "hit" : "hits"}
                 </li>
               ))}
             </ul>
