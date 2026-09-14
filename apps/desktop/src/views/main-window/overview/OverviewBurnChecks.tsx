@@ -201,7 +201,7 @@ export function OverviewBurnChecks({
         </span>
       </button>
       {summary?.state === "findings" && (
-        <ul className="mt-[var(--space-md)] divide-y divide-separator border-t border-separator">
+        <ul className="mt-[var(--space-md)] flex flex-col gap-1.5">
           {summary.rows.map((check) => {
             const row = checkRowPresentation(check)
             return (
@@ -209,7 +209,7 @@ export function OverviewBurnChecks({
                 <button
                   type="button"
                   onClick={onOpen}
-                  className="grid w-full grid-cols-[auto_minmax(0,1fr)_max-content] items-center gap-[var(--space-sm)] py-[var(--space-sm)] text-left type-callout text-label hover:text-brand"
+                  className="session-card grid w-full grid-cols-[auto_minmax(0,1fr)_max-content] items-center gap-3 rounded-[var(--radius-popover)] bg-session-card px-3 py-2 text-left type-callout text-label hover:bg-surface-secondary/50"
                 >
                   <row.Icon
                     size={14}

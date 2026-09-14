@@ -447,9 +447,14 @@ The token reference is the YAML front matter above. Light and Dark live in one f
 every `colors` entry carries both values, and only those values differ between themes.
 Notes for what isn't expressible as a token:
 
-- **Overview panels** — the provider usage meter card stays 180 CSS pixels wide
+- **Overview panels** — the provider usage meters stay 180 CSS pixels wide
   (180 native logical points), including when the panels stack below 700px. The
-  checks and sessions card fills the remaining column. “Recent” sits at the left
+  usage meters use a card background and inset outline. The checks and sessions
+  section fills the remaining column without an outer card. Both retain 16px internal
+  padding. Individual burn findings match compact session cards: `bg-session-card`,
+  `--radius-popover` corners, 12px horizontal and 8px vertical padding, 6px gaps,
+  and `hover:bg-surface-secondary/50` with the shared `session-card` transition.
+  Finding rows have no separator lines. “Recent” sits at the left
   of the sessions header, on the same baseline as “All sessions”, with both using
   `type-caption text-label-secondary`. The width stays local to `overview.css`.
 

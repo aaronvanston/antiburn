@@ -79,7 +79,7 @@ export function OverviewView({
             )}
             <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
             <div className="overview-panels">
-              <div className="overview-stack rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card">
+              <div className="overview-stack p-[var(--space-lg)]">
                 <OverviewBurnChecks
                   report={state.report}
                   loading={loading && !state.report}
