@@ -2,7 +2,7 @@ import type { ProviderUsageDayPayload } from "../providerUsageIpc"
 import { formatSpendFigure } from "./providerUsage"
 
 /** Parse a `YYYY-MM-DD` reader-local date as a local `Date` at midnight. */
-export function localDateOf(localDate: string): Date {
+function localDateOf(localDate: string): Date {
   const [year, month, day] = localDate.split("-").map(Number)
   return new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1)
 }
