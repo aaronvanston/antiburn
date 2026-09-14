@@ -212,6 +212,34 @@ Keith's second look, in chat and one more `notate` capture
 Layout after this round, top to bottom: totals, Burn checks beside Recent
 sessions, Provider limits, chart.
 
+## Round 4 feedback (2026-09-14, in chat and via notate)
+
+Keith's third look, in chat and one more `notate` capture
+(`notate-2026-09-14-13.21.28`). Each note and the change it produced:
+
+1. "Remove the 'hover a day for its reading' bar/line. Instead, use tooltip,
+   with a strong hover effect (fade out all others) for the various bars." →
+   the reading line is gone. Each day is a `Tooltip` trigger that opens after
+   100ms with the day's reading. While one day is under the pointer, or has
+   keyboard focus, every other day fades to a quarter. The arrow keys still
+   walk the days, and the tooltip follows focus.
+2. "make the container for the key white, 20%" → a new `surface-key` token,
+   white at 20% in both themes, on the key pill. The token lives in
+   `tokens.css` and `design.md`.
+3. "Make the VU meters responsive, ie extend them horizontally by drawing more
+   LEDs and updating relative LIT leds etc" → each provider group measures its
+   own width (`useElementWidth`, a `ResizeObserver` behind
+   `useSyncExternalStore`) and draws one dot per 9px, never fewer than 16. The
+   lit count follows the percent, so a wider card gets a longer meter with the
+   same lit share. The 300px cap on a group is gone.
+4. Notate pins "Combine these two into a single vertical, stacked" (Burn checks
+   and Recent sessions) and "Stack there, and 2-up to the right of the
+   Burn/session stack" (Provider limits), plus "mockup this in proto as well as
+   your 3 suggestions above" → a variants proto in the scratchpad
+   (`proto/overview-panels/variants-v1.html`, opened in discuss): A is Keith's
+   2-up, B same card and header, C one table, D stacked full width. No layout
+   change until he picks one.
+
 ## Slices
 
 Each slice is one PR of roughly a few hundred lines, stacked on the one before
@@ -401,4 +429,4 @@ switch.
 | Slice 2 — totals and daily chart              | done (2026-09-14)                                                                                                                                                              |
 | Slice 3 — provider limits                     | done (2026-09-14)                                                                                                                                                              |
 | Slice 4 — burn checks and recent sessions     | done (2026-09-14)                                                                                                                                                              |
-| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first two hands-on tests done (2026-09-14, see Round 2 and Round 3); alignment proposals for the checks/sessions row pending his pick; `/design-review` on a live instance still to run |
+| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first two hands-on tests done (2026-09-14, see Round 2 and Round 3); four layout variants for the checks/sessions/limits rows in a proto (Round 4), pending his pick; `/design-review` on a live instance still to run |

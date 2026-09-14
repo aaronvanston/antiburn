@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FocusEvent, type KeyboardEvent } from "react"
+import { useState, type CSSProperties, type KeyboardEvent } from "react"
 
 import type { ProviderUsageDayPayload } from "../../../lib/providerUsageIpc"
 import {
@@ -15,6 +15,7 @@ import {
   windowTokens,
 } from "../../../lib/presentation/providerUsage"
 
+import { Tooltip } from "../../../components/presentation/Tooltip"
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
@@ -24,6 +25,9 @@ import "./overview.css"
 const AXIS_LABEL_STEP = 7
 /** A dated label this close to "Today" would collide with it. */
 const AXIS_LABEL_CLEARANCE = 3
+
+/** A day's tooltip opens almost at once; the pointer is already on the bar. */
+const DAY_TOOLTIP_DELAY_MS = 100
 
 /** The fractions of the scale that carry a hairline and a figure. */
 const GUIDE_FRACTIONS = [1, 0.75, 0.5, 0.25]
@@ -53,7 +57,7 @@ function barGeometry(day: ProviderUsageDayPayload | undefined, ceiling: number) 
   }
 }
 
-/** The one-line reading under the bars for one day. */
+/** The one-line reading in a day's tooltip. */
 function dayDetail(
   day: ProviderUsageDayPayload,
   previous: ProviderUsageDayPayload | undefined,
@@ -95,16 +99,10 @@ export function OverviewSpendChart({
   // refresh that adds a day keeps the reader's day. A date the series no
   // longer holds falls back to today.
   const [focusDate, setFocusDate] = useState<string | null>(null)
-  const [hoverDate, setHoverDate] = useState<string | null>(null)
-  const [focusWithin, setFocusWithin] = useState(false)
   const lastIndex = days.length - 1
-  const indexOf = (date: string | null) =>
-    date == null ? -1 : days.findIndex((day) => day.localDate === date)
-  const foundFocus = indexOf(focusDate)
+  const foundFocus =
+    focusDate == null ? -1 : days.findIndex((day) => day.localDate === focusDate)
   const focusIndex = foundFocus >= 0 ? foundFocus : lastIndex
-  const hoverIndex = indexOf(hoverDate)
-  const activeIndex = hoverIndex >= 0 ? hoverIndex : focusWithin ? focusIndex : -1
-  const active = days[activeIndex]
   const ceiling = niceCeiling(seriesMax(days, previousDays))
 
   function focusDay(index: number, list: HTMLElement | null): void {
@@ -133,10 +131,6 @@ export function OverviewSpendChart({
     focusDay(target, list)
   }
 
-  function onGroupBlur(event: FocusEvent<HTMLDivElement>): void {
-    if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false)
-  }
-
   return (
     <section
       className="overview-chart"
@@ -157,44 +151,45 @@ export function OverviewSpendChart({
                     role="group"
                     aria-label="Estimated spend for the past 30 days"
                     className="overview-days relative"
-                    onMouseLeave={() => setHoverDate(null)}
-                    onFocus={() => setFocusWithin(true)}
-                    onBlur={onGroupBlur}
                   >
                     {days.map((day, index) => {
                       const previous = previousDays[index]
                       const now = barGeometry(day, ceiling)
                       const before = barGeometry(previous, ceiling)
                       const isToday = index === lastIndex
+                      const detail = dayDetail(day, previous, isToday)
                       return (
-                        <button
+                        <Tooltip
                           key={day.localDate}
-                          type="button"
-                          data-day={day.localDate}
-                          data-active={index === activeIndex ? "" : undefined}
-                          aria-label={dayDetail(day, previous, isToday)}
-                          tabIndex={index === focusIndex ? 0 : -1}
-                          className="overview-day"
-                          onMouseEnter={() => setHoverDate(day.localDate)}
-                          onFocus={() => setFocusDate(day.localDate)}
-                          onKeyDown={(event) => onKeyDown(event, index)}
-                          style={{ "--overview-bar-index": index } as CSSProperties}
+                          label={<SegmentFigure>{detail}</SegmentFigure>}
+                          delayMs={DAY_TOOLTIP_DELAY_MS}
                         >
-                          <Bar
-                            fraction={before.fraction}
-                            unpriced={before.unpriced}
-                            className="bg-label-tertiary/30 text-label-tertiary/30"
-                          />
-                          <Bar
-                            fraction={now.fraction}
-                            unpriced={now.unpriced}
-                            className={
-                              isToday
-                                ? "bg-token-in text-token-in"
-                                : "bg-token-in text-token-in opacity-70"
-                            }
-                          />
-                        </button>
+                          <button
+                            type="button"
+                            data-day={day.localDate}
+                            aria-label={detail}
+                            tabIndex={index === focusIndex ? 0 : -1}
+                            className="overview-day"
+                            onFocus={() => setFocusDate(day.localDate)}
+                            onKeyDown={(event) => onKeyDown(event, index)}
+                            style={{ "--overview-bar-index": index } as CSSProperties}
+                          >
+                            <Bar
+                              fraction={before.fraction}
+                              unpriced={before.unpriced}
+                              className="bg-label-tertiary/30 text-label-tertiary/30"
+                            />
+                            <Bar
+                              fraction={now.fraction}
+                              unpriced={now.unpriced}
+                              className={
+                                isToday
+                                  ? "bg-token-in text-token-in"
+                                  : "bg-token-in text-token-in opacity-70"
+                              }
+                            />
+                          </button>
+                        </Tooltip>
                       )
                     })}
                   </div>
@@ -218,19 +213,6 @@ export function OverviewSpendChart({
               </div>
             </div>
           </div>
-          <p
-            role="status"
-            className="type-caption mt-[var(--space-sm)] min-w-0 truncate text-label-secondary"
-            data-testid="overview-chart-detail"
-          >
-            {active ? (
-              <SegmentFigure>
-                {dayDetail(active, previousDays[activeIndex], activeIndex === lastIndex)}
-              </SegmentFigure>
-            ) : (
-              <span aria-hidden="true">Hover a day for its reading</span>
-            )}
-          </p>
         </>
       )}
     </section>

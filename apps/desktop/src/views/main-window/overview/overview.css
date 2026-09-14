@@ -173,6 +173,17 @@
   min-block-size: 100%;
 }
 
+/* The pointer or the keyboard picks one day; every other day fades so the
+   picked pair stands alone under its tooltip. */
+.overview-day {
+  transition: opacity var(--duration-fast) ease-out;
+}
+
+.overview-days:has(.overview-day:hover) .overview-day:not(:hover),
+.overview-days:has(.overview-day:focus-visible) .overview-day:not(:focus-visible) {
+  opacity: 0.25;
+}
+
 .overview-legend {
   position: absolute;
   inset-block-start: var(--space-xs);
@@ -180,7 +191,7 @@
   z-index: 1;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-control);
-  background-color: color-mix(in srgb, var(--color-surface-card) 85%, transparent);
+  background-color: var(--color-surface-key);
   box-shadow: var(--shadow-stats-card);
   pointer-events: none;
 }

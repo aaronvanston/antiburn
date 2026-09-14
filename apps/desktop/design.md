@@ -46,6 +46,9 @@ colors:
   session-card: # quiet session-list rest fill; dark mode needs less lift than generic cards
     light: "hsl(0 0% 0% / 0.02)"
     dark: "hsl(0 0% 100% / 0.03)"
+  surface-key: # a translucent white pill over a chart; the same in both themes
+    light: "hsl(0 0% 100% / 0.2)"
+    dark: "hsl(0 0% 100% / 0.2)"
   surface-header: # the quiet band at the head of the menu-bar popover; fainter than a card
     light: "hsl(0 0% 0% / 0.025)"
     dark: "hsl(0 0% 100% / 0.03)"
