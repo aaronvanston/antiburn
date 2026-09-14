@@ -30,6 +30,7 @@ mod schema;
 
 #[cfg(test)]
 mod privacy_tests;
+mod publication;
 #[cfg(test)]
 mod publish_tests;
 #[cfg(test)]
@@ -51,7 +52,7 @@ use antiburn_local::analysis::{
     delete_turn_rows_except_fence, delete_turn_rows_for_fence, insert_coverage_record,
     insert_source_resume, insert_turn_rows, query_coverage_record, query_model_breakdown,
     query_model_runs, query_pricing_breakdown, query_source_resume, query_turn_facts,
-    query_turn_rows, restamp_source_rows,
+    query_turn_rows,
 };
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_iter};
@@ -1749,6 +1750,7 @@ impl Store {
         relations: &[RelationRecord],
         sources: &[SourcePublishOutcome],
     ) -> Result<bool> {
+        let source_sets = publication::SourceSets::new(sources)?;
         let config_attribution = crate::remediation::publication_config_attribution(
             self,
             &record.key,
@@ -1914,125 +1916,23 @@ impl Store {
             return Ok(false);
         }
         let key = turn_session_key(&record.key);
-        // Every source this pass named explicitly: a resumed source's new
-        // rows join the row set already at `target_fence`; a fully-read
-        // source's old rows there are replaced outright. Either way its
-        // resume snapshot (if any) replaces what was stored, and a source
-        // with none has its stored snapshot dropped instead of leaving a
-        // stale one behind.
-        let mut named_sources = HashSet::with_capacity(sources.len());
+        publication::publish_turn_rows(
+            &transaction,
+            &key,
+            completion.claim_fence,
+            target_fence,
+            &source_sets,
+        )?;
+        // Each named source replaces its stored resume snapshot. The
+        // set-based publication above already removes snapshots for sources
+        // that vanished from this pass.
         for source in sources {
-            named_sources.insert(source.source_key.as_str());
-            match source.mode {
-                SourcePublishMode::Resumed => {
-                    restamp_source_rows(
-                        &transaction,
-                        &key,
-                        &source.source_key,
-                        completion.claim_fence,
-                        target_fence,
-                    )?;
-                }
-                SourcePublishMode::Full => {
-                    // On a session's first-ever publish, `target_fence`
-                    // already equals `completion.claim_fence`: the rows
-                    // this pass wrote are already the only row set there is
-                    // no older published set to replace. Deleting at
-                    // `target_fence` here would delete the rows this same
-                    // pass just wrote.
-                    if target_fence != completion.claim_fence {
-                        delete_source_rows_at_fence(
-                            &transaction,
-                            &key,
-                            &source.source_key,
-                            target_fence,
-                        )?;
-                        restamp_source_rows(
-                            &transaction,
-                            &key,
-                            &source.source_key,
-                            completion.claim_fence,
-                            target_fence,
-                        )?;
-                    }
-                }
-            }
             match &source.resume {
                 Some(stored) => {
                     insert_source_resume(&transaction, &key, &source.source_key, stored)?
                 }
                 None => delete_source_resume(&transaction, &key, &source.source_key)?,
             }
-        }
-        // Every source this pass touched but did not name explicitly is a
-        // full read by default: its rows sit under the claim fence with no
-        // counterpart at `target_fence` to preserve, so the old published
-        // set for it is replaced outright, the same way `delete_turn_rows_except_fence`
-        // used to treat every source at once.
-        let mut unnamed_sources_statement = transaction.prepare(
-            "SELECT DISTINCT source_key FROM turn
-              WHERE environment_key = ?1 AND agent = ?2 AND session_id = ?3
-                AND claim_fence = ?4",
-        )?;
-        let unnamed_sources: Vec<String> = unnamed_sources_statement
-            .query_map(
-                params![
-                    key.environment_key,
-                    key.agent,
-                    key.session_id,
-                    completion.claim_fence
-                ],
-                |row| row.get(0),
-            )?
-            .collect::<rusqlite::Result<Vec<String>>>()?
-            .into_iter()
-            .filter(|source_key| !named_sources.contains(source_key.as_str()))
-            .collect();
-        drop(unnamed_sources_statement);
-        for source_key in &unnamed_sources {
-            // Same first-ever-publish carve-out as the named `Full` branch
-            // above: nothing to replace when the claim fence is already
-            // the target.
-            if target_fence != completion.claim_fence {
-                delete_source_rows_at_fence(&transaction, &key, source_key, target_fence)?;
-                restamp_source_rows(
-                    &transaction,
-                    &key,
-                    source_key,
-                    completion.claim_fence,
-                    target_fence,
-                )?;
-            }
-        }
-        // A source published by an earlier pass but absent from this one
-        // (a removed or unreadable child transcript) is neither named nor
-        // unnamed above, so nothing above touches its rows. Left alone,
-        // they would sit under `target_fence` forever and skew coverage.
-        // Drop them, and the stale resume snapshot with them, the same way
-        // a full pass on main already would.
-        let touched_this_pass: HashSet<&str> = named_sources
-            .iter()
-            .copied()
-            .chain(unnamed_sources.iter().map(String::as_str))
-            .collect();
-        let mut published_sources_statement = transaction.prepare(
-            "SELECT DISTINCT source_key FROM turn
-              WHERE environment_key = ?1 AND agent = ?2 AND session_id = ?3
-                AND claim_fence = ?4",
-        )?;
-        let vanished_sources: Vec<String> = published_sources_statement
-            .query_map(
-                params![key.environment_key, key.agent, key.session_id, target_fence],
-                |row| row.get(0),
-            )?
-            .collect::<rusqlite::Result<Vec<String>>>()?
-            .into_iter()
-            .filter(|source_key| !touched_this_pass.contains(source_key.as_str()))
-            .collect();
-        drop(published_sources_statement);
-        for source_key in &vanished_sources {
-            delete_source_rows_at_fence(&transaction, &key, source_key, target_fence)?;
-            delete_source_resume(&transaction, &key, source_key)?;
         }
         // The coverage record this pass wrote under the claim fence (R3
         // rebuilds it every pass, resumed or full) becomes the published
