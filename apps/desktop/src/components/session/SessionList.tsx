@@ -271,7 +271,7 @@ function groupHeadingId(label: string): string {
   return `activity-${label.replaceAll(" ", "-").toLowerCase()}`
 }
 
-interface SessionRowProps {
+export interface SessionRowProps {
   entry: SessionListEntry
   hygiene: SessionHygienePayload
   onOpen?: () => void
@@ -302,7 +302,7 @@ interface SessionRowProps {
  * The whole card opens the session analysis. Unsupported agents open an empty
  * analysis state that explains why no data is available.
  */
-function SessionRow({
+export function SessionRow({
   entry,
   hygiene,
   onOpen,

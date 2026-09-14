@@ -135,7 +135,20 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       id: "overview",
       label: "Overview",
       icon: House,
-      render: ({ active }) => <OverviewView active={active} session={overviewSession} />,
+      render: ({ active }) => (
+        <OverviewView
+          active={active}
+          session={overviewSession}
+          onOpenBurnChecks={() => selectSection("burnChecks")}
+          onOpenSessions={() => selectSection("activity")}
+          onSelectSession={(entry) => {
+            // Select first, so Sessions mounts with the subject already set
+            // and loads its analysis on activation.
+            selectSection("activity")
+            activitySession.selectEntry(entry)
+          }}
+        />
+      ),
     },
     {
       id: "burnChecks",

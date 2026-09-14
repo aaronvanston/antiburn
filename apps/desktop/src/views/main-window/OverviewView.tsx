@@ -2,24 +2,32 @@ import { useSyncExternalStore } from "react"
 
 import { isMacOS } from "../../lib/platform"
 
+import type { SessionListEntry } from "../../components/session/SessionList"
 import { ScrollPane } from "../../components/ui/ScrollPane"
 import { type MainOverviewSession } from "./MainOverviewSession"
+import { OverviewBurnChecks } from "./overview/OverviewBurnChecks"
 import { OverviewProviderLimits } from "./overview/OverviewProviderLimits"
+import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
 import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 
 /**
  * The main window's landing section: local spend, provider limits, Burn
- * checks, and recent sessions on one page.
- *
- * The Burn checks summary and the recent sessions arrive in a later slice.
+ * checks, and recent sessions on one page. The Burn checks and Sessions
+ * panels are summaries; their controls leave for the full sections.
  */
 export function OverviewView({
   active,
   session,
+  onOpenBurnChecks,
+  onOpenSessions,
+  onSelectSession,
 }: {
   active: boolean
   session: MainOverviewSession
+  onOpenBurnChecks: () => void
+  onOpenSessions: () => void
+  onSelectSession: (entry: SessionListEntry) => void
 }) {
   const state = useSyncExternalStore(
     active ? session.subscribe : session.subscribeInactive,
@@ -71,9 +79,22 @@ export function OverviewView({
               previousDays={usage?.previousDays ?? []}
               loading={loading}
             />
-            <OverviewProviderLimits
-              live={state.liveUsage}
-              loading={loading && !state.liveUsage}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--space-2xl)]">
+              <OverviewProviderLimits
+                live={state.liveUsage}
+                loading={loading && !state.liveUsage}
+              />
+              <OverviewBurnChecks
+                report={state.report}
+                loading={loading && !state.report}
+                onOpen={onOpenBurnChecks}
+              />
+            </div>
+            <OverviewRecentSessions
+              entries={state.recentSessions}
+              loading={loading && !state.recentSessions}
+              onSelect={onSelectSession}
+              onOpenAll={onOpenSessions}
             />
           </div>
         </ScrollPane>

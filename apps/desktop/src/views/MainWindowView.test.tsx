@@ -17,7 +17,34 @@ vi.mock("./main-window/BurnChecksView", () => ({
   BurnChecksView: () => <p>Burn checks workspace</p>,
 }))
 vi.mock("./main-window/OverviewView", () => ({
-  OverviewView: () => <p>Overview workspace</p>,
+  OverviewView: ({
+    onOpenBurnChecks,
+    onSelectSession,
+  }: {
+    onOpenBurnChecks: () => void
+    onSelectSession: (entry: SessionListEntry) => void
+  }) => (
+    <div>
+      <p>Overview workspace</p>
+      <button type="button" onClick={onOpenBurnChecks}>
+        More
+      </button>
+      <button type="button" onClick={() => onSelectSession(overviewMocks.recentEntry)}>
+        Recent session
+      </button>
+    </div>
+  ),
+}))
+
+const overviewMocks = vi.hoisted(() => ({
+  recentEntry: {
+    agent: "claude",
+    sessionId: "recent-1",
+    repo: "antiburn",
+    timestamp: "2026-09-14T08:00:00Z",
+    isActive: false,
+    title: "Recent session",
+  } satisfies SessionListEntry,
 }))
 
 /**
@@ -37,6 +64,7 @@ const activityMocks = vi.hoisted(() => {
       this.snapshot = { ...this.snapshot, filter }
       this.notify()
     })
+    selectEntry = vi.fn()
     constructor() {
       activityMocks.instances.push(this)
     }
@@ -169,6 +197,25 @@ describe("MainWindowView", () => {
     expect(screen.getByRole("tablist", { name: "Main sections" })).toBeVisible()
     expect(screen.queryByRole("button", { name: "Open navigation" })).toBeNull()
   })
+  it("lands in Sessions with the clicked recent session selected", () => {
+    render(<MainWindowView />)
+    fireEvent.click(screen.getByRole("button", { name: "Recent session" }))
+    // The "all" filter's own child row reads as selected inside Sessions.
+    expect(screen.getByRole("tab", { name: "All Sessions" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    expect(screen.getByRole("tabpanel", { name: "Sessions" })).toBeVisible()
+    expect(activitySession().selectEntry).toHaveBeenCalledWith(overviewMocks.recentEntry)
+    expect(activitySession().setFilter).toHaveBeenCalledWith({ kind: "all" })
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }))
+    fireEvent.click(screen.getByRole("button", { name: "More" }))
+    expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+  })
+
   it("opens the existing Settings window without changing the selected section", () => {
     render(<MainWindowView />)
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
