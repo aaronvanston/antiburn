@@ -758,11 +758,11 @@ fn claude_capabilities_still_match_published_evidence() {
     assert!(is_supported(&evidence.compactions));
     assert!(matches!(
         evidence.quota_incidents,
-        EvidenceValue::Unsupported
+        EvidenceValue::Complete(ref quota) if quota.incidents.is_empty()
     ));
     assert!(matches!(
         evidence.provider_incidents,
-        EvidenceValue::Unsupported
+        EvidenceValue::Complete(ref provider) if provider.incidents.is_empty()
     ));
     assert!(matches!(
         evidence.provenance.harness_version,
