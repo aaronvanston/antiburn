@@ -44,7 +44,7 @@ function rankedFailures(failures: readonly ChecksCategoryPayload[]): ChecksCateg
  * evidence in flight and no finding yet reads as pending, never as a clean
  * pass: an unsettled zero is not a result.
  */
-export function overviewChecksSummary(report: ChecksReportPayload): OverviewChecksSummary {
+function overviewChecksSummary(report: ChecksReportPayload): OverviewChecksSummary {
   const presentation = checksPresentation(report)
   const failures = rankedFailures(presentation.failures)
   const passed = presentation.wins.length

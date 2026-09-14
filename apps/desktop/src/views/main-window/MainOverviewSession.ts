@@ -80,7 +80,7 @@ export interface MainOverviewSnapshot {
 }
 
 /** The newest sessions first, cut to the Overview page's row count. */
-export function overviewRecentSessions(
+function overviewRecentSessions(
   payloads: readonly ActivityEntryPayload[],
 ): SessionListEntry[] {
   return toActivityEntries(payloads)
