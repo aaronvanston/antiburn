@@ -80,9 +80,7 @@ export interface MainOverviewSnapshot {
 }
 
 /** The newest sessions first, cut to the Overview page's row count. */
-function overviewRecentSessions(
-  payloads: readonly ActivityEntryPayload[],
-): SessionListEntry[] {
+function overviewRecentSessions(payloads: readonly ActivityEntryPayload[]): SessionListEntry[] {
   return toActivityEntries(payloads)
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
     .slice(0, OVERVIEW_RECENT_SESSION_COUNT)
