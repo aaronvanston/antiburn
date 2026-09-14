@@ -162,6 +162,14 @@ pub fn record_quota_incidents(
 }
 
 #[cfg(not(feature = "analytics"))]
+pub fn record_provider_incidents(
+    _app: &tauri::AppHandle,
+    _section: &antiburn_local::insights::ProviderIncidentsSection,
+) {
+    let _ = event::EventName::ProviderIncidentsObserved;
+}
+
+#[cfg(not(feature = "analytics"))]
 pub fn record_usage_observed(
     _app: &tauri::AppHandle,
     _snapshots: &[crate::provider_usage::live::ProviderUsageSnapshot],
@@ -208,8 +216,10 @@ mod enabled {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
 
-    use antiburn_local::analysis::QuotaLimitKind;
-    use antiburn_local::insights::{QuotaPressureSection, UnrecognizedRecords};
+    use antiburn_local::analysis::{ProviderIncidentKind, QuotaLimitKind};
+    use antiburn_local::insights::{
+        ProviderIncidentsSection, QuotaPressureSection, UnrecognizedRecords,
+    };
     use tauri::Manager as _;
 
     use crate::provider_usage::factor::LearnedFactor;
@@ -824,6 +834,13 @@ mod enabled {
     static LAST_QUOTA_INCIDENTS: std::sync::Mutex<BTreeMap<&'static str, &'static str>> =
         std::sync::Mutex::new(BTreeMap::new());
 
+    /// The last bucket reported for each provider-incident kind label
+    /// during this run. In memory only, for the same reason
+    /// [`LAST_QUOTA_INCIDENTS`] is: it is a dedup key, not a fact worth
+    /// keeping past this process.
+    static LAST_PROVIDER_INCIDENTS: std::sync::Mutex<BTreeMap<&'static str, &'static str>> =
+        std::sync::Mutex::new(BTreeMap::new());
+
     /// The last Claude limit-reset observation queued during this run.
     static LAST_CLAUDE_LIMIT_RESET: std::sync::Mutex<
         Option<crate::provider_usage::live::anthropic::LimitResetDiagnostic>,
@@ -1191,8 +1208,67 @@ mod enabled {
             QuotaLimitKind::WeightedUsage => "weighted_usage",
             QuotaLimitKind::RateLimit => "rate_limit",
             QuotaLimitKind::UsageLimit => "usage_limit",
-            QuotaLimitKind::ProviderCapacity => "provider_capacity",
         }
+    }
+
+    /// Record a safe bucketed summary of each assessed provider-incident kind.
+    ///
+    /// Fires one event per incident kind whose bucket differs from the last
+    /// one reported for that label during this run. Carries no model name,
+    /// session identifier, or message text.
+    pub fn record_provider_incidents(app: &tauri::AppHandle, section: &ProviderIncidentsSection) {
+        if !allowed(app) {
+            return;
+        }
+        for (label, bucket) in provider_incident_outcomes(section) {
+            if !provider_incident_bucket_is_new(label, bucket) {
+                continue;
+            }
+            record(
+                app,
+                EventName::ProviderIncidentsObserved,
+                Facts {
+                    label: Some(label),
+                    bucket: Some(bucket),
+                    ..Facts::default()
+                },
+            );
+        }
+    }
+
+    /// The `(label, bucket)` pair for each assessed incident kind. Empty
+    /// when the section is not assessed (FR-15's one condition).
+    fn provider_incident_outcomes(
+        section: &ProviderIncidentsSection,
+    ) -> Vec<(&'static str, &'static str)> {
+        let ProviderIncidentsSection::Findings(findings) = section else {
+            return Vec::new();
+        };
+        findings
+            .hits_by_kind
+            .iter()
+            .map(|(&kind, &hits)| (provider_incident_kind_label(kind), event::bucket(hits)))
+            .collect()
+    }
+
+    /// Maps an incident kind to the closed analytics label vocabulary.
+    fn provider_incident_kind_label(kind: ProviderIncidentKind) -> &'static str {
+        match kind {
+            ProviderIncidentKind::Capacity => "capacity",
+        }
+    }
+
+    /// Whether `bucket` differs from the last one reported for `label`
+    /// during this run. Remembers the new bucket when it does.
+    fn provider_incident_bucket_is_new(label: &'static str, bucket: &'static str) -> bool {
+        let mut guard = LAST_PROVIDER_INCIDENTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.get(label) == Some(&bucket) {
+            return false;
+        }
+        guard.insert(label, bucket);
+        true
     }
 
     /// Whether `bucket` differs from the last one reported for `label`
@@ -1232,6 +1308,10 @@ mod enabled {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         LAST_QUOTA_INCIDENTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+        LAST_PROVIDER_INCIDENTS
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
@@ -1728,7 +1808,7 @@ mod enabled {
 
     #[cfg(test)]
     mod tests {
-        use antiburn_local::insights::QuotaPressureFindings;
+        use antiburn_local::insights::{ProviderIncidentFindings, QuotaPressureFindings};
 
         use super::*;
 
@@ -2425,7 +2505,7 @@ mod enabled {
         fn two_limit_kinds_each_become_their_own_outcome() {
             let section = QuotaPressureSection::Findings(quota_findings(BTreeMap::from([
                 (QuotaLimitKind::RateLimit, 3),
-                (QuotaLimitKind::ProviderCapacity, 12),
+                (QuotaLimitKind::UsageLimit, 12),
             ])));
 
             let outcomes = quota_incident_outcomes(&section);
@@ -2434,7 +2514,7 @@ mod enabled {
             // `QuotaLimitKind`'s declared variant order, not alphabetically.
             assert_eq!(
                 outcomes,
-                vec![("rate_limit", "1-9"), ("provider_capacity", "10-49")]
+                vec![("rate_limit", "1-9"), ("usage_limit", "10-49")]
             );
         }
 
@@ -2462,6 +2542,65 @@ mod enabled {
             assert!(!quota_incident_bucket_is_new("rate_limit", "1-9"));
 
             reset_suppression();
+        }
+
+        fn provider_findings(
+            hits_by_kind: BTreeMap<ProviderIncidentKind, u64>,
+        ) -> ProviderIncidentFindings {
+            ProviderIncidentFindings {
+                hits_by_kind,
+                total_hits: 0,
+                affected_session_count: 0,
+                affected_session_examples: Vec::new(),
+                affected_models: BTreeSet::new(),
+                affected_models_truncated: false,
+                first_observed_ts_ms: 0,
+                last_observed_ts_ms: 0,
+                observed_times_ms: Vec::new(),
+            }
+        }
+
+        #[test]
+        fn a_not_assessed_provider_section_yields_no_outcomes() {
+            assert!(provider_incident_outcomes(&ProviderIncidentsSection::NotAssessed).is_empty());
+        }
+
+        #[test]
+        fn a_repeat_provider_outcome_is_not_worth_a_second_event() {
+            let _lock = SUPPRESSION_TEST_LOCK.lock().unwrap();
+            reset_suppression();
+
+            assert!(provider_incident_bucket_is_new("capacity", "1-9"));
+            assert!(!provider_incident_bucket_is_new("capacity", "1-9"));
+
+            reset_suppression();
+        }
+
+        #[test]
+        fn a_changed_provider_bucket_reports_a_new_outcome() {
+            let _lock = SUPPRESSION_TEST_LOCK.lock().unwrap();
+            reset_suppression();
+
+            assert!(provider_incident_bucket_is_new("capacity", "1-9"));
+
+            // The bucket for the same kind changes: it is a new outcome.
+            assert!(provider_incident_bucket_is_new("capacity", "10-49"));
+            assert!(!provider_incident_bucket_is_new("capacity", "10-49"));
+
+            reset_suppression();
+        }
+
+        #[test]
+        fn one_incident_kind_becomes_one_outcome() {
+            let section =
+                ProviderIncidentsSection::Findings(provider_findings(BTreeMap::from([(
+                    ProviderIncidentKind::Capacity,
+                    5,
+                )])));
+
+            let outcomes = provider_incident_outcomes(&section);
+
+            assert_eq!(outcomes, vec![("capacity", "1-9")]);
         }
 
         #[test]
@@ -2516,6 +2655,7 @@ mod enabled {
                 (("max", "2_to_under_4", "within_5"), Instant::now()),
             );
             assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
+            assert!(provider_incident_bucket_is_new("capacity", "1-9"));
 
             reset_suppression();
 
@@ -2525,6 +2665,7 @@ mod enabled {
             assert!(LAST_USAGE_OBSERVED.lock().unwrap().is_empty());
             assert!(LAST_LIMIT_FACTOR_OBSERVED.lock().unwrap().is_empty());
             assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
+            assert!(provider_incident_bucket_is_new("capacity", "1-9"));
             reset_suppression();
         }
 
