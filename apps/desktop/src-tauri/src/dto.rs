@@ -2027,6 +2027,8 @@ fn quota_limit_kind_str(kind: QuotaLimitKind) -> &'static str {
 fn provider_incident_kind_str(kind: ProviderIncidentKind) -> &'static str {
     match kind {
         ProviderIncidentKind::Capacity => "capacity",
+        ProviderIncidentKind::ServerError => "server_error",
+        ProviderIncidentKind::Connection => "connection",
     }
 }
 
@@ -2494,6 +2496,23 @@ mod tests {
                 last_observed_ts_ms: 2_000,
                 observed_times_ms: vec![1_000, 2_000],
             });
+            report.provider_incidents = ProviderIncidentsSection::Findings(
+                antiburn_local::insights::ProviderIncidentFindings {
+                    hits_by_kind: BTreeMap::from([
+                        (ProviderIncidentKind::Capacity, 1),
+                        (ProviderIncidentKind::ServerError, 2),
+                        (ProviderIncidentKind::Connection, 3),
+                    ]),
+                    total_hits: 6,
+                    affected_session_count: 2,
+                    affected_session_examples: Vec::new(),
+                    affected_models: BTreeSet::from(["claude-3-5-haiku-20241022".to_owned()]),
+                    affected_models_truncated: false,
+                    first_observed_ts_ms: 1_000,
+                    last_observed_ts_ms: 2_000,
+                    observed_times_ms: vec![1_000, 2_000],
+                },
+            );
 
             let value = serde_json::to_value(InsightsReportPayload::from(report)).unwrap();
 
@@ -2572,6 +2591,17 @@ mod tests {
                 ]
             );
             assert_eq!(findings["hitsByLimitKind"][0]["kind"], "weekly");
+
+            let provider = value["providerIncidents"].as_object().unwrap();
+            let provider_keys: Vec<&str> = provider.keys().map(String::as_str).collect();
+            assert_eq!(provider_keys, ["assessed", "findings"]);
+            let provider_findings = provider["findings"].as_object().unwrap();
+            let provider_hits_by_kind = provider_findings["hitsByKind"].as_array().unwrap();
+            let provider_kinds: Vec<&str> = provider_hits_by_kind
+                .iter()
+                .map(|entry| entry["kind"].as_str().unwrap())
+                .collect();
+            assert_eq!(provider_kinds, ["capacity", "server_error", "connection"]);
 
             let unrecognized = value["unrecognizedRecords"].as_object().unwrap();
             let unrecognized_keys: Vec<&str> = unrecognized.keys().map(String::as_str).collect();

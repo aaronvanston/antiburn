@@ -69,7 +69,7 @@ export interface InsightsQuotaPressurePayload {
 
 /** Deduplicated hits for one provider-incident kind. */
 interface InsightsProviderIncidentKindPayload {
-  kind: string
+  kind: "capacity" | "server_error" | "connection"
   hits: number
 }
 

@@ -1255,6 +1255,8 @@ mod enabled {
     fn provider_incident_kind_label(kind: ProviderIncidentKind) -> &'static str {
         match kind {
             ProviderIncidentKind::Capacity => "capacity",
+            ProviderIncidentKind::ServerError => "server_error",
+            ProviderIncidentKind::Connection => "connection",
         }
     }
 
@@ -2601,6 +2603,29 @@ mod enabled {
             let outcomes = provider_incident_outcomes(&section);
 
             assert_eq!(outcomes, vec![("capacity", "1-9")]);
+        }
+
+        /// All three closed-vocabulary labels round-trip through
+        /// `provider_incident_outcomes`, in `ProviderIncidentKind`'s
+        /// declaration order (`hits_by_kind` is a `BTreeMap` keyed by it).
+        #[test]
+        fn every_incident_kind_label_round_trips() {
+            let section = ProviderIncidentsSection::Findings(provider_findings(BTreeMap::from([
+                (ProviderIncidentKind::Capacity, 1),
+                (ProviderIncidentKind::ServerError, 5),
+                (ProviderIncidentKind::Connection, 30),
+            ])));
+
+            let outcomes = provider_incident_outcomes(&section);
+
+            assert_eq!(
+                outcomes,
+                vec![
+                    ("capacity", "1-9"),
+                    ("server_error", "1-9"),
+                    ("connection", "10-49"),
+                ]
+            );
         }
 
         #[test]
