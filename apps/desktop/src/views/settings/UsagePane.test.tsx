@@ -7,6 +7,7 @@ import type {
   LiveUsageMeterPayload,
   LiveUsageSourceErrorPayload,
   LiveUsageSummaryPayload,
+  ScanStatus,
 } from "../../lib/ipc"
 import { UsagePane } from "./UsagePane"
 
@@ -14,7 +15,7 @@ const getLiveUsage = vi.hoisted(() => vi.fn())
 const refreshLiveUsage = vi.hoisted(() => vi.fn())
 const onLiveUsageChanged = vi.hoisted(() => vi.fn(async () => () => {}))
 const getScanStatus = vi.hoisted(() =>
-  vi.fn<() => Promise<Ipc.ScanStatus | null>>(async () => null),
+  vi.fn<() => Promise<ScanStatus | null>>(async () => null),
 )
 const onScanEvent = vi.hoisted(() => vi.fn(async () => () => {}))
 

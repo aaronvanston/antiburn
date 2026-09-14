@@ -610,7 +610,7 @@ function liveProviderDisplayName(provider?: string): string | null {
 }
 
 /** The tool a login carrier belongs to, as the reader would name it. */
-export function liveCarrierLabel(carrier: LiveLoginCarrier): string {
+function liveCarrierLabel(carrier: LiveLoginCarrier): string {
   switch (carrier) {
     case "claudeCredentialsFile":
       return "the Claude Code CLI"
