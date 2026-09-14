@@ -69,9 +69,9 @@ export function SettingsView() {
   )
   const controller = useAppSettings()
 
-  // Command-W closes the window. This handler supports platforms without an
-  // application menu. The close request uses the title-bar button path, and
-  // the shell releases this renderer.
+  // Command-W closes the window when no application menu owns the shortcut.
+  // Control-W provides the same fallback on Windows and Linux. The close
+  // request uses the title-bar path, and the shell releases this renderer.
   // Esc must NOT close: dismiss-on-Escape is modal behavior and a settings
   // window is not a modal. Do not "fix" this by adding Escape.
   useGlobalKeydown(true, (event) => {

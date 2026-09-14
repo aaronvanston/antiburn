@@ -806,6 +806,10 @@ pub const MIN_DISK_THRESHOLD_GB: u32 = 5;
 pub const MAX_DISK_THRESHOLD_GB: u32 = 2000;
 pub const DEFAULT_DISK_THRESHOLD_GB: u32 = 50;
 
+fn visible_by_default() -> bool {
+    true
+}
+
 /// Every user preference the app persists, as one value.
 ///
 /// Stored key-by-key so adding a preference is additive; read and written as a
@@ -823,6 +827,12 @@ pub struct AppSettings {
     pub onboarding_completed: bool,
     /// Whether the packaged app should register itself to start after sign-in.
     pub launch_at_login: bool,
+    /// Whether the menu-bar or system-tray icon is visible.
+    #[serde(default = "visible_by_default")]
+    pub tray_icon_visible: bool,
+    /// Whether the app is visible in the macOS Dock.
+    #[serde(default = "visible_by_default")]
+    pub dock_icon_visible: bool,
     /// Whether the updater may install and restart on its own. Read by
     /// [`crate::updates::spawn_scheduler`], which is what makes it real.
     pub auto_update: bool,
@@ -921,6 +931,8 @@ impl Default for AppSettings {
             session_data_retention_days: RETAIN_SESSION_DATA_FOREVER,
             onboarding_completed: false,
             launch_at_login: true,
+            tray_icon_visible: true,
+            dock_icon_visible: true,
             auto_update: true,
             discovery_paused: false,
             // On by default, and the per-kind switches with them: each kind
@@ -989,6 +1001,9 @@ impl AppSettings {
     /// Clamp anything a caller could get wrong. Called on both read and write,
     /// so a hand-edited database cannot produce an unrenderable window.
     pub fn normalized(mut self) -> Self {
+        if !self.tray_icon_visible && !self.dock_icon_visible {
+            self.dock_icon_visible = true;
+        }
         self.activity_window_days = self
             .activity_window_days
             .clamp(MIN_ACTIVITY_DAYS, MAX_ACTIVITY_DAYS);
@@ -1079,6 +1094,38 @@ mod tests {
         // asking. Storing the disabled set is what makes that true.
         assert!(!AppSettings::default().disabled_agents.any());
         assert!(!DisabledAgents::parse("some-future-agent").contains("claude-code"));
+    }
+
+    #[test]
+    fn app_presence_is_visible_by_default() {
+        let settings = AppSettings::default();
+        assert!(settings.tray_icon_visible);
+        assert!(settings.dock_icon_visible);
+    }
+
+    #[test]
+    fn missing_app_presence_fields_deserialize_as_visible() {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("trayIconVisible");
+        object.remove("dockIconVisible");
+
+        let settings: AppSettings = serde_json::from_value(value).unwrap();
+        assert!(settings.tray_icon_visible);
+        assert!(settings.dock_icon_visible);
+    }
+
+    #[test]
+    fn normalization_keeps_one_persistent_entry_point_visible() {
+        let settings = AppSettings {
+            tray_icon_visible: false,
+            dock_icon_visible: false,
+            ..AppSettings::default()
+        }
+        .normalized();
+
+        assert!(!settings.tray_icon_visible);
+        assert!(settings.dock_icon_visible);
     }
 
     #[test]

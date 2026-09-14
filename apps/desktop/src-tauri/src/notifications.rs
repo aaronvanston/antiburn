@@ -105,7 +105,7 @@ impl Kind {
 /// fires once in the app's whole life, as the first-run window closes, and it
 /// is the only thing that says where the application just went — suppressing it
 /// would leave a reader who turned notifications off mid-onboarding with no
-/// window, no Dock icon, and no explanation.
+/// explanation of where the application remains available.
 pub fn allowed(settings: &AppSettings, kind: Kind) -> bool {
     if kind == Kind::Test || kind == Kind::MenuBarHome {
         return true;
@@ -396,6 +396,11 @@ const HOME_NOUN: &str = "menu bar";
 #[cfg(not(target_os = "macos"))]
 const HOME_NOUN: &str = "system tray";
 
+#[cfg(target_os = "macos")]
+const HIDDEN_TRAY_HOME_TITLE: &str = "antiburn is available from the Dock";
+#[cfg(not(target_os = "macos"))]
+const HIDDEN_TRAY_HOME_TITLE: &str = "antiburn is ready";
+
 /// Deliberately no direction — no "above", no "up there". This notice is
 /// normally anchored right under the menu-bar item, but the anchor is
 /// macOS-only and needs a tray rectangle the backend will not always report; on
@@ -406,6 +411,17 @@ pub fn menu_bar_home_message() -> NotificationCopy {
     NotificationCopy::new(
         format!("antiburn is in your {HOME_NOUN}"),
         "Click here to see coding sessions.",
+        "antiburn runs in the background at all times.",
+    )
+}
+
+fn application_home_message(tray_visible: bool) -> NotificationCopy {
+    if tray_visible {
+        return menu_bar_home_message();
+    }
+    NotificationCopy::new(
+        HIDDEN_TRAY_HOME_TITLE,
+        "Click here to open antiburn.",
         "antiburn runs in the background at all times.",
     )
 }
@@ -517,14 +533,21 @@ pub fn note_usage_milestone(
 /// the reader's placement preference says: a notification that answers "where
 /// is it" by appearing in the opposite corner of the screen from the answer
 /// would be worse than none. Called only from [`crate::onboarding::finish`], so
-/// it appears after each setup run, including an explicit restart.
+/// it appears after each setup run, including an explicit restart. Its copy and
+/// action follow the entry point that remains visible.
 pub fn note_menu_bar_home(app: &AppHandle) {
-    crate::nudges::anchor_next_to_the_tray(app);
+    let tray_visible = app
+        .try_state::<Store>()
+        .and_then(|store| store.settings().ok())
+        .is_none_or(|settings| settings.tray_icon_visible);
+    if tray_visible {
+        crate::nudges::anchor_next_to_the_tray(app);
+    }
     deliver(
         app,
         Kind::MenuBarHome,
         Delivery::Preview,
-        menu_bar_home_message(),
+        application_home_message(tray_visible),
         Some(("show", "Show me", None)),
         None,
     );
@@ -585,9 +608,15 @@ pub fn note_sample(app: &AppHandle, kind: Kind) {
             (usage_milestone_message(&content), None, Some(tone))
         }
         Kind::MenuBarHome => {
-            crate::nudges::anchor_next_to_the_tray(app);
+            let tray_visible = app
+                .try_state::<Store>()
+                .and_then(|store| store.settings().ok())
+                .is_none_or(|settings| settings.tray_icon_visible);
+            if tray_visible {
+                crate::nudges::anchor_next_to_the_tray(app);
+            }
             (
-                menu_bar_home_message(),
+                application_home_message(tray_visible),
                 Some(("show", "Show me", None)),
                 None,
             )
@@ -671,6 +700,14 @@ mod tests {
         assert!(copy.subtitle.contains("0.2.0"));
         assert!(copy.description.contains("Select Install"));
         assert!(copy.description.contains("Open About"));
+    }
+
+    #[test]
+    fn hidden_tray_home_copy_points_back_to_the_application() {
+        let copy = application_home_message(false);
+        assert_eq!(copy.title, HIDDEN_TRAY_HOME_TITLE);
+        assert_eq!(copy.subtitle, "Click here to open antiburn.");
+        assert!(!copy.title.contains(HOME_NOUN));
     }
 
     #[test]
