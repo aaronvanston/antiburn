@@ -1,4 +1,4 @@
-import { Flame, MessagesSquare, Settings } from "lucide-react"
+import { Flame, House, MessagesSquare, Settings } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import type { SessionListEntry } from "../components/session/SessionList"
@@ -26,6 +26,7 @@ import { BurnChecksView } from "./main-window/BurnChecksView"
 import { BurnChecksSession } from "./main-window/BurnChecksSession"
 import { MainWindowLayout } from "./main-window/MainWindowLayout"
 import { MainWindowNavigationSession } from "./main-window/MainWindowNavigationSession"
+import { OverviewView } from "./main-window/OverviewView"
 
 export interface MainWindowSection extends SidebarNavItem {
   render: (context: { active: boolean }) => ReactNode
@@ -129,6 +130,12 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   const hygieneBySession = useSessionHygiene(sessionHygieneIdentities(activity.entries ?? []))
   const availableSections: readonly MainWindowSection[] = sections ?? [
     {
+      id: "overview",
+      label: "Overview",
+      icon: House,
+      render: ({ active }) => <OverviewView active={active} />,
+    },
+    {
       id: "burnChecks",
       label: "Burn checks",
       icon: Flame,
@@ -161,7 +168,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       setCustomVisited((previous) => new Set(previous).add(id))
       return
     }
-    if (id === "burnChecks") {
+    if (id === "overview" || id === "burnChecks") {
       navigationSession.select(id)
       return
     }
