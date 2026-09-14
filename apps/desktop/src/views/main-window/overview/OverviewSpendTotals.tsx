@@ -12,6 +12,8 @@ import {
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
+import "./overview.css"
+
 const SPANS: ReadonlyArray<{
   key: keyof ProviderUsageWindowsPayload
   label: string
@@ -25,8 +27,9 @@ const SPANS: ReadonlyArray<{
 /**
  * The Overview's headline: estimated local spend today, this week, and over
  * the trailing thirty days, each as a hero figure over its token count and
- * session count. An unpriced window leads with its token count instead of a
- * zero-dollar figure, and a partly priced one says so.
+ * session count. The cells carry their own labels; there is no heading. An
+ * unpriced window leads with its token count instead of a zero-dollar
+ * figure, and a partly priced one says so.
  */
 export function OverviewSpendTotals({
   totals,
@@ -37,20 +40,9 @@ export function OverviewSpendTotals({
 }) {
   return (
     <section aria-label="Estimated local spend" aria-busy={loading || undefined}>
-      <div className="flex items-baseline justify-between gap-[var(--space-md)]">
-        <p className="type-callout text-label-secondary">Estimated</p>
-        <p className="type-caption text-label-tertiary">Local sessions</p>
-      </div>
-      <dl className="mt-[var(--space-sm)] grid grid-cols-3">
-        {SPANS.map((span, index) => (
-          <div
-            key={span.key}
-            className={
-              index === 0
-                ? "min-w-0 pr-[var(--space-lg)]"
-                : "min-w-0 border-l border-separator px-[var(--space-lg)]"
-            }
-          >
+      <dl className="overview-totals">
+        {SPANS.map((span) => (
+          <div key={span.key} className="overview-totals-cell min-w-0 border-separator">
             <dt className="type-callout text-label-secondary">
               <span aria-hidden="true">{span.label}</span>
               <span className="sr-only">{span.accessibleLabel}</span>
@@ -83,12 +75,11 @@ function SpendCell({ window }: { window: ProviderUsageWindowPayload }) {
         <SegmentFigure>
           {hasCost ? formatSpendFigure(window.estimatedUsd ?? 0) : formatTokenFigure(tokens)}
         </SegmentFigure>
-        {!hasCost && <span className="sr-only"> tokens</span>}
       </dd>
       <dd className="type-caption mt-[var(--space-xs)] whitespace-nowrap text-label-tertiary">
         {hasCost && (
           <>
-            <SegmentFigure>{formatTokenFigure(tokens)}</SegmentFigure> tokens
+            <SegmentFigure>{formatTokenFigure(tokens)}</SegmentFigure>
             <span aria-hidden="true"> · </span>
           </>
         )}

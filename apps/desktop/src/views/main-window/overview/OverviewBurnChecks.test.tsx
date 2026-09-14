@@ -38,19 +38,26 @@ describe("OverviewBurnChecks", () => {
             category("oldModelUsage", 1, 10, null),
             category("unusedSkills", 0, 20),
           ],
-          { estimatedTokenBurnBasisPoints: 640 },
+          { estimatedTokenBurnBasisPoints: 40 },
         )}
         onOpen={onOpen}
       />,
     )
     const panel = screen.getByRole("region", { name: "Burn checks" })
     expect(within(panel).getByText("3 findings · 1 passed")).toBeVisible()
-    expect(within(panel).getByText("6% estimated token burn")).toBeVisible()
+    expect(within(panel).getByText("Less than 1% estimated burn")).toBeVisible()
+    // The gauge shows the burn share, floored to a trace, not the check count.
+    const burnArc = panel.querySelector('[data-segment-id="burn"]')
+    const restArc = panel.querySelector('[data-segment-id="rest"]')
+    expect(burnArc).not.toBeNull()
+    expect(Number(burnArc!.getAttribute("data-arc-angle"))).toBeLessThan(
+      Number(restArc!.getAttribute("data-arc-angle")) / 50,
+    )
     const rows = within(panel).getAllByRole("listitem")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Excess cache rehydration4 sessions")
     expect(rows[1]).toHaveTextContent("Unused MCP servers12 sessions")
-    fireEvent.click(within(panel).getByRole("button", { name: "More" }))
+    fireEvent.click(within(panel).getByRole("button", { name: /^Open Burn checks/ }))
     fireEvent.click(within(rows[0]!).getByRole("button"))
     expect(onOpen).toHaveBeenCalledTimes(2)
   })

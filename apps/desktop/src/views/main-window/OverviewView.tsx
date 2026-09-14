@@ -11,10 +11,14 @@ import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
 import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 
+import "./overview/overview.css"
+
 /**
- * The main window's landing section: local spend, provider limits, Burn
- * checks, and recent sessions on one page. The Burn checks and Sessions
- * panels are summaries; their controls leave for the full sections.
+ * The main window's landing section: local spend totals, then one card
+ * with Burn checks over recent sessions beside the provider limits card,
+ * and the daily spend chart along the bottom, where it takes any height
+ * the window has to spare. The Burn checks and Sessions panels are
+ * summaries; their controls leave for the full sections.
  */
 export function OverviewView({
   active,
@@ -66,7 +70,7 @@ export function OverviewView({
             role="region"
             aria-label={loading ? "Loading Overview" : "Overview"}
             aria-busy={loading || undefined}
-            className="flex w-full flex-col gap-[var(--space-2xl)] px-8 py-6"
+            className="overview-page flex w-full flex-col gap-[var(--space-xl)] px-8 py-6"
           >
             {loading && (
               <p role="status" className="sr-only">
@@ -74,27 +78,29 @@ export function OverviewView({
               </p>
             )}
             <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
-            <OverviewSpendChart
-              days={usage?.days ?? []}
-              previousDays={usage?.previousDays ?? []}
-              loading={loading}
-            />
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--space-2xl)]">
+            <div className="overview-panels">
+              <div className="overview-stack p-[var(--space-lg)]">
+                <OverviewBurnChecks
+                  report={state.report}
+                  loading={loading && !state.report}
+                  onOpen={onOpenBurnChecks}
+                />
+                <OverviewRecentSessions
+                  entries={state.recentSessions}
+                  loading={loading && !state.recentSessions}
+                  onSelect={onSelectSession}
+                  onOpenAll={onOpenSessions}
+                />
+              </div>
               <OverviewProviderLimits
                 live={state.liveUsage}
                 loading={loading && !state.liveUsage}
               />
-              <OverviewBurnChecks
-                report={state.report}
-                loading={loading && !state.report}
-                onOpen={onOpenBurnChecks}
-              />
             </div>
-            <OverviewRecentSessions
-              entries={state.recentSessions}
-              loading={loading && !state.recentSessions}
-              onSelect={onSelectSession}
-              onOpenAll={onOpenSessions}
+            <OverviewSpendChart
+              days={usage?.days ?? []}
+              previousDays={usage?.previousDays ?? []}
+              loading={loading}
             />
           </div>
         </ScrollPane>

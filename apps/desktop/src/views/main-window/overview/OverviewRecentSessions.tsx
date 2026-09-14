@@ -12,7 +12,7 @@ import {
 import { OVERVIEW_RECENT_SESSION_COUNT } from "../MainOverviewSession"
 
 /**
- * The newest sessions, as the same rows the Sessions list shows, under an
+ * The newest sessions as compact Sessions rows, one line each, under an
  * "All sessions" link. A row click selects that session in Sessions.
  */
 export function OverviewRecentSessions({
@@ -33,7 +33,8 @@ export function OverviewRecentSessions({
       aria-busy={loading || undefined}
       className="flex flex-col gap-[var(--space-sm)]"
     >
-      <div className="flex justify-end">
+      <div className="flex items-baseline justify-between">
+        <h2 className="type-caption text-label-secondary">Recent</h2>
         <button
           type="button"
           onClick={onOpenAll}
@@ -61,6 +62,7 @@ export function OverviewRecentSessions({
                   }
                   renderAgentIcon={renderAgentIcon}
                   showCost
+                  compact
                   {...(entry.sessionId ? { onSelect: () => onSelect(entry) } : {})}
                 />
               </li>
@@ -72,7 +74,7 @@ export function OverviewRecentSessions({
       ) : (
         <div className="flex flex-col gap-1.5" aria-hidden="true">
           {Array.from({ length: OVERVIEW_RECENT_SESSION_COUNT }, (_, index) => (
-            <SkeletonCard key={index} leading />
+            <SkeletonCard key={index} leading lines={["w-56"]} className="py-2" />
           ))}
         </div>
       )}

@@ -1,4 +1,9 @@
-import type { LiveUsageSummaryPayload } from "../../../lib/providerUsageIpc"
+import { useRef } from "react"
+
+import type {
+  LiveUsageSummaryPayload,
+  LiveUsageWindowPayload,
+} from "../../../lib/providerUsageIpc"
 import {
   liveDisplayableProviders,
   liveErrorNote,
@@ -14,18 +19,50 @@ import {
 import { WindowMeterRow } from "../../../components/providerUsage/UsageLimitsBar"
 import { useStableAccountNumbers } from "../../../components/providerUsage/useStableAccountNumbers"
 import { Skeleton } from "../../../components/ui/Skeleton"
+import { useElementWidth } from "../../../lib/useElementWidth"
+
+/** The popover's dot count, used until the group has a measured width. */
+const OVERVIEW_METER_SEGMENTS = 32
+/** One dot and its gap, in pixels: the popover's packing at its row width. */
+const OVERVIEW_METER_PITCH = 9
+/** Below this count the meter reads as a row of beads, not an instrument. */
+const OVERVIEW_METER_MIN_SEGMENTS = 16
+
+/** The dot count that packs a meter of `width` pixels like the popover's. */
+export function meterSegmentsForWidth(width: number): number {
+  if (width <= 0) return OVERVIEW_METER_SEGMENTS
+  return Math.max(OVERVIEW_METER_MIN_SEGMENTS, Math.floor(width / OVERVIEW_METER_PITCH))
+}
 
 /**
- * Fewer dots than the popover's 32: the Overview card is narrower than the
- * popover row, and 16 keeps the dots the same distance apart.
+ * One provider's meters. The group measures its own width and draws as many
+ * dots as fit at the popover's pitch, so a wider card gets a longer meter
+ * with the same lit share, not the same meter with wider gaps.
  */
-const OVERVIEW_METER_SEGMENTS = 16
+function MeterGroup({ windows, now }: { windows: LiveUsageWindowPayload[]; now: number }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const segments = meterSegmentsForWidth(useElementWidth(ref))
+  return (
+    <div ref={ref} className="flex flex-col gap-[var(--space-md)] pt-[var(--space-md)]">
+      {windows.map((window) => (
+        <WindowMeterRow
+          key={window.id}
+          window={window}
+          now={now}
+          resetPlacement="caption"
+          segments={segments}
+        />
+      ))}
+    </div>
+  )
+}
 
 /**
- * The provider limits panel: one card per provider account with a dot meter
- * for each of its windows and the reset time under each meter. The
- * freshness tag floats in the top-right corner. The panel shows no local
- * cost figure; those belong to the totals above it.
+ * The provider limits panel: one group per provider account, stacked with a
+ * rule between, with a dot meter for each of its windows and the reset time
+ * under each meter. The meters take the card's width and add dots as it
+ * grows. The stale tag floats in the top-right corner. The panel shows no
+ * local cost figure; those belong to the totals above the panel.
  */
 export function OverviewProviderLimits({
   live,
@@ -56,17 +93,17 @@ export function OverviewProviderLimits({
     <section
       aria-label="Provider limits"
       aria-busy={loading || undefined}
-      className="relative rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
+      className="overview-provider-limits relative rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
     >
-      {limited.length > 0 && (
+      {limited.length > 0 && stale && (
         <p
-          className={`type-caption absolute top-[var(--space-lg)] right-[var(--space-lg)] ${liveFreshnessToneClass(stale ? "stale" : "fresh")}`}
+          className={`type-caption absolute top-[var(--space-lg)] right-[var(--space-lg)] ${liveFreshnessToneClass("stale")}`}
         >
-          {stale ? "Stale" : "Live"}
+          Stale
         </p>
       )}
       {loading || !live ? (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[var(--space-2xl)]">
+        <div className="flex flex-col gap-[var(--space-2xl)]">
           {["first", "second"].map((seat) => (
             <div key={seat} className="flex flex-col gap-[var(--space-md)]">
               <Skeleton className="h-3 w-28" />
@@ -81,7 +118,7 @@ export function OverviewProviderLimits({
           Settings.
         </p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[var(--space-2xl)]">
+        <div className="flex flex-col divide-y divide-separator">
           {limited.map(({ reading, key }) => {
             const count = providerCounts.get(reading.provider) ?? 1
             const displayName =
@@ -99,7 +136,7 @@ export function OverviewProviderLimits({
                 key={key}
                 role="group"
                 aria-label={plan ? `${displayName}, ${plan} plan` : displayName}
-                className="min-w-0"
+                className="min-w-0 py-[var(--space-lg)] first:pt-0 last:pb-0"
               >
                 <h3 className="type-footnote min-w-0 truncate pr-12 font-medium tracking-wide text-label">
                   <span className="uppercase">{displayName}</span>
@@ -108,17 +145,7 @@ export function OverviewProviderLimits({
                 {graceNote && (
                   <p className="type-footnote pt-1 text-label-tertiary">{graceNote}</p>
                 )}
-                <div className="flex flex-col gap-[var(--space-md)] pt-[var(--space-md)]">
-                  {liveWindows(reading).map((window) => (
-                    <WindowMeterRow
-                      key={window.id}
-                      window={window}
-                      now={at}
-                      resetPlacement="caption"
-                      segments={OVERVIEW_METER_SEGMENTS}
-                    />
-                  ))}
-                </div>
+                <MeterGroup windows={liveWindows(reading)} now={at} />
               </div>
             )
           })}
@@ -127,7 +154,7 @@ export function OverviewProviderLimits({
               key={entry.provider}
               role="group"
               aria-label={entry.displayName}
-              className="min-w-0"
+              className="min-w-0 py-[var(--space-lg)] first:pt-0 last:pb-0"
             >
               <h3 className="type-footnote truncate font-medium tracking-wide text-label uppercase">
                 {entry.displayName}

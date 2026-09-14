@@ -19,7 +19,7 @@ function window(
 }
 
 describe("OverviewSpendTotals", () => {
-  it("shows a spend figure with its tokens and sessions for each span", () => {
+  it("shows a spend figure with its token count and sessions for each span", () => {
     render(
       <OverviewSpendTotals
         totals={{
@@ -32,7 +32,7 @@ describe("OverviewSpendTotals", () => {
     )
     const today = screen.getByText("Today", { selector: "[aria-hidden]" }).closest("div")!
     expect(today).toHaveTextContent("$42.80")
-    expect(today).toHaveTextContent("1.50M tokens · 4 sessions")
+    expect(today).toHaveTextContent("1.50M · 4 sessions")
     expect(today).not.toHaveTextContent("partial")
     const week = screen.getByText("7 days", { selector: "[aria-hidden]" }).closest("div")!
     expect(week).toHaveTextContent("$218")
@@ -54,7 +54,7 @@ describe("OverviewSpendTotals", () => {
       />,
     )
     const today = screen.getByText("Today", { selector: "[aria-hidden]" }).closest("div")!
-    expect(today).toHaveTextContent("1.50M tokens")
+    expect(today).toHaveTextContent("1.50M")
     expect(today).not.toHaveTextContent("$")
     expect(today).toHaveTextContent("4 sessions · partial")
   })

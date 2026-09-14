@@ -27,7 +27,7 @@ vi.mock("./main-window/OverviewView", () => ({
     <div>
       <p>Overview workspace</p>
       <button type="button" onClick={onOpenBurnChecks}>
-        More
+        Open Burn checks
       </button>
       <button type="button" onClick={() => onSelectSession(overviewMocks.recentEntry)}>
         Recent session
@@ -209,7 +209,7 @@ describe("MainWindowView", () => {
     expect(activitySession().selectEntry).toHaveBeenCalledWith(overviewMocks.recentEntry)
     expect(activitySession().setFilter).toHaveBeenCalledWith({ kind: "all" })
     fireEvent.click(screen.getByRole("tab", { name: "Overview" }))
-    fireEvent.click(screen.getByRole("button", { name: "More" }))
+    fireEvent.click(screen.getByRole("button", { name: "Open Burn checks" }))
     expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
       "aria-selected",
       "true",

@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type {
   LiveProviderUsagePayload,
@@ -7,7 +7,7 @@ import type {
   LiveUsageSummaryPayload,
   LiveUsageWindowPayload,
 } from "../../../lib/ipc"
-import { OverviewProviderLimits } from "./OverviewProviderLimits"
+import { OverviewProviderLimits, meterSegmentsForWidth } from "./OverviewProviderLimits"
 
 const FORECAST = {
   unavailableReason: "sparseHistory",
@@ -82,7 +82,9 @@ function liveSummary(
 }
 
 describe("OverviewProviderLimits", () => {
-  it("draws a sixteen-dot meter with the notch, the figure and the reset caption", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("draws a thirty-two-dot meter with the notch, the figure and the reset caption", () => {
     render(<OverviewProviderLimits live={liveSummary()} />)
     const card = screen.getByRole("group", { name: /Claude/ })
     expect(card).toHaveAccessibleName("Claude, Max plan")
@@ -90,12 +92,27 @@ describe("OverviewProviderLimits", () => {
     expect(within(card).getByTestId("segmented-meter-notch")).toHaveStyle({ left: "40%" })
     expect(within(card).getByText(/^resets /)).toBeInTheDocument()
     const dots = card.querySelectorAll(".rounded-full")
-    expect(dots).toHaveLength(16)
+    expect(dots).toHaveLength(32)
     expect(
       Array.from(dots).filter((dot) => dot.className.includes("bg-brand-tint")),
-    ).toHaveLength(7)
-    expect(screen.getByText("Live")).toHaveClass("text-label-tertiary")
+    ).toHaveLength(13)
+    expect(screen.queryByText("Live")).toBeNull()
     expect(screen.queryByText(/\$/)).toBeNull()
+  })
+
+  it("adds dots as the group grows and keeps the lit share", () => {
+    expect(meterSegmentsForWidth(0)).toBe(32)
+    expect(meterSegmentsForWidth(100)).toBe(16)
+    expect(meterSegmentsForWidth(300)).toBe(33)
+    expect(meterSegmentsForWidth(603)).toBe(67)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(603)
+    render(<OverviewProviderLimits live={liveSummary()} />)
+    const card = screen.getByRole("group", { name: /Claude/ })
+    const dots = card.querySelectorAll(".rounded-full")
+    expect(dots).toHaveLength(67)
+    expect(
+      Array.from(dots).filter((dot) => dot.className.includes("bg-brand-tint")),
+    ).toHaveLength(28)
   })
 
   it("dims a meter with no reading and turns the red zone on above 90%", () => {
@@ -120,7 +137,7 @@ describe("OverviewProviderLimits", () => {
     )
     const card = screen.getByRole("group", { name: /Claude/ })
     expect(within(card).getByText("—")).toBeInTheDocument()
-    expect(card.querySelectorAll(".rounded-full.opacity-50")).toHaveLength(16)
+    expect(card.querySelectorAll(".rounded-full.opacity-50")).toHaveLength(32)
     expect(card.querySelectorAll(".bg-system-red-tint").length).toBeGreaterThan(0)
   })
 

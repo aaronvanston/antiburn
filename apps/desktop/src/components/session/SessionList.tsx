@@ -26,13 +26,15 @@ import {
   type PresentableModelRun,
 } from "../../lib/presentation/models"
 import { relativeTime } from "../../lib/presentation/relativeTime"
+import { sessionBurnCheckPresentation } from "../../lib/presentation/burnChecks"
 import { sessionHygieneFor, type SessionHygieneSnapshot } from "../../lib/useSessionHygiene"
+import { BurnCheckStatus } from "../burn-checks/BurnCheckStatus"
 import { Tooltip } from "../presentation/Tooltip"
 import { TruncatedText } from "../presentation/TruncatedText"
 import { WslOriginBadge } from "../presentation/WslOriginBadge"
 import { SessionStatusBar } from "./SessionStatusBar"
 import { SessionTooltipOwner } from "./SessionTooltipOwner"
-import { type SessionCostBadgeProps } from "./metrics/SessionCostBadge"
+import { SessionCostBadge, type SessionCostBadgeProps } from "./metrics/SessionCostBadge"
 import { CountPill } from "../ui/CountPill"
 import { ScrollPane } from "../ui/ScrollPane"
 import { ListDisplayToolbar } from "../ui/ListDisplayToolbar"
@@ -284,6 +286,12 @@ export interface SessionRowProps {
   wslIcon?: ReactNode | undefined
   showRepository?: boolean | undefined
   showCost?: boolean
+  /**
+   * One line: the status, the title, the first model, the time and the
+   * cost. For a summary list outside Sessions, where the card's second
+   * line and the vendor watermark would cost more height than they earn.
+   */
+  compact?: boolean
   limitBadge?:
     | {
         label: string
@@ -300,7 +308,8 @@ export interface SessionRowProps {
  * cost, and last activity time.
  *
  * The whole card opens the session analysis. Unsupported agents open an empty
- * analysis state that explains why no data is available.
+ * analysis state that explains why no data is available. The compact form
+ * keeps the same controls on one line.
  */
 export function SessionRow({
   entry,
@@ -316,6 +325,7 @@ export function SessionRow({
   showRepository = false,
   limitBadge,
   showCost = true,
+  compact = false,
 }: SessionRowProps) {
   const selectionMode = !!entry.sessionId && !!onSelect
   const clickable = !!entry.sessionId && (!!onOpen || selectionMode)
@@ -407,6 +417,87 @@ export function SessionRow({
     </div>
   )
 
+  const interactiveProps = clickable
+    ? {
+        role: "button" as const,
+        tabIndex: tabIndex ?? 0,
+        "aria-current": selected ? ("true" as const) : undefined,
+        "data-session-row": "",
+        onClick: selectionMode
+          ? (event: React.MouseEvent<HTMLDivElement>) => {
+              const target = event.target as Element
+              const nestedControl = target.closest(
+                'button, a, input, select, textarea, [role="button"]',
+              )
+              if (nestedControl && nestedControl !== event.currentTarget) return
+              event.currentTarget.focus()
+              onSelect?.()
+            }
+          : onOpen,
+        onKeyDown: (event: React.KeyboardEvent) => {
+          // Only when the row itself has focus: a nested control's Enter
+          // belongs to that control, not to the card behind it.
+          if (
+            event.currentTarget === event.target &&
+            (event.key === "Enter" || event.key === " ")
+          ) {
+            event.preventDefault()
+            if (selectionMode) {
+              if (event.key === "Enter") onOpenDetail?.()
+              else onSelect?.()
+            } else {
+              onOpen?.()
+            }
+          }
+        },
+      }
+    : {}
+
+  if (compact) {
+    const presentation = sessionBurnCheckPresentation(hygieneChecks, hygiene.evidenceState)
+    const cost = showCost ? entry.cost : undefined
+    return (
+      <div
+        className={cn(
+          "session-card group relative isolate flex w-full min-w-0 items-center gap-x-3 overflow-hidden",
+          "rounded-[var(--radius-popover)] px-3 py-2",
+          selected ? "bg-surface-selected/60" : "bg-session-card",
+          entry.isActive && active && "activity-row-active",
+          clickable && "cursor-pointer",
+          clickable &&
+            !selected &&
+            "hover:bg-surface-secondary/50 [&:has([data-state*=open])]:bg-surface-secondary/50",
+        )}
+        data-session-row-compact=""
+        {...interactiveProps}
+      >
+        {entry.isActive && <span className="sr-only">Active session</span>}
+        <Tooltip label={presentation.accessibleDescription} delayMs={150}>
+          <BurnCheckStatus presentation={presentation} omitUnassessed className="shrink-0" />
+        </Tooltip>
+        {titleContent}
+        {firstModel && (
+          <span
+            aria-label={contextDescription}
+            className="shrink-0 whitespace-nowrap type-callout text-label-tertiary"
+          >
+            <span className="font-semibold! text-label-secondary">{firstModel.model}</span>
+          </span>
+        )}
+        {entry.timestamp && (
+          <time
+            dateTime={entry.timestamp}
+            aria-label={`Last activity ${relativeTime(entry.timestamp)}`}
+            className="shrink-0 whitespace-nowrap font-mono type-metadata tabular-nums text-label-tertiary"
+          >
+            {relativeTime(entry.timestamp, { compact: true })}
+          </time>
+        )}
+        {cost && <SessionCostBadge {...cost} appearance={cost.isHighCost ? "pill" : "bare"} />}
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -421,41 +512,7 @@ export function SessionRow({
           !selected &&
           "hover:bg-surface-secondary/50 [&:has([data-state*=open])]:bg-surface-secondary/50",
       )}
-      {...(clickable
-        ? {
-            role: "button" as const,
-            tabIndex: tabIndex ?? 0,
-            "aria-current": selected ? ("true" as const) : undefined,
-            "data-session-row": "",
-            onClick: selectionMode
-              ? (event: React.MouseEvent<HTMLDivElement>) => {
-                  const target = event.target as Element
-                  const nestedControl = target.closest(
-                    'button, a, input, select, textarea, [role="button"]',
-                  )
-                  if (nestedControl && nestedControl !== event.currentTarget) return
-                  event.currentTarget.focus()
-                  onSelect?.()
-                }
-              : onOpen,
-            onKeyDown: (event: React.KeyboardEvent) => {
-              // Only when the row itself has focus: a nested control's Enter
-              // belongs to that control, not to the card behind it.
-              if (
-                event.currentTarget === event.target &&
-                (event.key === "Enter" || event.key === " ")
-              ) {
-                event.preventDefault()
-                if (selectionMode) {
-                  if (event.key === "Enter") onOpenDetail?.()
-                  else onSelect?.()
-                } else {
-                  onOpen?.()
-                }
-              }
-            },
-          }
-        : {})}
+      {...interactiveProps}
     >
       {entry.isActive && <span className="sr-only">Active session</span>}
 
