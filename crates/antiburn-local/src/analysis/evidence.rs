@@ -473,6 +473,10 @@ pub struct SessionQuotaEvidence {
 pub enum ProviderIncidentKind {
     /// The provider refused the request because the model or server was at capacity.
     Capacity,
+    /// The provider returned a server-side failure (HTTP 5xx or an equivalent code).
+    ServerError,
+    /// The client could not reach the provider or the response stream broke off.
+    Connection,
 }
 
 /// One transcript-observed provider-side failure. The user's usage did not cause it.
