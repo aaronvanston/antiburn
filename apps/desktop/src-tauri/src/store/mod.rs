@@ -2868,6 +2868,14 @@ fn read_settings(connection: &Connection) -> Result<AppSettings> {
             .get("launchAtLogin")
             .map(|value| value == "true")
             .unwrap_or(defaults.launch_at_login),
+        tray_icon_visible: stored
+            .get("trayIconVisible")
+            .map(|value| value == "true")
+            .unwrap_or(defaults.tray_icon_visible),
+        dock_icon_visible: stored
+            .get("dockIconVisible")
+            .map(|value| value == "true")
+            .unwrap_or(defaults.dock_icon_visible),
         auto_update: stored
             .get("autoUpdate")
             .map(|value| value == "true")
@@ -2991,6 +2999,14 @@ fn write_settings(connection: &Connection, settings: &AppSettings) -> Result<()>
     put.execute(params![
         "launchAtLogin",
         bool_text(settings.launch_at_login)
+    ])?;
+    put.execute(params![
+        "trayIconVisible",
+        bool_text(settings.tray_icon_visible)
+    ])?;
+    put.execute(params![
+        "dockIconVisible",
+        bool_text(settings.dock_icon_visible)
     ])?;
     put.execute(params!["autoUpdate", bool_text(settings.auto_update)])?;
     put.execute(params![

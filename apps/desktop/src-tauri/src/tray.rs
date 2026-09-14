@@ -1,8 +1,9 @@
 //! The menu-bar / system-tray item.
 //!
 //! Left click toggles the popover; right click opens a short menu. The menu
-//! keeps Quit available when no window is open. It also carries the popover's
-//! pin, which needs a surface that survives the popover being dismissed.
+//! keeps Quit available when no window is open or the Dock icon is hidden. It
+//! also carries the popover's pin, which needs a surface that survives the
+//! popover being dismissed.
 //!
 //! Linux is different. The AppIndicator backend reports no click events, and
 //! every click opens the menu. So the menu's first item, Open antiburn, is what
@@ -207,6 +208,28 @@ fn install_app_menu(app: &AppHandle) -> tauri::Result<()> {
     // The tray handler receives application menu events with the same ID.
     app_menu.insert_items(&[&settings_item, &PredefinedMenuItem::separator(app)?], 2)?;
     app.set_menu(menu)?;
+    Ok(())
+}
+
+fn retire_popover_for_tray_visibility(visible: bool) -> bool {
+    !visible
+}
+
+/// Shows or hides the tray item and retires any popover it owns.
+pub fn set_visible(app: &AppHandle, visible: bool) -> tauri::Result<()> {
+    if retire_popover_for_tray_visibility(visible) {
+        popover::set_pinned(app, false);
+        popover::hide_for_onboarding(app);
+        if let Some(menu) = app.try_state::<TrayMenu>()
+            && let Err(error) = menu.pin.set_text(PIN_LABEL)
+        {
+            ::tracing::warn!(event = "tray_pin_relabel_failed", pinned = false, error = %error);
+        }
+    }
+
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        tray.set_visible(visible)?;
+    }
     Ok(())
 }
 
@@ -792,6 +815,12 @@ mod tests {
     fn the_pin_item_always_names_the_action_it_would_take() {
         assert_eq!(pin_label(false), "Pin Window");
         assert_eq!(pin_label(true), "Unpin Window");
+    }
+
+    #[test]
+    fn only_hiding_the_tray_retires_its_popover() {
+        assert!(retire_popover_for_tray_visibility(false));
+        assert!(!retire_popover_for_tray_visibility(true));
     }
 
     #[test]

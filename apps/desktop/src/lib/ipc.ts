@@ -52,6 +52,10 @@ export interface AppSettings {
   onboardingCompleted: boolean
   /** Recorded; applied by the platform at next launch. */
   launchAtLogin: boolean
+  /** Whether the menu-bar or system-tray icon is visible. */
+  trayIconVisible: boolean
+  /** Whether the app is visible in the macOS Dock. */
+  dockIconVisible: boolean
   /** Whether the shell may install and restart for updates on its schedule. */
   autoUpdate: boolean
   /**
@@ -478,6 +482,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sessionDataRetentionDays: -1,
   onboardingCompleted: false,
   launchAtLogin: true,
+  trayIconVisible: true,
+  dockIconVisible: true,
   autoUpdate: true,
   discoveryPaused: false,
   notificationsEnabled: true,

@@ -717,6 +717,8 @@ fn settings_default_before_anything_is_written_and_round_trip_after() {
     assert_eq!(defaults, AppSettings::default());
     assert!(!defaults.onboarding_completed);
     assert!(defaults.launch_at_login);
+    assert!(defaults.tray_icon_visible);
+    assert!(defaults.dock_icon_visible);
     // On by default: fetching the reader's own usage from a provider they
     // already use, with a credential they already hold, is ordinary traffic,
     // not something that needs a first-run choice. See `live_usage_active`
@@ -753,6 +755,8 @@ fn settings_default_before_anything_is_written_and_round_trip_after() {
             session_data_retention_days: SESSION_DATA_RETENTION_DAYS_90,
             onboarding_completed: true,
             launch_at_login: true,
+            tray_icon_visible: false,
+            dock_icon_visible: true,
             auto_update: false,
             discovery_paused: true,
             notifications_enabled: false,
@@ -780,6 +784,8 @@ fn settings_default_before_anything_is_written_and_round_trip_after() {
     assert_eq!(store.settings().unwrap(), saved);
     assert_eq!(saved.theme, ThemePreference::Dark);
     assert_eq!(saved.activity_window_days, 14);
+    assert!(!saved.tray_icon_visible);
+    assert!(saved.dock_icon_visible);
     assert_eq!(
         saved.session_data_retention_days,
         SESSION_DATA_RETENTION_DAYS_90
@@ -823,6 +829,47 @@ fn an_explicit_launch_at_login_opt_out_overrides_the_default() {
 
     assert!(!saved.launch_at_login);
     assert!(!store.settings().unwrap().launch_at_login);
+}
+
+#[test]
+fn settings_restore_the_dock_when_both_presence_icons_are_hidden() {
+    let store = store();
+    let saved = store
+        .save_settings(&AppSettings {
+            tray_icon_visible: false,
+            dock_icon_visible: false,
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+    assert!(!saved.tray_icon_visible);
+    assert!(saved.dock_icon_visible);
+    assert_eq!(store.settings().unwrap(), saved);
+}
+
+#[test]
+fn settings_repair_malformed_stored_presence_values() {
+    let store = store();
+    {
+        let connection = store.lock();
+        connection
+            .execute(
+                "INSERT INTO setting (key, value) VALUES (?1, ?2)",
+                params!["trayIconVisible", "false"],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO setting (key, value) VALUES (?1, ?2)",
+                params!["dockIconVisible", "false"],
+            )
+            .unwrap();
+    }
+
+    let settings = store.settings().unwrap();
+
+    assert!(!settings.tray_icon_visible);
+    assert!(settings.dock_icon_visible);
 }
 
 #[test]
