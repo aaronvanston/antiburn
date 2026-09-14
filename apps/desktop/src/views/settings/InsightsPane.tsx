@@ -76,6 +76,8 @@ const LIMIT_KIND_LABELS: Record<string, string> = {
   modelSpecific: "Model-specific",
   weightedUsage: "Weighted usage",
   rateLimit: "Rate limit",
+  usageLimit: "Usage limit",
+  providerCapacity: "Provider capacity",
 }
 
 export function InsightsPane({ analyticsVisible = true }: { analyticsVisible?: boolean }) {

@@ -483,13 +483,14 @@ describe("InsightsPane quota pressure", () => {
         quotaPressure: {
           assessed: true,
           findings: {
-            totalHits: 3,
-            hardHits: 1,
+            totalHits: 4,
+            hardHits: 2,
             warnings: 2,
             affectedSessionCount: 2,
             hitsByLimitKind: [
               { kind: "weekly", hits: 2 },
               { kind: "rateLimit", hits: 1 },
+              { kind: "providerCapacity", hits: 1 },
             ],
             affectedModels: ["claude-3-5-haiku-20241022"],
             affectedModelsTruncated: false,
@@ -501,10 +502,11 @@ describe("InsightsPane quota pressure", () => {
     })
     render(<InsightsPane />)
 
-    expect(await screen.findByText("3 limit hits across 2 sessions")).toBeInTheDocument()
-    expect(screen.getByText("1 hard hit · 2 warnings")).toBeInTheDocument()
+    expect(await screen.findByText("4 limit hits across 2 sessions")).toBeInTheDocument()
+    expect(screen.getByText("2 hard hits · 2 warnings")).toBeInTheDocument()
     expect(screen.getByText("Weekly: 2 hits")).toBeInTheDocument()
     expect(screen.getByText("Rate limit: 1 hit")).toBeInTheDocument()
+    expect(screen.getByText("Provider capacity: 1 hit")).toBeInTheDocument()
     expect(screen.getByText("Models: claude-3-5-haiku-20241022")).toBeInTheDocument()
   })
 })
