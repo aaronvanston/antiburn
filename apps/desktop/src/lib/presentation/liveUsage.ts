@@ -20,7 +20,9 @@
  */
 
 import type {
+  LiveUsageSourceErrorDetail,
   LiveProviderUsagePayload,
+  LiveUsageDetection,
   LiveUsageFreshness,
   LiveUsagePlanPayload,
   LiveUsageSourceErrorPayload,
@@ -35,6 +37,7 @@ export interface UnavailableLiveProvider {
   displayName: string
   /** `authentication` | `rateLimited` | `schema` | `unavailable`. */
   category: string
+  detail?: LiveUsageSourceErrorPayload["detail"]
 }
 import { relativeTime } from "./relativeTime"
 
@@ -433,8 +436,8 @@ export function liveForProvider(
 /** Whether a provider's reading is live, standing in during its grace period, or too old to show. */
 export type LiveProviderStatus =
   | { kind: "live" }
-  | { kind: "grace"; category: string; ageMs: number }
-  | { kind: "failed"; category: string }
+  | { kind: "grace"; category: string; ageMs: number; detail?: LiveUsageSourceErrorDetail }
+  | { kind: "failed"; category: string; detail?: LiveUsageSourceErrorDetail }
 
 /**
  * A provider's live status: live, within grace after a failed check, or
@@ -451,11 +454,19 @@ export function liveProviderStatus(
 ): LiveProviderStatus {
   const error = summary.errors.find((entry) => entry.provider === provider.provider)
   if (!error) return { kind: "live" }
+  const detail = error.detail ? { detail: error.detail } : {}
   const ageMs = Date.parse(summary.generatedAt) - Date.parse(provider.observedAt)
-  if (Number.isNaN(ageMs) || ageMs <= LIVE_USAGE_GRACE_MS) {
-    return { kind: "grace", category: error.category, ageMs: Number.isNaN(ageMs) ? 0 : ageMs }
+  // A pending delegated refresh is not a failure yet: the next check the
+  // reader starts runs it. Keep the reading in grace rather than fail it.
+  if (Number.isNaN(ageMs) || ageMs <= LIVE_USAGE_GRACE_MS || error.detail === "refreshPending") {
+    return {
+      kind: "grace",
+      category: error.category,
+      ageMs: Number.isNaN(ageMs) ? 0 : ageMs,
+      ...detail,
+    }
   }
-  return { kind: "failed", category: error.category }
+  return { kind: "failed", category: error.category, ...detail }
 }
 
 /**
@@ -505,8 +516,12 @@ export function liveGraceNote(
   category: string,
   provider: string | undefined,
   ageMs: number,
+  detail?: LiveUsageSourceErrorDetail,
 ): string {
   const name = liveProviderDisplayName(provider) ?? "Your provider"
+  if (detail === "refreshPending") {
+    return `${name} login expired; antiburn asks the CLI to refresh it on the next check. Reading from ${formatGraceAge(ageMs)} ago.`
+  }
   return `${name} ${graceVerb(category)}; reading from ${formatGraceAge(ageMs)} ago.`
 }
 
@@ -553,13 +568,19 @@ export function liveUnavailableProviders(
       provider: error.provider,
       displayName: error.displayName || error.provider,
       category: error.category,
+      ...(error.detail ? { detail: error.detail } : {}),
     })
   }
   return unavailable
 }
 
 /** A failure category as two or three words, for a row with no room. */
-export function liveUnavailableReason(category: string): string {
+export function liveUnavailableReason(
+  category: string,
+  detail?: LiveUsageSourceErrorDetail,
+): string {
+  if (detail === "refreshPending") return "refreshing sign-in"
+  if (detail === "cliMissing") return "stale token"
   switch (category) {
     case "authentication":
       return "sign-in needed"
@@ -583,8 +604,81 @@ function liveProviderDisplayName(provider?: string): string | null {
         : null
 }
 
+export function liveDetectionNote(
+  provider: string,
+  detection: LiveUsageDetection | undefined,
+  shown: boolean,
+): string {
+  if (!shown) return "Turn the switch above back on to ask for current plan limits."
+  if (provider === ANTHROPIC) {
+    if (detection === "notInstalled") {
+      return "antiburn didn't find Claude Code on this Mac. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically."
+    }
+  }
+  if (provider === GOOGLE) {
+    if (detection === "notInstalled") {
+      return "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found Antigravity but no login. Sign in inside Antigravity or run `agy` once."
+    }
+  }
+  if (provider === OPENAI) {
+    if (detection === "notInstalled") {
+      return "antiburn didn't find the Codex CLI on this Mac. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once."
+    }
+    if (detection === "installedNotSignedIn") {
+      return "antiburn found the Codex CLI but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically."
+    }
+  }
+  const tool =
+    provider === ANTHROPIC
+      ? "Claude Code"
+      : provider === GOOGLE
+        ? "Antigravity"
+        : provider === OPENAI
+          ? "Codex"
+          : "your coding tool"
+  if (detection === "signedIn") {
+    return `antiburn found ${provider === GOOGLE ? "an" : "a"} ${tool} login but hasn't verified it yet. Refresh to ask ${tool} for limits.`
+  }
+  const carrier =
+    provider === ANTHROPIC
+      ? "the Claude Code CLI"
+      : provider === GOOGLE
+        ? "the Antigravity IDE or `agy` CLI"
+        : provider === OPENAI
+          ? "the Codex CLI"
+          : "your coding tool"
+  return `No readings yet. antiburn reuses the login from ${carrier} — run it once, then refresh.`
+}
+
 /** One action for a failed source, with the provider name when it is known. */
-export function liveErrorNote(category: string, provider?: string): string {
+export function liveErrorNote(
+  category: string,
+  provider?: string,
+  detail?: LiveUsageSourceErrorDetail,
+): string {
+  if (category === "authentication" && provider === ANTHROPIC) {
+    if (detail === "cliMissing") {
+      return "Claude's stored login is stale. antiburn refreshes it when the Claude Code CLI is installed; the Claude desktop app keeps its own copy. Install the CLI and run `claude` once."
+    }
+    if (detail === "signInRequired") {
+      return "Claude sign-in expired. Run `claude` in a terminal and sign in again, then retry."
+    }
+    if (detail === "refreshPending") {
+      return "Claude's login expired. antiburn asks the Claude Code CLI to refresh it on the next check."
+    }
+  }
+  if (category === "unavailable" && detail === "keychainUnreadable") {
+    return "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry."
+  }
+  if (category === "authentication" && provider === GOOGLE && detail === "refreshUnsupported") {
+    return "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry."
+  }
   const providerName = liveProviderDisplayName(provider)
   switch (category) {
     case "authentication":

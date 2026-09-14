@@ -175,7 +175,16 @@ export interface LiveUsageSourceErrorPayload {
   displayName: string
   /** `authentication` | `rateLimited` | `schema` | `unavailable`. */
   category: string
+  /** Which failure inside the category, when the source can say. Mirrors Rust `SourceErrorDetail`. */
+  detail?: LiveUsageSourceErrorDetail
 }
+
+export type LiveUsageSourceErrorDetail =
+  | "keychainUnreadable"
+  | "refreshUnsupported"
+  | "cliMissing"
+  | "signInRequired"
+  | "refreshPending"
 
 /** Live provider usage as one snapshot. Mirrors Rust `LiveUsageSummary`. */
 export interface LiveUsageSummaryPayload {
@@ -185,10 +194,14 @@ export interface LiveUsageSummaryPayload {
   generatedAt: string
 }
 
+export type LiveUsageDetection =
+  "notInstalled" | "installedNotSignedIn" | "signedIn" | "unknown"
+
 /** One provider antiburn can meter. Mirrors Rust `LiveUsageMeter`. */
 export interface LiveUsageMeterPayload {
   provider: string
   displayName: string
   /** False when the reader turned this meter off. */
   shown: boolean
+  detection?: LiveUsageDetection
 }

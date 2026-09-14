@@ -18,6 +18,7 @@ import {
 import { HudVisibilitySession } from "../../lib/overlayWindow"
 import { isMacOS } from "../../lib/platform"
 import {
+  liveDetectionNote,
   liveDisplayableProviders,
   liveErrorNote,
   liveGraceNote,
@@ -42,11 +43,8 @@ import type { AppSettingsController } from "./useAppSettings"
  * because a switch with two consequences has to say both or a reader turning
  * it off for one reason is surprised by the other.
  *
- * Show Meter, below, is the same switch one provider at a time. Hidden means
- * antiburn does not ask that provider, so the same two consequences apply and
- * the row says so. The list is a roster of what antiburn can meter, not a list
- * of what answered: a hidden provider reports nothing, and a list built from
- * readings would drop the row that turns it back on.
+ * The provider switches apply the same controls to one provider at a time.
+ * Hidden providers produce no readings. The roster keeps their switches available.
  */
 
 export type UsagePaneProps = AppSettingsController
@@ -129,7 +127,10 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
         </SectionGroup>
       )}
 
-      <SectionGroup title="Show Meter">
+      <SectionGroup title="Providers antiburn asks">
+        <p className="px-1 type-footnote text-label-secondary">
+          antiburn never signs you in. It reuses the login your coding tools already have.
+        </p>
         <Card>
           {meters.map((meter) => {
             const reading = liveDisplayableProviders(live).find(
@@ -146,7 +147,7 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
                   on,
                   reading,
                   failure,
-                  name: meter.displayName,
+                  meter,
                   generatedAt: live.generatedAt,
                 })}
                 dimmed={!on}
@@ -219,17 +220,18 @@ function meterNote({
   on,
   reading,
   failure,
-  name,
+  meter,
   generatedAt,
 }: {
   shown: boolean
   on: boolean
   reading: LiveUsageSummaryPayload["providers"][number] | undefined
   failure: LiveUsageSummaryPayload["errors"][number] | undefined
-  name: string
+  meter: LiveUsageMeterPayload
   /** The snapshot's own moment, for measuring a grace-period reading's age. */
   generatedAt: string
 }): string {
+  const { provider, displayName: name } = meter
   if (!shown) {
     return `antiburn does not ask ${name} for usage, and ${name} milestone notifications do not fire.`
   }
@@ -253,11 +255,10 @@ function meterNote({
       : null
     parts.push(
       status?.kind === "grace"
-        ? liveGraceNote(status.category, failure.provider, status.ageMs)
-        : liveErrorNote(failure.category),
+        ? liveGraceNote(status.category, failure.provider, status.ageMs, status.detail)
+        : liveErrorNote(failure.category, provider, failure.detail),
     )
   }
   if (parts.length > 0) return parts.join(" ")
-  if (!on) return "Turn the switch above back on to ask for current plan limits."
-  return `No readings yet. Sign in with ${name} and this fills in.`
+  return liveDetectionNote(provider, meter.detection ?? "unknown", on)
 }

@@ -1019,6 +1019,7 @@ mod tests {
                 provider: "openai".to_string(),
                 display_name: "Codex".to_string(),
                 category: "unavailable".to_string(),
+                detail: None,
             }],
             generated_at: "2026-09-04T12:20:01Z".to_string(),
             ..Default::default()

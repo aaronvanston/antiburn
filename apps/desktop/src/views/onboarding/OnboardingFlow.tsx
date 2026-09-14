@@ -15,7 +15,12 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch"
 import { renderAgentIcon } from "../../lib/agentIcon"
 import { AGENT_SLUGS, agentDisplayName } from "../../lib/presentation/agents"
 import { sessionHygieneCheckName } from "../../lib/presentation/sessionHygiene"
-import { getConsentDiagnostics, openFolderAccessSettings, type ScanStatus } from "../../lib/ipc"
+import {
+  getConsentDiagnostics,
+  openFolderAccessSettings,
+  type ScanStatus,
+  type LiveUsageMeterPayload,
+} from "../../lib/ipc"
 import type { HygieneSummary } from "../../lib/insightsIpc"
 import type { FolderPermissions, LocalRepositoryItem } from "../../lib/types/repository"
 import type { FolderPermissionFlow } from "../../lib/useFolderPermissionFlow"
@@ -50,6 +55,7 @@ export interface OnboardingFlowProps {
   onDiscover: () => void
   /** The shell's scan status, or null before the first read. */
   scanStatus: ScanStatus | null
+  liveUsageMeters: readonly LiveUsageMeterPayload[] | null
   /** Draft of the disabled-agent display filter. Persisted on finish. */
   disabledAgents: readonly string[]
   /** Show or hide one agent's sessions. Sessions stay indexed either way. */
@@ -137,10 +143,12 @@ function Welcome() {
 
 function AgentsDetected({
   scanStatus,
+  liveUsageMeters,
   disabledAgents,
   onAgentEnabledChange,
 }: {
   scanStatus: ScanStatus | null
+  liveUsageMeters: readonly LiveUsageMeterPayload[] | null
   disabledAgents: readonly string[]
   onAgentEnabledChange: (slug: string, enabled: boolean) => void
 }) {
@@ -150,6 +158,26 @@ function AgentsDetected({
   const detectedSlugs = new Set(detected.map((entry) => entry.agent))
   const quiet = AGENT_SLUGS.filter((slug) => !detectedSlugs.has(slug))
   const isEnabled = (slug: string) => !disabledAgents.includes(slug)
+  const liveDetections = (liveUsageMeters ?? [])
+    .flatMap((meter) => {
+      const marker =
+        meter.detection === "signedIn"
+          ? "✓"
+          : meter.detection === "notInstalled" || meter.detection === "installedNotSignedIn"
+            ? "✗"
+            : null
+      if (!marker) return []
+      const name =
+        meter.provider === "anthropic"
+          ? "Claude Code"
+          : meter.provider === "google"
+            ? "Antigravity"
+            : meter.provider === "openai"
+              ? "Codex CLI"
+              : meter.displayName
+      return [`${name} ${marker}`]
+    })
+    .join(" · ")
 
   return (
     <div className="flex h-full min-h-0 flex-col px-8">
@@ -159,6 +187,10 @@ function AgentsDetected({
       <p className="mt-1.5 type-callout text-label-secondary">
         antiburn does constant background session scans from agents you enable.
       </p>
+
+      {liveDetections && (
+        <p className="mt-1.5 type-footnote text-label-tertiary">Detected: {liveDetections}</p>
+      )}
 
       <ScrollPane className="mt-3" viewportClassName="pr-1">
         {detected.length > 0 ? (
@@ -623,6 +655,7 @@ export function OnboardingFlow({
   onToggleRepository,
   onDiscover,
   scanStatus,
+  liveUsageMeters,
   disabledAgents,
   onAgentEnabledChange,
   launchAtLogin,
@@ -700,6 +733,7 @@ export function OnboardingFlow({
         {step === "agentsDetected" && (
           <AgentsDetected
             scanStatus={scanStatus}
+            liveUsageMeters={liveUsageMeters}
             disabledAgents={disabledAgents}
             onAgentEnabledChange={onAgentEnabledChange}
           />

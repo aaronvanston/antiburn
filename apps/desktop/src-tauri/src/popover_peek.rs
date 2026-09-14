@@ -517,6 +517,7 @@ mod tests {
             provider: provider.to_string(),
             display_name: provider.to_string(),
             category: "unavailable".to_string(),
+            detail: None,
         }
     }
 
@@ -684,11 +685,13 @@ mod tests {
                         provider: "anthropic".to_string(),
                         display_name: "Claude".to_string(),
                         shown: true,
+                        detection: Default::default(),
                     },
                     LiveUsageMeter {
                         provider: "openai".to_string(),
                         display_name: "Codex".to_string(),
                         shown: true,
+                        detection: Default::default(),
                     },
                 ],
                 generated_at: "now".to_string(),

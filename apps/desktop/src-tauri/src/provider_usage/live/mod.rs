@@ -59,9 +59,11 @@ pub use milestones::{MilestoneContent, MilestoneLedger, milestone_content};
 #[cfg(feature = "analytics")]
 pub use model::band_for_percent;
 pub use model::{
-    Confidence, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageScope, UsageWindow,
-    UsageWindowKind, WindowRole,
+    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, SourceErrorDetail,
+    UsageScope, UsageWindow, UsageWindowKind, WindowRole,
 };
+
+use std::collections::BTreeMap;
 
 use crate::dto::{
     LiveExtraUsage, LiveProviderPlan, LiveProviderUsage, LiveUsageForecast, LiveUsageFreshness,
@@ -110,6 +112,14 @@ pub trait LiveUsageSource: Send + Sync {
         false
     }
 
+    /// Read metadata only, without reading credential file contents or running commands that return secrets.
+    ///
+    /// Detection never causes a Keychain prompt and is safe before online opt-in.
+    /// Subprocesses can block for bounded time. Call this method off the IPC thread.
+    fn detect(&self) -> Detection {
+        Detection::Unknown
+    }
+
     /// Collect whatever this source can currently prove.
     ///
     /// `max_age` is how old a successful reading the caller is willing to
@@ -149,6 +159,7 @@ pub struct SourceOutcome {
     /// unreadable file, a rejected credential — belongs here, because every
     /// value in it becomes a line on the reader's screen.
     pub error: Option<ProviderUsageError>,
+    pub detail: Option<SourceErrorDetail>,
 }
 
 impl SourceOutcome {
@@ -157,6 +168,7 @@ impl SourceOutcome {
         SourceOutcome {
             snapshots,
             error: None,
+            detail: None,
         }
     }
 
@@ -165,11 +177,22 @@ impl SourceOutcome {
         SourceOutcome::default()
     }
 
+    pub fn failed_with_detail(
+        error: ProviderUsageError,
+        detail: SourceErrorDetail,
+    ) -> SourceOutcome {
+        SourceOutcome {
+            detail: Some(detail),
+            ..Self::failed(error)
+        }
+    }
+
     /// A pass that failed in a way the reader should be told about.
     pub fn failed(error: ProviderUsageError) -> SourceOutcome {
         SourceOutcome {
             snapshots: Vec::new(),
             error: Some(error),
+            detail: None,
         }
     }
 }
@@ -216,12 +239,30 @@ pub fn summarize(
     let collected = sources::collect(sources, online, &hidden, max_age);
     summarize_collected(
         collected,
-        roster(sources, &hidden),
+        roster(sources, &hidden, &DetectionMap::default()),
         store,
         None,
         now,
         utc_offset_minutes,
     )
+}
+
+/// Each key is a canonical provider id.
+pub type DetectionMap = BTreeMap<String, Detection>;
+
+/// Read metadata for all sources and keep the strongest evidence per provider.
+///
+/// This operation can block. Run it off the IPC thread.
+pub fn detect_all(sources: &[Box<dyn LiveUsageSource>]) -> DetectionMap {
+    let mut detection = DetectionMap::new();
+    for source in sources {
+        let value = source.detect();
+        detection
+            .entry(source.provider().to_string())
+            .and_modify(|current| *current = (*current).max(value))
+            .or_insert(value);
+    }
+    detection
 }
 
 /// Every provider this build can meter, and whether the reader shows it.
@@ -235,6 +276,7 @@ pub fn summarize(
 pub fn roster(
     sources: &[Box<dyn LiveUsageSource>],
     hidden: &crate::store::HiddenMeters,
+    detection: &DetectionMap,
 ) -> Vec<LiveUsageMeter> {
     let mut meters: Vec<LiveUsageMeter> = sources
         .iter()
@@ -242,6 +284,10 @@ pub fn roster(
             provider: source.provider().to_string(),
             display_name: super::providers::display_name(source.provider()).to_string(),
             shown: !hidden.contains(source.provider()),
+            detection: detection
+                .get(source.provider())
+                .copied()
+                .unwrap_or_default(),
         })
         .collect();
     meters.sort_by(|a, b| a.provider.cmp(&b.provider));
@@ -257,12 +303,25 @@ pub fn roster(
 /// evaluate crossings before this function consumes them.
 pub fn summarize_collected(
     mut collected: sources::Collected,
-    meters: Vec<LiveUsageMeter>,
+    mut meters: Vec<LiveUsageMeter>,
     store: Option<&crate::store::Store>,
     storage_app: Option<&tauri::AppHandle>,
     now: i64,
     utc_offset_minutes: i32,
 ) -> LiveUsageSummary {
+    for meter in &mut meters {
+        if collected
+            .snapshots
+            .iter()
+            .any(|snapshot| snapshot.provider == meter.provider)
+            && !collected
+                .errors
+                .iter()
+                .any(|failure| failure.provider == meter.provider)
+        {
+            meter.detection = Detection::SignedIn;
+        }
+    }
     let mut observed_tool_providers = Vec::new();
     for snapshot in &mut collected.snapshots {
         if let Some(store) = store
@@ -401,6 +460,7 @@ pub fn summarize_collected(
                 provider: failure.provider.to_string(),
                 display_name: super::providers::display_name(failure.provider).to_string(),
                 category: failure.error.category().to_string(),
+                detail: failure.detail,
             })
             .collect(),
         meters,

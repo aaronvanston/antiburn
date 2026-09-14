@@ -105,7 +105,7 @@ use time::OffsetDateTime;
 
 use crate::provider_usage::live::codex;
 use crate::provider_usage::live::model::{
-    Confidence, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
+    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
 };
 use crate::provider_usage::live::{LiveUsageSource, SourceOutcome};
 
@@ -114,6 +114,7 @@ use super::cooldown::{Cooldown, FetchFailure};
 use super::http;
 use super::pi_auth;
 use super::pi_refresh::{PiRefresher, Recovery};
+use super::presence::{self, PresenceProbe, SystemPresenceProbe};
 
 /// `auth.json` is a small, purpose-built token store — cap the read
 /// defensively rather than trust that.
@@ -148,6 +149,44 @@ pub fn default_auth_path() -> Option<PathBuf> {
 /// reads out of it.
 fn default_sessions_root() -> Option<PathBuf> {
     Some(codex_home_dir()?.join("sessions"))
+}
+
+/// The CLI's own executable name on `PATH`.
+const BINARY: &str = "codex";
+
+/// Presence rules, in order: `auth.json` is a login; the shared Pi file is
+/// inconclusive; the Codex home directory or the binary is an install
+/// without a login; nothing is no install. The Codex CLI keeps no Keychain
+/// item, so this never spawns a process.
+fn detect_presence(
+    probe: &impl PresenceProbe,
+    auth_path: Option<&Path>,
+    pi_auth_path: Option<&Path>,
+) -> Detection {
+    let Some(auth_path) = auth_path else {
+        return Detection::Unknown;
+    };
+    match presence::path_exists(probe, auth_path) {
+        Ok(true) => return Detection::SignedIn,
+        Ok(false) => {}
+        Err(_) => return Detection::Unknown,
+    }
+    // The shared Pi file does not prove an OpenAI login.
+    if let Some(path) = pi_auth_path {
+        match presence::path_exists(probe, path) {
+            Ok(false) => {}
+            Ok(true) | Err(_) => return Detection::Unknown,
+        }
+    }
+    let Some(home) = auth_path.parent() else {
+        return Detection::Unknown;
+    };
+    match presence::path_exists(probe, home) {
+        Ok(true) => Detection::InstalledNotSignedIn,
+        Err(_) => Detection::Unknown,
+        Ok(false) if probe.binary_present(BINARY) => Detection::InstalledNotSignedIn,
+        Ok(false) => Detection::NotInstalled,
+    }
 }
 
 /// What this source needs out of the CLI's own `auth.json`.
@@ -464,6 +503,17 @@ impl LiveUsageSource for CodexDirectFetch {
         true
     }
 
+    fn detect(&self) -> Detection {
+        detect_presence(
+            &SystemPresenceProbe {
+                #[cfg(target_os = "macos")]
+                try_keychain: false,
+            },
+            self.auth_path.as_deref(),
+            self.pi_auth_path.as_deref(),
+        )
+    }
+
     fn fetch(&self, max_age: std::time::Duration) -> SourceOutcome {
         let now = OffsetDateTime::now_utc();
         // Read inside the cooldown gate so skipped polls do not touch disk.
@@ -534,6 +584,7 @@ impl LiveUsageSource for CodexDirectFetch {
                 Ok(snapshot) => Ok(snapshot),
                 Err(fallback_error) => Err(FetchFailure {
                     error: preferred_error(carrier_error, fallback_error),
+                    detail: None,
                     last_known: auth.as_ref().and_then(|auth| {
                         self.rollout_reading(now)
                             .map(|reading| Box::new(rollout_snapshot(reading, auth)))
@@ -761,10 +812,91 @@ fn build_snapshot(
 
 #[cfg(test)]
 mod tests {
+    use super::super::presence::RecordingPresence;
     use super::*;
+    use std::io;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use time::format_description::well_known::Rfc3339;
+
+    const PRESENCE_AUTH: &str = "/fixture/.codex/auth.json";
+    const PRESENCE_PI: &str = "/fixture/.pi/agent/auth.json";
+    const PRESENCE_HOME: &str = "/fixture/.codex";
+
+    fn detected(probe: &impl PresenceProbe) -> Detection {
+        detect_presence(
+            probe,
+            Some(Path::new(PRESENCE_AUTH)),
+            Some(Path::new(PRESENCE_PI)),
+        )
+    }
+
+    #[test]
+    fn detection_without_carriers_or_tool_uses_only_presence_calls() {
+        let probe = RecordingPresence::default();
+        assert_eq!(detected(&probe), Detection::NotInstalled);
+        assert_eq!(
+            *probe.calls.borrow(),
+            [
+                format!("path_exists:{PRESENCE_AUTH}"),
+                format!("path_exists:{PRESENCE_PI}"),
+                format!("path_exists:{PRESENCE_HOME}"),
+                "binary_present".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn detection_short_circuits_on_auth_file_metadata() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_AUTH.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::SignedIn);
+        assert_eq!(
+            *probe.calls.borrow(),
+            [format!("path_exists:{PRESENCE_AUTH}")]
+        );
+    }
+
+    #[test]
+    fn detection_does_not_parse_a_malformed_auth_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        fs::write(&path, "not valid JSON").unwrap();
+        assert_eq!(CodexDirectFetch::at(path).detect(), Detection::SignedIn);
+    }
+
+    #[test]
+    fn detection_of_the_shared_pi_file_is_inconclusive() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_PI.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::Unknown);
+        assert_eq!(probe.calls.borrow().len(), 2);
+    }
+
+    #[test]
+    fn detection_accepts_the_home_directory_or_binary_without_a_login() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_HOME.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::InstalledNotSignedIn);
+        assert!(!probe.calls.borrow().iter().any(|c| c == "binary_present"));
+
+        let probe = RecordingPresence {
+            binary: true,
+            ..Default::default()
+        };
+        assert_eq!(detected(&probe), Detection::InstalledNotSignedIn);
+    }
+
+    #[test]
+    fn detection_keeps_metadata_errors_unknown() {
+        for path in [PRESENCE_AUTH, PRESENCE_PI, PRESENCE_HOME] {
+            let mut probe = RecordingPresence::default();
+            probe
+                .paths
+                .insert(path.into(), Err(io::ErrorKind::PermissionDenied));
+            assert_eq!(detected(&probe), Detection::Unknown);
+        }
+    }
 
     const NOW: i64 = 1_800_000_000;
 

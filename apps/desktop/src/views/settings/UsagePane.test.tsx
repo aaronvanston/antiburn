@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Ipc from "../../lib/ipc"
-import type { AppSettings, LiveUsageSummaryPayload } from "../../lib/ipc"
+import type {
+  AppSettings,
+  LiveUsageMeterPayload,
+  LiveUsageSourceErrorPayload,
+  LiveUsageSummaryPayload,
+} from "../../lib/ipc"
 import { UsagePane } from "./UsagePane"
 
 const getLiveUsage = vi.hoisted(() => vi.fn())
@@ -105,13 +110,126 @@ describe("UsagePane", () => {
     await waitFor(() => expect(refreshLiveUsage).toHaveBeenCalled())
   })
 
+  it("explains which providers antiburn asks and where their login comes from", () => {
+    pane()
+    expect(screen.getByRole("heading", { name: "Providers antiburn asks" })).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "antiburn never signs you in. It reuses the login your coding tools already have.",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it.each<{ meter: LiveUsageMeterPayload; note: string }>([
+    {
+      meter: {
+        provider: "google",
+        displayName: "Google",
+        shown: true,
+        detection: "notInstalled",
+      },
+      note: "antiburn didn't find Antigravity. It reads the login from the Antigravity IDE or `agy` CLI — not the Gemini app.",
+    },
+    {
+      meter: {
+        provider: "anthropic",
+        displayName: "Claude",
+        shown: true,
+        detection: "installedNotSignedIn",
+      },
+      note: "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically.",
+    },
+    {
+      meter: {
+        provider: "anthropic",
+        displayName: "Claude",
+        shown: true,
+        detection: "signedIn",
+      },
+      note: "antiburn found a Claude Code login but hasn't verified it yet. Refresh to ask Claude Code for limits.",
+    },
+    {
+      meter: { provider: "anthropic", displayName: "Claude", shown: true },
+      note: "No readings yet. antiburn reuses the login from the Claude Code CLI — run it once, then refresh.",
+    },
+  ])(
+    "explains $meter.provider detection $meter.detection without a reading",
+    async ({ meter, note }) => {
+      getLiveUsage.mockResolvedValue(summary({ meters: [meter] }))
+      pane({ liveUsageEnabled: true })
+      expect(await screen.findByText(note)).toBeInTheDocument()
+      expect(
+        screen.getByRole("switch", { name: `Show ${meter.displayName} meter` }),
+      ).toBeChecked()
+    },
+  )
+
+  it.each<{ error: LiveUsageSourceErrorPayload; note: string }>([
+    {
+      error: {
+        source: "claude-usage-fetch",
+        provider: "anthropic",
+        displayName: "Claude",
+        category: "unavailable",
+        detail: "keychainUnreadable",
+      },
+      note: "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry.",
+    },
+    {
+      error: {
+        source: "antigravity-usage-fetch",
+        provider: "google",
+        displayName: "Google",
+        category: "authentication",
+        detail: "refreshUnsupported",
+      },
+      note: "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry.",
+    },
+  ])("shows $error.detail guidance before the detection note", async ({ error, note }) => {
+    getLiveUsage.mockResolvedValue(
+      summary({
+        meters: [
+          {
+            provider: error.provider,
+            displayName: error.displayName,
+            shown: true,
+            detection: "signedIn",
+          },
+        ],
+        errors: [error],
+      }),
+    )
+    pane({ liveUsageEnabled: true })
+    expect(await screen.findByText(note)).toBeInTheDocument()
+    expect(screen.queryByText(/hasn't verified it yet/)).not.toBeInTheDocument()
+  })
+
+  it("keeps the off-switch guidance and disables provider switches despite detection", async () => {
+    getLiveUsage.mockResolvedValue(
+      summary({
+        meters: [
+          { provider: "anthropic", displayName: "Claude", shown: true, detection: "signedIn" },
+        ],
+      }),
+    )
+    pane({ liveUsageEnabled: false })
+    const label = await screen.findByText("Claude")
+    expect(label.closest("div")).toHaveTextContent(
+      "Turn the switch above back on to ask for current plan limits.",
+    )
+    expect(screen.getByRole("switch", { name: "Show Claude meter" })).toBeDisabled()
+    expect(screen.queryByText(/hasn't verified it yet/)).not.toBeInTheDocument()
+  })
+
   it("always offers the Google meter without a live reading", async () => {
     getLiveUsage.mockResolvedValue(summary())
     const update = pane({ liveUsageEnabled: true })
     await waitFor(() => expect(screen.getByText("Google")).toBeInTheDocument())
     const toggle = screen.getByRole("switch", { name: "Show Google meter" })
     expect(toggle).toBeChecked()
-    expect(screen.getByText(/No readings yet\. Sign in with Google/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/No readings yet\. antiburn reuses the login from the Antigravity IDE or `agy` CLI/),
+    ).toBeInTheDocument()
 
     fireEvent.click(toggle)
 
@@ -133,7 +251,9 @@ describe("UsagePane", () => {
     )
     pane()
     await waitFor(() =>
-      expect(screen.getByText(/sign in again with your coding tool/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText("Claude sign-in expired. Sign in again, then retry."),
+      ).toBeInTheDocument(),
     )
     // And it is not reported as "nothing found", which would send the reader
     // to use their coding tool when the problem is that they are signed out of it.

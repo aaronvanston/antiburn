@@ -116,9 +116,11 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use time::OffsetDateTime;
 
+#[cfg(target_os = "macos")]
+use crate::provider_usage::live::SourceErrorDetail;
 use crate::provider_usage::live::anthropic;
 use crate::provider_usage::live::model::{
-    Confidence, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
+    Confidence, Detection, Freshness, ProviderUsageError, ProviderUsageSnapshot, UsageSource,
 };
 use crate::provider_usage::live::{LiveUsageSource, SourceOutcome};
 
@@ -128,6 +130,9 @@ use super::cooldown::{self, Cooldown, FetchFailure};
 use super::http;
 use super::pi_auth;
 use super::pi_refresh::{PiRefresher, Recovery};
+#[cfg(target_os = "macos")]
+use super::presence::KeychainMetadata;
+use super::presence::{self, PresenceProbe, SystemPresenceProbe};
 
 /// The credentials file is a small, purpose-built OAuth token store, not a
 /// general state file — cap the read defensively rather than trust that.
@@ -175,6 +180,54 @@ pub fn default_credentials_path() -> Option<PathBuf> {
     let dir = antiburn_local::paths::non_empty_env_path("CLAUDE_CONFIG_DIR")
         .or_else(|| antiburn_local::paths::home_dir().map(|home| home.join(".claude")))?;
     Some(dir.join(".credentials.json"))
+}
+
+/// The Keychain item the Claude CLI keeps its login in.
+#[cfg(target_os = "macos")]
+const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
+
+/// The CLI's own executable name on `PATH`.
+const BINARY: &str = "claude";
+
+/// Presence rules, in order: the credentials file is a login; the shared Pi
+/// file is inconclusive and ends detection before any subprocess; the
+/// Keychain item is a login; the config directory or the binary is an
+/// install without a login; nothing is no install.
+fn detect_presence(
+    probe: &impl PresenceProbe,
+    credentials_path: Option<&Path>,
+    pi_auth_path: Option<&Path>,
+) -> Detection {
+    let Some(credentials_path) = credentials_path else {
+        return Detection::Unknown;
+    };
+    match presence::path_exists(probe, credentials_path) {
+        Ok(true) => return Detection::SignedIn,
+        Ok(false) => {}
+        Err(_) => return Detection::Unknown,
+    }
+    // The shared Pi file does not prove an Anthropic login. Avoid a subprocess when this file exists.
+    if let Some(path) = pi_auth_path {
+        match presence::path_exists(probe, path) {
+            Ok(false) => {}
+            Ok(true) | Err(_) => return Detection::Unknown,
+        }
+    }
+    #[cfg(target_os = "macos")]
+    match probe.keychain_metadata(KEYCHAIN_SERVICE, None) {
+        KeychainMetadata::Found(_) => return Detection::SignedIn,
+        KeychainMetadata::Absent => {}
+        KeychainMetadata::Unreadable => return Detection::Unknown,
+    }
+    let Some(config_dir) = credentials_path.parent() else {
+        return Detection::Unknown;
+    };
+    match presence::path_exists(probe, config_dir) {
+        Ok(true) => Detection::InstalledNotSignedIn,
+        Err(_) => Detection::Unknown,
+        Ok(false) if probe.binary_present(BINARY) => Detection::InstalledNotSignedIn,
+        Ok(false) => Detection::NotInstalled,
+    }
 }
 
 fn default_claude_json_path() -> Option<PathBuf> {
@@ -286,6 +339,22 @@ mod macos_keychain {
         Unreadable,
         /// The raw JSON `security` printed to stdout.
         Found(String),
+    }
+
+    impl KeychainRead {
+        pub(super) fn credentials(
+            self,
+        ) -> Result<Option<super::ClaudeCredentials>, super::FetchFailure> {
+            match self {
+                Self::Found(text) => Ok(super::parse_credentials_json(&text)),
+                Self::Absent => Ok(None),
+                Self::Unreadable => Err(super::FetchFailure {
+                    error: super::ProviderUsageError::Unavailable,
+                    detail: Some(super::SourceErrorDetail::KeychainUnreadable),
+                    last_known: None,
+                }),
+            }
+        }
     }
 
     /// Reads one Keychain item. See [`KeychainRead`] for what each outcome
@@ -667,7 +736,7 @@ impl ClaudeDirectFetch {
         &self,
     ) -> (
         Vec<ClaudeCredentials>,
-        Option<ProviderUsageError>,
+        Option<FetchFailure>,
         Vec<ClaudeCredentials>,
     ) {
         let mut carriers = Vec::new();
@@ -688,9 +757,8 @@ impl ClaudeDirectFetch {
                 native_carriers.push(credentials.clone());
                 carriers.push(credentials);
             } else {
-                match macos_keychain::read() {
-                    macos_keychain::KeychainRead::Found(text) => {
-                        let parsed = parse_credentials_json(&text);
+                match macos_keychain::read().credentials() {
+                    Ok(parsed) => {
                         *self
                             .keychain_credentials
                             .lock()
@@ -700,15 +768,7 @@ impl ClaudeDirectFetch {
                             carriers.push(credentials);
                         }
                     }
-                    macos_keychain::KeychainRead::Unreadable => {
-                        error = Some(ProviderUsageError::Unavailable);
-                    }
-                    macos_keychain::KeychainRead::Absent => {
-                        *self
-                            .keychain_credentials
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-                    }
+                    Err(failure) => error = Some(failure),
                 }
             }
         }
@@ -760,20 +820,28 @@ impl ClaudeDirectFetch {
     /// secret once, retry the usage call once.
     ///
     /// Every credential-shaped failure returns
-    /// [`ProviderUsageError::Authentication`] — the credential is exactly as
-    /// expired as it was — while a retry that failed for another reason
-    /// reports its own error.
+    /// [`ProviderUsageError::Authentication`] with a detail that says which
+    /// one — no CLI to spawn, a refresh that has not settled, or a settled
+    /// refresh that still produced a dead credential — while a retry that
+    /// failed for another reason reports its own error.
     fn touch_then_retry(
         &self,
         now: OffsetDateTime,
-    ) -> Result<Option<ProviderUsageSnapshot>, ProviderUsageError> {
+    ) -> Result<Option<ProviderUsageSnapshot>, FetchFailure> {
         let Some(env) = self.touch_env.as_deref() else {
-            return Err(ProviderUsageError::Authentication);
+            return Err(auth_failure(SourceErrorDetail::RefreshPending));
         };
-        let claude_touch::TouchOutcome::Settled(settled) =
-            claude_touch::touch(env, &self.touch_gate)
-        else {
-            return Err(ProviderUsageError::Authentication);
+        let settled = match claude_touch::touch(env, &self.touch_gate) {
+            claude_touch::TouchOutcome::Settled(settled) => settled,
+            claude_touch::TouchOutcome::CliMissing => {
+                return Err(auth_failure(SourceErrorDetail::CliMissing));
+            }
+            claude_touch::TouchOutcome::Terminal => {
+                return Err(auth_failure(SourceErrorDetail::SignInRequired));
+            }
+            claude_touch::TouchOutcome::NotRefreshed => {
+                return Err(auth_failure(SourceErrorDetail::RefreshPending));
+            }
         };
         // The change has settled: the one permitted secret read, through the
         // normal carriers. On macOS this also refills the expiry cache.
@@ -787,7 +855,7 @@ impl ClaudeDirectFetch {
             // /login`, so the touch stays blocked until the material changes
             // again — see [`claude_touch::TouchGate::mark_terminal`].
             self.touch_gate.mark_terminal(settled);
-            return Err(ProviderUsageError::Authentication);
+            return Err(auth_failure(SourceErrorDetail::SignInRequired));
         };
         self.touch_gate.clear_terminal();
         match fetch_live(
@@ -801,10 +869,19 @@ impl ClaudeDirectFetch {
                 // A freshly refreshed token the endpoint still rejects is
                 // the same terminal state, observed one hop later.
                 self.touch_gate.mark_terminal(settled);
-                Err(ProviderUsageError::Authentication)
+                Err(auth_failure(SourceErrorDetail::SignInRequired))
             }
-            Err(error) => Err(error),
+            Err(error) => Err(error.into()),
         }
+    }
+}
+
+/// An authentication failure qualified by which sign-in state it is.
+fn auth_failure(detail: SourceErrorDetail) -> FetchFailure {
+    FetchFailure {
+        error: ProviderUsageError::Authentication,
+        detail: Some(detail),
+        last_known: None,
     }
 }
 
@@ -827,6 +904,17 @@ impl LiveUsageSource for ClaudeDirectFetch {
     /// exactly the traffic the online opt-in exists to gate.
     fn requires_online_opt_in(&self) -> bool {
         true
+    }
+
+    fn detect(&self) -> Detection {
+        detect_presence(
+            &SystemPresenceProbe {
+                #[cfg(target_os = "macos")]
+                try_keychain: self.try_keychain,
+            },
+            self.credentials_path.as_deref(),
+            self.pi_auth_path.as_deref(),
+        )
     }
 
     fn fetch(&self, max_age: std::time::Duration) -> SourceOutcome {
@@ -864,35 +952,29 @@ impl LiveUsageSource for ClaudeDirectFetch {
             );
             // Only the expired/rejected credential state — never a network
             // or 5xx failure — reaches for the CLI, and only in user context.
+            // A background poll with a native carrier does not touch; the
+            // next user-initiated poll does, so that state is pending.
             let fetched = match fetched {
-                Err(ProviderUsageError::Authentication)
-                    if native_present && user_initiated(max_age) =>
-                {
-                    self.touch_then_retry(now)
+                Err(ProviderUsageError::Authentication) if native_present => {
+                    if user_initiated(max_age) {
+                        self.touch_then_retry(now)
+                    } else {
+                        Err(auth_failure(SourceErrorDetail::RefreshPending))
+                    }
                 }
-                other => other,
+                other => other.map_err(FetchFailure::from),
             };
-            match fetched {
-                Ok(Some(snapshot)) => Ok(Some(snapshot)),
-                Ok(None) => match carrier_error {
-                    Some(error) => Err(FetchFailure {
-                        error,
-                        last_known: None,
-                    }),
-                    None => Ok(None),
-                },
-                Err(error) => Err(FetchFailure {
-                    error: carrier_error.map_or(error, |carrier| preferred_error(carrier, error)),
-                    last_known: native.as_ref().and_then(|native| {
-                        cached
-                            .filter(|cached| now - cached.observed_at <= cooldown::MAX_AGE)
-                            .map(|cached| {
-                                log_cache_reading_used(&cached, now, "seed");
-                                Box::new(snapshot_from_cache(cached, native))
-                            })
-                    }),
-                }),
-            }
+            with_carrier_error(fetched, carrier_error).map_err(|mut failure| {
+                failure.last_known = native.as_ref().and_then(|native| {
+                    cached
+                        .filter(|cached| now - cached.observed_at <= cooldown::MAX_AGE)
+                        .map(|cached| {
+                            log_cache_reading_used(&cached, now, "seed");
+                            Box::new(snapshot_from_cache(cached, native))
+                        })
+                });
+                failure
+            })
         });
         #[cfg(feature = "analytics")]
         if let Some(delay) = self.cooldown.rate_limit_retry_after(max_age) {
@@ -1075,7 +1157,11 @@ fn fetch_with_cache_at(
                     log_cache_reading_used(&cached, now, "seed");
                     Box::new(snapshot_from_cache(cached, credentials))
                 });
-            Err(FetchFailure { error, last_known })
+            Err(FetchFailure {
+                error,
+                detail: None,
+                last_known,
+            })
         }
     }
 }
@@ -1112,6 +1198,22 @@ fn fetch_from_carriers(
         return Err(ProviderUsageError::Authentication);
     }
     Err(error.unwrap_or(ProviderUsageError::Unavailable))
+}
+
+fn with_carrier_error(
+    fetched: Result<Option<ProviderUsageSnapshot>, FetchFailure>,
+    carrier_error: Option<FetchFailure>,
+) -> Result<Option<ProviderUsageSnapshot>, FetchFailure> {
+    match fetched {
+        Ok(Some(snapshot)) => Ok(Some(snapshot)),
+        Ok(None) => carrier_error.map_or(Ok(None), Err),
+        Err(failure) => Err(match carrier_error {
+            Some(carrier) if preferred_error(carrier.error, failure.error) == carrier.error => {
+                carrier
+            }
+            _ => failure,
+        }),
+    }
 }
 
 fn preferred_error(current: ProviderUsageError, next: ProviderUsageError) -> ProviderUsageError {
@@ -1293,6 +1395,150 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::super::presence::RecordingPresence;
+    use std::io;
+
+    const PRESENCE_CREDENTIALS: &str = "/fixture/.claude/.credentials.json";
+    const PRESENCE_PI: &str = "/fixture/.pi/agent/auth.json";
+    const PRESENCE_CONFIG: &str = "/fixture/.claude";
+
+    fn detected(probe: &impl PresenceProbe) -> Detection {
+        detect_presence(
+            probe,
+            Some(Path::new(PRESENCE_CREDENTIALS)),
+            Some(Path::new(PRESENCE_PI)),
+        )
+    }
+
+    #[test]
+    fn detection_without_carriers_or_tool_uses_only_presence_calls() {
+        let probe = RecordingPresence::default();
+        assert_eq!(detected(&probe), Detection::NotInstalled);
+        let expected = vec![
+            format!("path_exists:{PRESENCE_CREDENTIALS}"),
+            format!("path_exists:{PRESENCE_PI}"),
+            #[cfg(target_os = "macos")]
+            "keychain_metadata".into(),
+            format!("path_exists:{PRESENCE_CONFIG}"),
+            "binary_present".into(),
+        ];
+        assert_eq!(*probe.calls.borrow(), expected);
+    }
+
+    #[test]
+    fn detection_accepts_the_config_directory_without_a_login() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_CONFIG.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::InstalledNotSignedIn);
+        assert!(
+            !probe
+                .calls
+                .borrow()
+                .iter()
+                .any(|call| call == "binary_present")
+        );
+    }
+
+    #[test]
+    fn detection_accepts_the_binary_without_a_login() {
+        let probe = RecordingPresence {
+            binary: true,
+            ..Default::default()
+        };
+        assert_eq!(detected(&probe), Detection::InstalledNotSignedIn);
+    }
+
+    #[test]
+    fn detection_short_circuits_on_claude_credentials_metadata() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_CREDENTIALS.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::SignedIn);
+        assert_eq!(
+            *probe.calls.borrow(),
+            [format!("path_exists:{PRESENCE_CREDENTIALS}")]
+        );
+    }
+
+    #[test]
+    fn detection_does_not_parse_a_malformed_credentials_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".credentials.json");
+        fs::write(&path, "not valid JSON").unwrap();
+        assert_eq!(ClaudeDirectFetch::at(path).detect(), Detection::SignedIn);
+    }
+
+    #[test]
+    fn detection_of_the_shared_pi_file_is_inconclusive_and_skips_keychain() {
+        let mut probe = RecordingPresence::default();
+        probe.paths.insert(PRESENCE_PI.into(), Ok(true));
+        assert_eq!(detected(&probe), Detection::Unknown);
+        assert_eq!(
+            *probe.calls.borrow(),
+            [
+                format!("path_exists:{PRESENCE_CREDENTIALS}"),
+                format!("path_exists:{PRESENCE_PI}"),
+            ]
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detection_accepts_keychain_attributes_without_reading_the_secret() {
+        let probe = RecordingPresence {
+            keychain: Some(KeychainMetadata::Found(b"synthetic attributes".to_vec())),
+            ..Default::default()
+        };
+        assert_eq!(detected(&probe), Detection::SignedIn);
+        assert_eq!(probe.calls.borrow().last().unwrap(), "keychain_metadata");
+        assert_eq!(probe.calls.borrow().len(), 3);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detection_keeps_unreadable_keychain_metadata_unknown() {
+        let probe = RecordingPresence {
+            keychain: Some(KeychainMetadata::Unreadable),
+            binary: true,
+            ..Default::default()
+        };
+        assert_eq!(detected(&probe), Detection::Unknown);
+        assert_eq!(probe.calls.borrow().last().unwrap(), "keychain_metadata");
+        assert_eq!(probe.calls.borrow().len(), 3);
+    }
+
+    #[test]
+    fn detection_keeps_metadata_errors_unknown() {
+        for path in [PRESENCE_CREDENTIALS, PRESENCE_PI, PRESENCE_CONFIG] {
+            for kind in [io::ErrorKind::PermissionDenied, io::ErrorKind::Other] {
+                let mut probe = RecordingPresence::default();
+                probe.paths.insert(path.into(), Err(kind));
+                assert_eq!(detected(&probe), Detection::Unknown);
+                assert_eq!(
+                    probe.calls.borrow().last().unwrap(),
+                    &format!("path_exists:{path}")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn detection_treats_not_found_metadata_errors_as_absence() {
+        let mut probe = RecordingPresence::default();
+        for path in [PRESENCE_CREDENTIALS, PRESENCE_PI, PRESENCE_CONFIG] {
+            probe
+                .paths
+                .insert(path.into(), Err(io::ErrorKind::NotFound));
+        }
+        assert_eq!(detected(&probe), Detection::NotInstalled);
+    }
+
+    #[test]
+    fn detection_keeps_an_unresolved_credentials_path_unknown() {
+        let probe = RecordingPresence::default();
+        assert_eq!(detect_presence(&probe, None, None), Detection::Unknown);
+        assert!(probe.calls.borrow().is_empty());
+    }
 
     const NOW: i64 = 1_800_000_000;
 
@@ -1918,6 +2164,76 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn an_unreadable_keychain_reports_detail_until_a_carrier_succeeds() {
+        let cooldown = Cooldown::new();
+        let failure = || {
+            macos_keychain::KeychainRead::Unreadable
+                .credentials()
+                .err()
+                .unwrap()
+        };
+        let outcome = cooldown.poll(now(), TEST_MAX_AGE, || {
+            with_carrier_error(Ok(None), Some(failure()))
+        });
+        assert_eq!(outcome.error, Some(ProviderUsageError::Unavailable));
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::KeychainUnreadable));
+        let cached = cooldown.poll(now(), TEST_MAX_AGE, || {
+            panic!("cooldown must skip the read")
+        });
+        assert_eq!(cached.detail, outcome.detail);
+
+        cooldown.open_for_test();
+        let outcome = cooldown.poll(now(), TEST_MAX_AGE, || {
+            let fetched = fetch_from_carriers(
+                &FakeTransport {
+                    usage_result: Ok(LIVE_USAGE_BODY.into()),
+                },
+                vec![valid_credentials()],
+                None,
+                now(),
+            );
+            with_carrier_error(fetched.map_err(FetchFailure::from), Some(failure()))
+        });
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.detail, None);
+        assert_eq!(outcome.snapshots.len(), 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_detail_stays_with_the_selected_error_category() {
+        for (error, expected_detail) in [
+            (
+                ProviderUsageError::Unavailable,
+                Some(SourceErrorDetail::KeychainUnreadable),
+            ),
+            (ProviderUsageError::Authentication, None),
+            (ProviderUsageError::RateLimited, None),
+        ] {
+            let carrier = macos_keychain::KeychainRead::Unreadable
+                .credentials()
+                .err()
+                .unwrap();
+            let failure = with_carrier_error(Err(error.into()), Some(carrier)).unwrap_err();
+            assert_eq!(failure.error, error);
+            assert_eq!(failure.detail, expected_detail);
+        }
+        assert!(
+            macos_keychain::KeychainRead::Absent
+                .credentials()
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            macos_keychain::KeychainRead::Found("not JSON".into())
+                .credentials()
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn a_live_cached_keychain_secret_is_used_without_another_read() {
         // With a live token already cached, `read_carriers` answers from the
         // cache and never reaches `macos_keychain::read` — the "never
@@ -2053,7 +2369,7 @@ mod tests {
     }
 
     #[test]
-    fn a_touch_that_never_settles_stays_an_authentication_failure() {
+    fn a_touch_that_never_settles_is_a_pending_authentication_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(".credentials.json");
         fs::write(
@@ -2081,13 +2397,51 @@ mod tests {
         let outcome = source.fetch(USER_MAX_AGE);
 
         assert_eq!(outcome.error, Some(ProviderUsageError::Authentication));
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::RefreshPending));
         assert!(outcome.snapshots.is_empty());
         assert_eq!(spawns.load(Ordering::SeqCst), 1);
         assert_eq!(usage_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
-    fn an_absent_claude_binary_keeps_the_plain_authentication_failure() {
+    fn a_settled_refresh_that_is_still_dead_requires_a_sign_in() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(".credentials.json");
+        fs::write(
+            &path,
+            credentials_file((real_now_secs() - 3_600) * 1_000, "max"),
+        )
+        .expect("write expired credentials");
+        let spawns = Arc::new(AtomicUsize::new(0));
+        let source = ClaudeDirectFetch::at_with_touch(
+            path.clone(),
+            Box::new(UnreachableTransport),
+            // The CLI rewrites the carrier, but the token it leaves is still
+            // expired: the `invalid_grant` shape.
+            Box::new(FileTouchEnv {
+                path,
+                binary_present: true,
+                writes_on_spawn: Some(credentials_file((real_now_secs() - 60) * 1_000, "max")),
+                spawns: Arc::clone(&spawns),
+            }),
+        );
+
+        let outcome = source.fetch(USER_MAX_AGE);
+        assert_eq!(outcome.error, Some(ProviderUsageError::Authentication));
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::SignInRequired));
+        assert_eq!(spawns.load(Ordering::SeqCst), 1);
+
+        // The carrier still matches the terminal fingerprint: the next
+        // user-initiated poll reports the same state without spawning again.
+        source.cooldown.open_for_test();
+        source.touch_gate.open_cooldown_for_test();
+        let outcome = source.fetch(USER_MAX_AGE);
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::SignInRequired));
+        assert_eq!(spawns.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn an_absent_claude_binary_is_a_cli_missing_authentication_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(".credentials.json");
         fs::write(
@@ -2110,6 +2464,7 @@ mod tests {
         let outcome = source.fetch(USER_MAX_AGE);
 
         assert_eq!(outcome.error, Some(ProviderUsageError::Authentication));
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::CliMissing));
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
     }
 
@@ -2129,11 +2484,12 @@ mod tests {
         );
 
         // `TEST_MAX_AGE` is the background monitor's shape — well past the
-        // user-initiated ceiling — so the expired credential reports plain
-        // authentication and `UntouchableEnv` proves no touch path ran.
+        // user-initiated ceiling — so the expired credential reports a
+        // pending refresh and `UntouchableEnv` proves no touch path ran.
         let outcome = source.fetch(TEST_MAX_AGE);
 
         assert_eq!(outcome.error, Some(ProviderUsageError::Authentication));
+        assert_eq!(outcome.detail, Some(SourceErrorDetail::RefreshPending));
     }
 
     #[test]
@@ -2156,6 +2512,9 @@ mod tests {
         let outcome = source.fetch(USER_MAX_AGE);
 
         assert_eq!(outcome.error, Some(ProviderUsageError::Authentication));
+        // No native carrier: nothing here can refresh it, and the plain
+        // sign-in-again copy is the true one.
+        assert_eq!(outcome.detail, None);
     }
 
     #[test]

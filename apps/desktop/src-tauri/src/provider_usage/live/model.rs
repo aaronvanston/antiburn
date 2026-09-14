@@ -13,7 +13,20 @@
 //!    structurally trustworthy and six hours old; those are different
 //!    questions and the surfaces answer them separately.
 
+use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
+
+/// Detection values rank the available evidence, from unknown to a provider-specific login carrier.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Detection {
+    #[default]
+    Unknown,
+    NotInstalled,
+    InstalledNotSignedIn,
+    /// A provider-specific login carrier is present. This does not verify the login.
+    SignedIn,
+}
 
 /// Epistemic strength of a fact, independent of how recently it was observed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,6 +60,22 @@ impl Freshness {
             Freshness::Stale
         }
     }
+}
+
+/// These details qualify a source error without changing its category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceErrorDetail {
+    /// The macOS Keychain could not say whether the item exists.
+    KeychainUnreadable,
+    /// The token expired and this build cannot refresh it.
+    RefreshUnsupported,
+    /// The token expired and no CLI exists to refresh it.
+    CliMissing,
+    /// A refresh ran and the credential is still dead. Only a new sign-in fixes this.
+    SignInRequired,
+    /// The token expired and a delegated refresh has not run or settled yet.
+    RefreshPending,
 }
 
 /// Why a payload was rejected outright rather than partly believed.
