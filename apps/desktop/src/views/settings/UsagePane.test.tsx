@@ -140,7 +140,7 @@ describe("UsagePane", () => {
         shown: true,
         detection: "notInstalled",
       },
-      note: "antiburn didn't find Antigravity on this machine. It reads the login from the Antigravity IDE or `agy` CLI, not the Gemini app. Install it and run `agy` once.",
+      note: "Couldn't find Antigravity or Antigravity usage on this computer.",
     },
     {
       meter: {
@@ -149,7 +149,7 @@ describe("UsagePane", () => {
         shown: true,
         detection: "installedNotSignedIn",
       },
-      note: "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically.",
+      note: "Couldn't find a Claude Code login on this computer.",
     },
     {
       meter: {
@@ -158,11 +158,11 @@ describe("UsagePane", () => {
         shown: true,
         detection: "signedIn",
       },
-      note: "antiburn found a Claude Code login but hasn't verified it yet. Refresh to ask Claude Code for limits.",
+      note: "Signed in.",
     },
     {
       meter: { provider: "anthropic", displayName: "Claude", shown: true },
-      note: "No readings yet. antiburn reuses the login from the Claude Code CLI — run it once, then refresh.",
+      note: "No readings yet from the Claude Code CLI.",
     },
   ])(
     "explains $meter.provider detection $meter.detection without a reading",
@@ -192,11 +192,7 @@ describe("UsagePane", () => {
       }),
     )
     pane({ liveUsageEnabled: true })
-    expect(
-      await screen.findByText(
-        /antiburn found a Claude Code login through Pi but hasn't verified/,
-      ),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Signed in through Pi.")).toBeInTheDocument()
   })
 
   it("points at the desktop app when the scanner sees sessions but no CLI login", async () => {
@@ -226,7 +222,7 @@ describe("UsagePane", () => {
     )
     pane({ liveUsageEnabled: true })
     expect(
-      await screen.findByText(/antiburn sees Claude sessions but no Claude Code CLI login/),
+      await screen.findByText(/Couldn't find a Claude Code login on this computer/),
     ).toBeInTheDocument()
   })
 
@@ -267,7 +263,7 @@ describe("UsagePane", () => {
     )
     pane({ liveUsageEnabled: true })
     expect(await screen.findByText(note)).toBeInTheDocument()
-    expect(screen.queryByText(/hasn't verified it yet/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Signed in/)).not.toBeInTheDocument()
   })
 
   it("keeps the off-switch guidance and disables provider switches despite detection", async () => {
@@ -284,7 +280,7 @@ describe("UsagePane", () => {
       "Turn the switch above back on to ask for current plan limits.",
     )
     expect(screen.getByRole("switch", { name: "Show Claude meter" })).toBeDisabled()
-    expect(screen.queryByText(/hasn't verified it yet/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Signed in/)).not.toBeInTheDocument()
   })
 
   it("always offers the Google meter without a live reading", async () => {
@@ -294,9 +290,7 @@ describe("UsagePane", () => {
     const toggle = screen.getByRole("switch", { name: "Show Google meter" })
     expect(toggle).toBeChecked()
     expect(
-      screen.getByText(
-        /No readings yet\. antiburn reuses the login from the Antigravity IDE or `agy` CLI/,
-      ),
+      screen.getByText("No readings yet from the Antigravity IDE or `agy` CLI."),
     ).toBeInTheDocument()
 
     fireEvent.click(toggle)

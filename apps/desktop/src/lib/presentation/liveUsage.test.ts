@@ -671,104 +671,31 @@ describe("live detection notes", () => {
     [
       "anthropic",
       "notInstalled",
-      "antiburn didn't find Claude Code on this machine. It reads the login from the Claude Code CLI, not the Claude desktop app. Install it and run `claude` once.",
+      "Couldn't find Claude Code or Claude Code usage on this computer.",
     ],
     [
       "anthropic",
       "installedNotSignedIn",
-      "antiburn found Claude Code but no login. Run `claude` in a terminal and log in — antiburn picks it up automatically.",
+      "Couldn't find a Claude Code login on this computer.",
     ],
-    [
-      "anthropic",
-      "signedIn",
-      "antiburn found a Claude Code login but hasn't verified it yet. Refresh to ask Claude Code for limits.",
-    ],
-    [
-      "anthropic",
-      "unknown",
-      "No readings yet. antiburn reuses the login from the Claude Code CLI — run it once, then refresh.",
-    ],
+    ["anthropic", "signedIn", "Signed in."],
+    ["anthropic", "unknown", "No readings yet from the Claude Code CLI."],
     [
       "google",
       "notInstalled",
-      "antiburn didn't find Antigravity on this machine. It reads the login from the Antigravity IDE or `agy` CLI, not the Gemini app. Install it and run `agy` once.",
+      "Couldn't find Antigravity or Antigravity usage on this computer.",
     ],
-    [
-      "google",
-      "installedNotSignedIn",
-      "antiburn found Antigravity but no login. Run `agy` in a terminal and log in — antiburn picks it up automatically.",
-    ],
-    [
-      "google",
-      "signedIn",
-      "antiburn found an Antigravity login but hasn't verified it yet. Refresh to ask Antigravity for limits.",
-    ],
-    [
-      "google",
-      "unknown",
-      "No readings yet. antiburn reuses the login from the Antigravity IDE or `agy` CLI — run it once, then refresh.",
-    ],
-    [
-      "openai",
-      "notInstalled",
-      "antiburn didn't find Codex on this machine. It reads the login from the Codex CLI, not the ChatGPT app. Install it and run `codex` once.",
-    ],
-    [
-      "openai",
-      "installedNotSignedIn",
-      "antiburn found Codex but no login. Run `codex` in a terminal and log in — antiburn picks it up automatically.",
-    ],
-    [
-      "openai",
-      "signedIn",
-      "antiburn found a Codex login but hasn't verified it yet. Refresh to ask Codex for limits.",
-    ],
+    ["google", "installedNotSignedIn", "Couldn't find an Antigravity login on this computer."],
+    ["google", "signedIn", "Signed in."],
+    ["google", "unknown", "No readings yet from the Antigravity IDE or `agy` CLI."],
+    ["openai", "notInstalled", "Couldn't find Codex or Codex usage on this computer."],
+    ["openai", "installedNotSignedIn", "Couldn't find a Codex login on this computer."],
+    ["openai", "signedIn", "Signed in."],
+    ["openai", "unknown", "No readings yet from the Codex CLI."],
   ]
 
-  it.each(cases)(
-    "explains %s detection %s without claiming verified credentials",
-    (provider, detection, note) => {
-      expect(liveDetectionNote(provider, detection, true)).toBe(note)
-    },
-  )
-
-  it("names the tool the login came from", () => {
-    expect(
-      liveDetectionNote("anthropic", "signedIn", true, "the Claude Code CLI (Keychain)"),
-    ).toBe(
-      "antiburn found a Claude Code login through the Claude Code CLI (Keychain) but hasn't verified it yet. Refresh to ask Claude Code for limits.",
-    )
-    expect(liveDetectionNote("openai", "signedIn", true, "Pi")).toBe(
-      "antiburn found a Codex login through Pi but hasn't verified it yet. Refresh to ask Codex for limits.",
-    )
-    expect(liveDetectionNote("google", "signedIn", true, "the Antigravity IDE")).toBe(
-      "antiburn found an Antigravity login through the Antigravity IDE but hasn't verified it yet. Refresh to ask Antigravity for limits.",
-    )
-  })
-
-  it("explains an unproven Pi login file, and one Pi says is dead", () => {
-    expect(liveDetectionNote("anthropic", "unknown", true, "Pi")).toBe(
-      "antiburn found a Pi login file. If Pi is signed in to Claude Code, readings appear on the next check. Otherwise sign in with the Claude Code CLI once.",
-    )
-    expect(liveDetectionNote("anthropic", "installedNotSignedIn", true, "Pi")).toBe(
-      "antiburn found Pi, but Pi has no working Claude Code login. Sign in to Claude Code in Pi again, or run `claude` once.",
-    )
-  })
-
-  it("points a reader with sessions but no CLI login at the desktop app", () => {
-    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 12)).toBe(
-      "antiburn sees Claude sessions but no Claude Code CLI login — are you using the Claude desktop app? antiburn reads the login from the Claude Code CLI only. Install it and run `claude` once.",
-    )
-    expect(liveDetectionNote("openai", "notInstalled", true, undefined, 3)).toContain(
-      "are you using the ChatGPT app?",
-    )
-    expect(liveDetectionNote("google", "notInstalled", true, undefined, 1)).toContain(
-      "are you using the Gemini app?",
-    )
-    // Zero sessions keeps the plain wording.
-    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 0)).toContain(
-      "didn't find Claude Code",
-    )
+  it.each(cases)("keeps the %s %s note to one line", (provider, detection, note) => {
+    expect(liveDetectionNote(provider, detection, true)).toBe(note)
   })
 
   it.each(cases)("keeps the disabled note for %s detection %s", (provider, detection) => {
@@ -777,15 +704,38 @@ describe("live detection notes", () => {
     )
   })
 
-  it.each([
-    ["anthropic", "the Claude Code CLI"],
-    ["google", "the Antigravity IDE or `agy` CLI"],
-    ["openai", "the Codex CLI"],
-    ["unrecognized", "your coding tool"],
-  ])("defaults absent detection to unknown for %s", (provider, carrier) => {
-    const note = `No readings yet. antiburn reuses the login from ${carrier} — run it once, then refresh.`
-    expect(liveDetectionNote(provider, undefined, true)).toBe(note)
-    expect(liveDetectionNote(provider, "unknown", true)).toBe(note)
+  it("names the tool the login came from", () => {
+    expect(
+      liveDetectionNote("anthropic", "signedIn", true, "the Claude Code CLI (Keychain)"),
+    ).toBe("Signed in through the Claude Code CLI (Keychain).")
+    expect(liveDetectionNote("openai", "signedIn", true, "Pi")).toBe("Signed in through Pi.")
+  })
+
+  it("says what Pi has, and when it has not been asked yet", () => {
+    expect(liveDetectionNote("anthropic", "unknown", true, "Pi")).toBe(
+      "Found Pi — checking for a Claude Code login.",
+    )
+    expect(liveDetectionNote("anthropic", "installedNotSignedIn", true, "Pi")).toBe(
+      "Couldn't find a Claude Code login on this computer (Pi has none).",
+    )
+  })
+
+  it("names the desktop app when sessions exist but no login does", () => {
+    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 12)).toBe(
+      "Couldn't find a Claude Code login on this computer (the Claude desktop app keeps its own).",
+    )
+    expect(liveDetectionNote("openai", "notInstalled", true, undefined, 3)).toContain(
+      "the ChatGPT app keeps its own",
+    )
+    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 0)).toBe(
+      "Couldn't find Claude Code or Claude Code usage on this computer.",
+    )
+  })
+
+  it("defaults absent detection to unknown for an unrecognised provider", () => {
+    const note = "No readings yet from your coding tool."
+    expect(liveDetectionNote("unrecognized", undefined, true)).toBe(note)
+    expect(liveDetectionNote("unrecognized", "unknown", true)).toBe(note)
   })
 })
 

@@ -618,52 +618,40 @@ function liveProviderDisplayName(provider?: string): string | null {
 interface LiveTool {
   /** The tool, as a noun: "Claude Code". */
   tool: string
-  /** The command to run once, or null when the tool has no CLI to name. */
-  cli: string | null
   /** Where antiburn reads the login from: "the Claude Code CLI". */
   source: string
   /** The app people confuse it with, which keeps its own login. */
   desktopApp: string | null
   /** The article before `tool`: "an Antigravity", "a Codex". */
   article: "a" | "an"
-  /** The name the scanner's sessions go by: "Claude sessions". */
-  sessions: string
 }
 
 const LIVE_TOOLS: Readonly<Record<string, LiveTool>> = {
   [ANTHROPIC]: {
     tool: "Claude Code",
-    cli: "claude",
     source: "the Claude Code CLI",
     desktopApp: "the Claude desktop app",
     article: "a",
-    sessions: "Claude",
   },
   [GOOGLE]: {
     tool: "Antigravity",
-    cli: "agy",
     source: "the Antigravity IDE or `agy` CLI",
     desktopApp: "the Gemini app",
     article: "an",
-    sessions: "Antigravity",
   },
   [OPENAI]: {
     tool: "Codex",
-    cli: "codex",
     source: "the Codex CLI",
     desktopApp: "the ChatGPT app",
     article: "a",
-    sessions: "Codex",
   },
 }
 
 const FALLBACK_TOOL: LiveTool = {
   tool: "your coding tool",
-  cli: null,
   source: "your coding tool",
   desktopApp: null,
   article: "a",
-  sessions: "its",
 }
 
 /** The tool's name for a detection marker, or the meter's own display name. */
@@ -708,35 +696,24 @@ export function liveDetectionNote(
   if (!shown) return "Turn the switch above back on to ask for current plan limits."
   const t = LIVE_TOOLS[provider] ?? FALLBACK_TOOL
   const viaPi = carrierLabel === "Pi"
-  if (detection === "signedIn") {
-    const from = carrierLabel ? ` through ${carrierLabel}` : ""
-    return `antiburn found ${t.article} ${t.tool} login${from} but hasn't verified it yet. Refresh to ask ${t.tool} for limits.`
+  switch (detection) {
+    case "signedIn":
+      return carrierLabel ? `Signed in through ${carrierLabel}.` : `Signed in.`
+    case "installedNotSignedIn":
+      return viaPi
+        ? `Couldn't find ${t.article} ${t.tool} login on this computer (Pi has none).`
+        : `Couldn't find ${t.article} ${t.tool} login on this computer.`
+    case "notInstalled":
+      // Sessions on disk with no login is the desktop-app case: name it.
+      if ((sessionsSeen ?? 0) > 0 && t.desktopApp) {
+        return `Couldn't find ${t.article} ${t.tool} login on this computer (${t.desktopApp} keeps its own).`
+      }
+      return `Couldn't find ${t.tool} or ${t.tool} usage on this computer.`
+    default:
+      return viaPi
+        ? `Found Pi — checking for a ${t.tool} login.`
+        : `No readings yet from ${t.source}.`
   }
-  if (detection === "installedNotSignedIn" && viaPi) {
-    return `antiburn found Pi, but Pi has no working ${t.tool} login. Sign in to ${t.tool} in Pi again, or run ${t.cli ? `\`${t.cli}\`` : `the ${t.tool} CLI`} once.`
-  }
-  if (viaPi) {
-    return `antiburn found a Pi login file. If Pi is signed in to ${t.tool}, readings appear on the next check. Otherwise sign in with ${t.source} once.`
-  }
-  const runOnce = t.cli
-    ? `Install it and run \`${t.cli}\` once.`
-    : `Install it and sign in once.`
-  if (detection === "notInstalled") {
-    if ((sessionsSeen ?? 0) > 0) {
-      return t.desktopApp
-        ? `antiburn sees ${t.sessions} sessions but no ${t.tool} CLI login — are you using ${t.desktopApp}? antiburn reads the login from ${t.source} only. ${runOnce}`
-        : `antiburn sees ${t.sessions} sessions but no login it can reuse. It reads the login from ${t.source} — sign in there once.`
-    }
-    return t.desktopApp
-      ? `antiburn didn't find ${t.tool} on this machine. It reads the login from ${t.source}, not ${t.desktopApp}. ${runOnce}`
-      : `antiburn didn't find ${t.tool} on this machine. It reads the login from ${t.source}. ${runOnce}`
-  }
-  if (detection === "installedNotSignedIn") {
-    return t.cli
-      ? `antiburn found ${t.tool} but no login. Run \`${t.cli}\` in a terminal and log in — antiburn picks it up automatically.`
-      : `antiburn found ${t.tool} but no login. Sign in there once — antiburn picks it up automatically.`
-  }
-  return `No readings yet. antiburn reuses the login from ${t.source} — run it once, then refresh.`
 }
 
 /** One action for a failed source, with the provider name when it is known. */
