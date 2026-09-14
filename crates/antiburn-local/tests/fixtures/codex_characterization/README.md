@@ -24,7 +24,7 @@ Codex writes `{timestamp,type,payload}` JSONL under `~/.codex/sessions/YYYY/MM/D
 | Compaction boundaries | yes | Top-level `compacted` and legacy `context_compacted` |
 | Thread identity | yes | One rollout is one thread; a discovered child rollout streams with `Delegated` scope, so a child thread never merges into the parent's main-scope facts |
 | Record identity | no | Records carry no per-record id (`uuid`) or parent link, so `previous_turn` stays unsupported |
-| Quota incidents | no | The evidence sink has no incident ingestion path in this slice |
+| Quota incidents | yes | `event_msg`/`task_complete` with a non-null `error`; only `server_overloaded`, `rate_limit_exceeded`, and `usage_limit_exceeded` are mapped |
 | Harness version | no | The evidence sink has no version ingestion path in this slice |
 
 Sessions Over Depth, Model Overthinking, Overpowered Subagents, Old Model Usage, and Fast-Mode Overuse have all capability prerequisites. Every other detector remains not assessed. Cache Churn needs record identity, which Codex does not claim, so it stays not assessed even though Codex claims thread identity. Fast-mode overuse needed Subagent relationships in addition to `fast_tier`; now that the adapter publishes the subagent relationship, both it and Overpowered Subagents move into the assessed set.
@@ -50,6 +50,7 @@ Codex multi-agent ("collab") sessions add a tenth `event_msg` family: `collab_ag
 - `collab_agent_records.jsonl` has a parent turn call `spawn_agent`, then the full ten-variant collab family: a `spawn_begin`/`spawn_end` pair in the pre-completion-tracking shape (no `completed_at_ms`, string `status`), a second pair in the current shape (`completed_at_ms` present, object `status`), an `interaction_begin`/`interaction_end` pair, a `waiting_begin`/`waiting_end` pair, and a `close_end`. Coverage stays `Complete`, `records_unusable` and `records_unrecognized_inert` are both `0`, metrics match the same fixture with the collab lines removed, and the `spawn_agent` call still publishes exactly one `SubagentSpawn`.
 - `session_overdepth_finding.jsonl` reports one turn's input tokens above the Sessions Over Depth cap, giving that badge a finding.
 - `model_overthinking_finding.jsonl` sets `turn_context.effort` to `max`, giving Model Overthinking a finding.
+- `task_complete_errors.jsonl` has one ordinary turn, then eight `task_complete` shapes: a clean turn, the three mapped `codex_error_info` codes (`server_overloaded`, `rate_limit_exceeded`, `usage_limit_exceeded`), an unmapped struct-variant code, the unmapped `"other"` code, an `error` with no `codex_error_info`, and a mapped code with no top-level `timestamp`. Only the three mapped, timestamped codes become `QuotaIncident`s; coverage stays `Complete` and `records_unrecognized_inert` stays `0`.
 
 ### #229-parity cases (no golden; exercised by dedicated assertions in `codex_characterization.rs`)
 

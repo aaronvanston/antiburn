@@ -39,7 +39,7 @@
       "linearRecordOrder": true,
       "mcpInventory": false,
       "modelIdentity": true,
-      "quotaIncidents": false,
+      "quotaIncidents": true,
       "reasoningEffortTier": true,
       "recordIdentity": false,
       "repeatedContextAccounting": "uncached_input",
@@ -142,12 +142,15 @@
         "state": "unsupported"
       },
       "ordering": "monotonic",
-      "parserRevision": 36,
+      "parserRevision": 37,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
     "quotaIncidents": {
-      "state": "unsupported"
+      "state": "complete",
+      "value": {
+        "incidents": []
+      }
     },
     "schemaRevision": 18,
     "subagents": {
