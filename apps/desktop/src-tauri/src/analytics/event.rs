@@ -99,6 +99,9 @@ pub enum EventName {
     /// The Sessions sidebar filter changed to a different selection.
     #[cfg(feature = "analytics")]
     SessionFilterSelected,
+    /// An Insights cohort's quota-pressure section has assessed incidents,
+    /// with a bucketed hit count per limit kind.
+    QuotaIncidentsObserved,
 }
 
 /// Every event this application may send.
@@ -136,6 +139,7 @@ pub const EVERY_EVENT: &[EventName] = &[
     EventName::BurnCheckPromptCopied,
     EventName::BurnCheckOutcomeObserved,
     EventName::SessionFilterSelected,
+    EventName::QuotaIncidentsObserved,
 ];
 
 #[cfg(feature = "analytics")]
@@ -167,6 +171,7 @@ impl EventName {
             EventName::BurnCheckPromptCopied => "antiburn.burn_check_prompt_copied",
             EventName::BurnCheckOutcomeObserved => "antiburn.burn_check_outcome_observed",
             EventName::SessionFilterSelected => "antiburn.session_filter_selected",
+            EventName::QuotaIncidentsObserved => "antiburn.quota_incidents_observed",
         }
     }
 }
@@ -1406,12 +1411,13 @@ mod tests {
                 | EventName::BurnCheckPromptPrepared
                 | EventName::BurnCheckPromptCopied
                 | EventName::BurnCheckOutcomeObserved
-                | EventName::SessionFilterSelected => true,
+                | EventName::SessionFilterSelected
+                | EventName::QuotaIncidentsObserved => true,
             }
         }
         assert_eq!(
             EVERY_EVENT.len(),
-            25,
+            26,
             "a variant was added to the match above but not to EVERY_EVENT"
         );
         assert!(EVERY_EVENT.iter().copied().all(listed));

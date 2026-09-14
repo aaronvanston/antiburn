@@ -154,6 +154,14 @@ pub fn record_unrecognized_records(
 }
 
 #[cfg(not(feature = "analytics"))]
+pub fn record_quota_incidents(
+    _app: &tauri::AppHandle,
+    _section: &antiburn_local::insights::QuotaPressureSection,
+) {
+    let _ = event::EventName::QuotaIncidentsObserved;
+}
+
+#[cfg(not(feature = "analytics"))]
 pub fn record_usage_observed(
     _app: &tauri::AppHandle,
     _snapshots: &[crate::provider_usage::live::ProviderUsageSnapshot],
@@ -200,7 +208,8 @@ mod enabled {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
 
-    use antiburn_local::insights::UnrecognizedRecords;
+    use antiburn_local::analysis::QuotaLimitKind;
+    use antiburn_local::insights::{QuotaPressureSection, UnrecognizedRecords};
     use tauri::Manager as _;
 
     use crate::provider_usage::factor::LearnedFactor;
@@ -809,6 +818,12 @@ mod enabled {
     static LAST_UNRECOGNIZED: std::sync::Mutex<Option<UnrecognizedOutcome>> =
         std::sync::Mutex::new(None);
 
+    /// The last bucket reported for each quota limit-kind label during
+    /// this run. In memory only, for the same reason [`LAST_USAGE_OBSERVED`]
+    /// is: it is a dedup key, not a fact worth keeping past this process.
+    static LAST_QUOTA_INCIDENTS: std::sync::Mutex<BTreeMap<&'static str, &'static str>> =
+        std::sync::Mutex::new(BTreeMap::new());
+
     /// The last Claude limit-reset observation queued during this run.
     static LAST_CLAUDE_LIMIT_RESET: std::sync::Mutex<
         Option<crate::provider_usage::live::anthropic::LimitResetDiagnostic>,
@@ -1127,6 +1142,72 @@ mod enabled {
         }
     }
 
+    /// Record a safe bucketed summary of each assessed quota limit kind.
+    ///
+    /// Fires one event per limit kind whose bucket differs from the last one
+    /// reported for that label during this run. Carries no model name,
+    /// session identifier, or message text.
+    pub fn record_quota_incidents(app: &tauri::AppHandle, section: &QuotaPressureSection) {
+        if !allowed(app) {
+            return;
+        }
+        for (label, bucket) in quota_incident_outcomes(section) {
+            if !quota_incident_bucket_is_new(label, bucket) {
+                continue;
+            }
+            record(
+                app,
+                EventName::QuotaIncidentsObserved,
+                Facts {
+                    label: Some(label),
+                    bucket: Some(bucket),
+                    ..Facts::default()
+                },
+            );
+        }
+    }
+
+    /// The `(label, bucket)` pair for each assessed limit kind. Empty when
+    /// the section is not assessed (FR-15's one condition).
+    fn quota_incident_outcomes(
+        section: &QuotaPressureSection,
+    ) -> Vec<(&'static str, &'static str)> {
+        let QuotaPressureSection::Findings(findings) = section else {
+            return Vec::new();
+        };
+        findings
+            .hits_by_limit_kind
+            .iter()
+            .map(|(&kind, &hits)| (quota_limit_kind_label(kind), event::bucket(hits)))
+            .collect()
+    }
+
+    /// Maps a limit kind to the closed analytics label vocabulary.
+    fn quota_limit_kind_label(kind: QuotaLimitKind) -> &'static str {
+        match kind {
+            QuotaLimitKind::RollingWindow => "rolling_window",
+            QuotaLimitKind::Weekly => "weekly",
+            QuotaLimitKind::ModelSpecific => "model_specific",
+            QuotaLimitKind::WeightedUsage => "weighted_usage",
+            QuotaLimitKind::RateLimit => "rate_limit",
+            QuotaLimitKind::UsageLimit => "usage_limit",
+            QuotaLimitKind::ProviderCapacity => "provider_capacity",
+        }
+    }
+
+    /// Whether `bucket` differs from the last one reported for `label`
+    /// during this run. Remembers the new bucket when it does.
+    fn quota_incident_bucket_is_new(label: &'static str, bucket: &'static str) -> bool {
+        let mut guard = LAST_QUOTA_INCIDENTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.get(label) == Some(&bucket) {
+            return false;
+        }
+        guard.insert(label, bucket);
+        true
+    }
+
     /// Whether this outcome differs from the last one reported. Remembers
     /// the new outcome when it does. A changed sanitized type list counts
     /// as a change, the same as a changed label or bucket. A new unknown
@@ -1150,6 +1231,10 @@ mod enabled {
         *LAST_UNRECOGNIZED
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        LAST_QUOTA_INCIDENTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
         *LAST_CLAUDE_LIMIT_RESET
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
@@ -1643,6 +1728,8 @@ mod enabled {
 
     #[cfg(test)]
     mod tests {
+        use antiburn_local::insights::QuotaPressureFindings;
+
         use super::*;
 
         static SUPPRESSION_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -2311,6 +2398,72 @@ mod enabled {
             assert_eq!(types.len(), MAX_UNRECOGNIZED_TYPE_NAMES);
         }
 
+        fn quota_findings(
+            hits_by_limit_kind: BTreeMap<QuotaLimitKind, u64>,
+        ) -> QuotaPressureFindings {
+            QuotaPressureFindings {
+                hits_by_limit_kind,
+                total_hits: 0,
+                hard_hits: 0,
+                warnings: 0,
+                affected_session_count: 0,
+                affected_session_examples: Vec::new(),
+                affected_models: BTreeSet::new(),
+                affected_models_truncated: false,
+                first_observed_ts_ms: 0,
+                last_observed_ts_ms: 0,
+                observed_times_ms: Vec::new(),
+            }
+        }
+
+        #[test]
+        fn a_not_assessed_quota_section_yields_no_outcomes() {
+            assert!(quota_incident_outcomes(&QuotaPressureSection::NotAssessed).is_empty());
+        }
+
+        #[test]
+        fn two_limit_kinds_each_become_their_own_outcome() {
+            let section = QuotaPressureSection::Findings(quota_findings(BTreeMap::from([
+                (QuotaLimitKind::RateLimit, 3),
+                (QuotaLimitKind::ProviderCapacity, 12),
+            ])));
+
+            let outcomes = quota_incident_outcomes(&section);
+
+            // `hits_by_limit_kind` is a `BTreeMap`, so outcomes come out in
+            // `QuotaLimitKind`'s declared variant order, not alphabetically.
+            assert_eq!(
+                outcomes,
+                vec![("rate_limit", "1-9"), ("provider_capacity", "10-49")]
+            );
+        }
+
+        #[test]
+        fn a_repeat_quota_outcome_is_not_worth_a_second_event() {
+            let _lock = SUPPRESSION_TEST_LOCK.lock().unwrap();
+            reset_suppression();
+
+            assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
+            assert!(!quota_incident_bucket_is_new("rate_limit", "1-9"));
+
+            reset_suppression();
+        }
+
+        #[test]
+        fn a_changed_bucket_for_one_kind_reports_only_that_kind() {
+            let _lock = SUPPRESSION_TEST_LOCK.lock().unwrap();
+            reset_suppression();
+
+            assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
+            assert!(quota_incident_bucket_is_new("weekly", "1-9"));
+
+            // Weekly's bucket changes; rate limit's does not.
+            assert!(quota_incident_bucket_is_new("weekly", "10-49"));
+            assert!(!quota_incident_bucket_is_new("rate_limit", "1-9"));
+
+            reset_suppression();
+        }
+
         #[test]
         fn only_a_changed_unrecognized_outcome_is_worth_an_event() {
             let _lock = SUPPRESSION_TEST_LOCK.lock().unwrap();
@@ -2362,6 +2515,7 @@ mod enabled {
                 ("anthropic", "short"),
                 (("max", "2_to_under_4", "within_5"), Instant::now()),
             );
+            assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
 
             reset_suppression();
 
@@ -2370,6 +2524,7 @@ mod enabled {
             assert_eq!(*LAST_CLAUDE_LIMIT_RESET.lock().unwrap(), None);
             assert!(LAST_USAGE_OBSERVED.lock().unwrap().is_empty());
             assert!(LAST_LIMIT_FACTOR_OBSERVED.lock().unwrap().is_empty());
+            assert!(quota_incident_bucket_is_new("rate_limit", "1-9"));
             reset_suppression();
         }
 

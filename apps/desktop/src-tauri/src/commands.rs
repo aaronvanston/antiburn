@@ -1467,6 +1467,7 @@ pub async fn get_insights_report(app: tauri::AppHandle) -> CommandResult<Insight
         .await?;
     let report = reduced.report;
     crate::analytics::record_unrecognized_records(&app, &report.unrecognized_records);
+    crate::analytics::record_quota_incidents(&app, &report.quota_pressure);
     Ok(report.into())
 }
 
