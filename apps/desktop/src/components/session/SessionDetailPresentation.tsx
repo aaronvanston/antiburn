@@ -370,6 +370,13 @@ function HostActions({
       {hasRelations && relations && (
         <RelationControl relations={relations} onOpen={onOpenRelatedSession} />
       )}
+      {onCopySourcePath && (
+        <CopySourcePathAction
+          key={sessionKey}
+          sessionKey={sessionKey}
+          onCopy={onCopySourcePath}
+        />
+      )}
       {onRevealSource && (
         <Tooltip label="Reveal in file manager">
           <button
@@ -381,13 +388,6 @@ function HostActions({
             <FolderOpen size={14} aria-hidden="true" />
           </button>
         </Tooltip>
-      )}
-      {onCopySourcePath && (
-        <CopySourcePathAction
-          key={sessionKey}
-          sessionKey={sessionKey}
-          onCopy={onCopySourcePath}
-        />
       )}
       <Tooltip label="Delete this session">
         <button
