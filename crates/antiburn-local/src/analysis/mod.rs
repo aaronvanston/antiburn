@@ -16,12 +16,13 @@
 //! ever leaves the process.
 //!
 //! ```no_run
-//! use antiburn_local::analysis::{analyze_sources, SessionInput, RawSource};
+//! use antiburn_local::analysis::{analyze_sources, RawSource, SessionInput, SourceFormat};
 //!
 //! let inputs = vec![SessionInput {
 //!     agent: "claude".into(),
 //!     session_id: "abc".into(),
 //!     source: RawSource::File("/path/to/abc.jsonl".into()),
+//!     source_format: SourceFormat::ClaudeJsonl,
 //!     fork_parent_session_id: None,
 //! }];
 //! let summary = analyze_sources(inputs);

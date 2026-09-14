@@ -188,7 +188,7 @@ coverage and resume round trips within that ceiling.
 | Antigravity | History metadata and spawn-edge data                                   | History enriches discovery; spawn edges do not reach evidence                                      | Prove passive provenance, fingerprinting, delegation meaning, and both models before check use.                                                                                                                                               |
 | Cline       | Metadata and message transcript                                        | Not loaded as one complete analysis source                                                         | Pair and fingerprint both files before parsing claims change.                                                                                                                                                                                 |
 
-Mutable current configuration can support a reviewed model or tool catalog. It
+Mutable current configuration can support a reviewed model, compaction, or tool catalog. It
 cannot prove what a historical request exposed unless the session records the
 inputs needed to select that catalog entry.
 
@@ -199,11 +199,23 @@ vendor matrix allows. It hashes the physical setting and saves the effective
 scope and value only when complete model evidence matches the effective setting.
 Claude Code and Codex require their reviewed fixed routes. OpenCode and Pi
 require the saved provider and model route. Reasoning also requires the exact
-saved level. Codex project attribution requires explicit trust and a
-repository-root cwd. Untrusted workspaces and unsupported precedence store no
-attribution. Native Windows can store attribution but cannot apply a change.
+ saved level. Codex project attribution requires explicit trust and resolves
+ reviewed `.codex/config.toml` layers from the repository root through the
+ session CWD. Untrusted workspaces and unsupported precedence store no
+ attribution. Native Windows can store attribution but cannot apply a change.
 WSL stores no native attribution. This metadata describes publication-time
 configuration. It is not session evidence or historical truth.
+
+Fast-mode remediation does not use publication-time configuration attribution.
+It needs explicit persisted fast-tier session evidence and an existing current
+winning Claude `fastMode = true` or Codex `service_tier = "fast"` target. Model
+names, variants, labels, and latency do not qualify.
+
+The resolver rejects runtime, environment, managed, remote, dynamic,
+split-route, malformed, and ambiguous winners. Cursor and Antigravity
+configuration remains separate from their accepted session contracts, so it
+cannot attribute a historical setting. See the
+[config attribution contracts](check-coverage.md#config-attribution-contracts).
 
 The winning evidence-publication transaction now enrolls at most 100 exact
 passive findings. Enrollment starts only after desktop schema V45 is installed;

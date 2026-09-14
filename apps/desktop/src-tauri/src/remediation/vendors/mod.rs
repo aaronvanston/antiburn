@@ -83,6 +83,12 @@ pub(super) fn fixed_route_setting_observed(
     let model = match setting {
         ConfigSetting::Model => value,
         ConfigSetting::Reasoning => effective_model.unwrap_or_default(),
+        ConfigSetting::Compaction
+        | ConfigSetting::SubagentModel
+        | ConfigSetting::McpServer
+        | ConfigSetting::BuiltInTool
+        | ConfigSetting::Skill
+        | ConfigSetting::FastMode => return false,
     };
     let Some(route) = fixed_route_target(agent.slug(), model) else {
         return false;
@@ -109,6 +115,12 @@ pub(super) fn routed_setting_observed(
     let route = match setting {
         ConfigSetting::Model => value,
         ConfigSetting::Reasoning => effective_model.unwrap_or_default(),
+        ConfigSetting::Compaction
+        | ConfigSetting::SubagentModel
+        | ConfigSetting::McpServer
+        | ConfigSetting::BuiltInTool
+        | ConfigSetting::Skill
+        | ConfigSetting::FastMode => return false,
     };
     let Some((provider, model)) = route.split_once('/') else {
         return false;

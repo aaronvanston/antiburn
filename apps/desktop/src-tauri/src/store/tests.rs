@@ -987,6 +987,11 @@ fn session_evidence_table_shape_is_stable() {
             "effective_reasoning_target_hash",
             "effective_reasoning_scope",
             "effective_reasoning",
+            "effective_config_path",
+            "effective_config_selector",
+            "effective_config_precedence_hash",
+            "effective_config_resource_name",
+            "effective_config_value_json",
         ]
     );
 }

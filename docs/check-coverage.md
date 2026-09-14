@@ -255,19 +255,26 @@ agent release.
 | ----------- | --------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code | Model replacement           | Auto Fix                   | `ClaudeJsonl` only. The publication must bind the observed main-loop model to an existing effective `model` setting.                                                                                                        |
 | Claude Code | Reasoning effort            | Auto Fix                   | `ClaudeJsonl` T findings only. The publication must bind the observed level to an existing effective top-level `effortLevel` or model-specific `modelSettings.<model>.effortLevel`. The reviewed replacement is `medium`.   |
+| Claude Code | Fast mode                   | Auto Fix                   | `ClaudeJsonl` F findings only. The finding needs explicit fast-tier evidence and the current winning existing `fastMode` value must be `true`; the editor removes that exact value. No publication-time config attribution is required. |
+| Claude Code | Named subagent model        | Auto Fix                   | `ClaudeJsonl` S findings only. The current scan must locate exactly one named Markdown agent whose frontmatter `model` equals the observed worker model. |
 | Claude Code | MCP control                 | Prompt only                | The source proves only an observed server subset. It does not prove full resource ownership, dependencies, or one effective local, project, plugin, managed, or connector control.                                          |
 | Claude Code | Skill control               | Prompt only                | Full injected documents can prove a finding, but publication does not bind the document to one user, project, plugin, bundled, or managed skill control.                                                                    |
 | Codex       | Model replacement           | Auto Fix                   | `CodexRolloutJsonl` only. The publication must bind the observed main-thread model to an existing effective top-level `model`. Project edits require an explicit `trust_level = "trusted"` entry and a repository-root cwd. |
 | Codex       | Reasoning effort            | Auto Fix                   | `CodexRolloutJsonl` T findings only. The publication must bind the observed level to an existing effective top-level `model_reasoning_effort`. The reviewed replacement is `medium`.                                        |
+| Codex       | Fast service tier           | Auto Fix                   | `CodexRolloutJsonl` F findings only. The finding needs explicit fast-tier evidence and the current winning existing `service_tier` must be `fast`; the editor changes it to reviewed `standard`. No publication-time config attribution is required. |
+| Codex       | Named subagent model        | Auto Fix                   | `CodexRolloutJsonl` S findings only. The current scan must locate exactly one named agent TOML file whose `model` equals the observed worker model. |
 | Codex       | MCP enablement              | Prompt only                | Exact observed server exposure does not prove resource ownership, dependencies, or the effective layered `enabled` selector at publication.                                                                                 |
 | Codex       | Skill enablement            | Prompt only                | A selected full skill document proves injection, not the path-bound skill source, ownership, dependencies, or effective enablement control.                                                                                 |
 | OpenCode    | Model default               | Auto Fix                   | `OpenCodeJsonl` and `OpenCodeSqliteV2` O findings only. Direct `openai`, `anthropic`, and `google` provider IDs use their reviewed native API when OpenCode omits it. Publication must bind the observed `provider/model` route to the effective merged `model` value. Dynamic, remote, agent, mode, and managed overrides are rejected.  |
+| OpenCode    | Named subagent model        | Auto Fix                   | S findings only. The current scan must locate exactly one named Markdown agent whose frontmatter `model` equals the observed worker model. Variant-only workers remain unavailable. |
 | OpenCode    | Reasoning control           | Unavailable                | The accepted sources have no historical effort map. A variant label is not an effective reasoning control.                                                                                                                  |
 | OpenCode    | MCP control                 | Unavailable                | The accepted sources have no model-facing MCP inventory or publication-time physical control attribution.                                                                                                                   |
 | OpenCode    | Skill control               | Prompt only                | A selected full document can produce a bounded prompt, but it does not identify one effective skill configuration target.                                                                                                   |
 | Pi          | Model and provider default  | Auto Fix                   | `PiV3Jsonl` O findings only. Publication must bind the observed `provider/model` route to an existing paired `defaultProvider` and `defaultModel` setting.                                                                  |
 | Pi          | Thinking level              | Auto Fix                   | `PiV3Jsonl` T findings only. Publication must bind the saved agent-selected level to an existing route-specific `modelThinkingLevels` entry or `defaultThinkingLevel`. The reviewed replacement is `medium`.                |
 | Pi          | Resource control            | Unavailable                | Core persistence and the reviewed example-extension output do not prove a core resource inventory or control.                                                                                                               |
+| Pi, Cursor, Antigravity | Named subagent model | Unavailable | Pi extension output and Cursor or Antigravity findings do not bind one effective persisted worker-model selector. |
+| Claude Code, Codex, OpenCode, Pi | Session compaction | Auto Fix for D only | The current project or global config must contain a supported disabled compaction flag or a numeric limit above the finding depth cap. The editor enables the flag or lowers that limit to the cap. Ordinary session growth, enabled controls, fixed instructions, runtime overrides, and unsupported schemas remain unavailable. |
 | Antigravity | Model or documented setting | Prompt only for O findings | Accepted sources can retain direct model use, but no accepted IDE or CLI source binds it to one effective documented physical setting.                                                                                      |
 | Antigravity | MCP control                 | Unavailable                | The reviewed native evidence has no MCP exposure or effective-control contract. IDE and CLI configuration cannot be interchanged.                                                                                           |
 
@@ -343,6 +350,36 @@ Prepared changes are memory-bounded and expire after ten minutes. A crash in
 native agent, accepted source format, scope, physical target, and replacement
 value after fresh override and managed-policy checks. A changed target or an
 unprovable result stays in recovery and does not start a second write.
+
+## Config Attribution Contracts
+
+Audit date: 2026-09-14. Attribution is publication-time metadata, not
+historical session evidence. The backend stores a keyed physical target hash,
+scope, observed value, physical path, selector, typed expected value, and a
+keyed precedence identity only after complete control observations match the
+resolved setting. This local data is not sent in analytics or diagnostics.
+
+| Agent | Reviewed persisted contract | Attribution decision |
+| --- | --- | --- |
+| Claude Code | Managed settings override CLI, local, project, and user files. `ANTHROPIC_MODEL` has per-key precedence over `model`. | Model and reasoning use only an existing user, project, or local selector. Managed, CLI, host, or environment winners are unavailable. |
+| Codex | CLI overrides trusted project files from repository root through CWD, then an explicitly selected profile, user config, and system config. | Model and reasoning resolve every trusted nested project file. A selected profile, runtime override, system or managed config, or untrusted workspace is unavailable. |
+| OpenCode | Remote, global, custom, nested direct project, `.opencode`, inline, managed file, then MDM sources merge in that order. | Model attribution reads the reviewed global and nested project JSON/JSONC subset. Remote, custom, inline, managed, dynamic, agent, and mode inputs are unavailable. |
+| Pi | Trusted project `.pi/settings.json` deep-merges over global settings. CLI provider/model/thinking and session-directory inputs take precedence. | Model and reasoning use one existing winning project or global selector. Agent-directory, CLI, or split provider/model inputs are unavailable. |
+| Cursor | CLI JSON, CLI permissions, MCP JSON, IDE settings, and team controls are separate contracts. | Unavailable. No accepted Cursor session source proves that one persisted CLI or IDE setting caused the observed model behavior. |
+| Antigravity | Documented global and workspace MCP files do not define model-setting precedence for every IDE and CLI surface. | Unavailable. Accepted session sources do not bind a model or setting to one physical control. |
+
+The official contracts reviewed are [Claude settings][claude-config-source],
+[Codex config basics][codex-config-source], [OpenCode config][opencode-config-source],
+[Pi settings][pi-config-source], [Cursor CLI configuration][cursor-config-source],
+and [Antigravity MCP][antigravity-config-source]. These sources describe current
+configuration behavior. They do not expand accepted session-source versions.
+
+[claude-config-source]: https://docs.anthropic.com/en/docs/claude-code/settings
+[codex-config-source]: https://developers.openai.com/codex/config-basic
+[opencode-config-source]: https://opencode.ai/docs/config/
+[pi-config-source]: https://github.com/badlogic/pi-mono/blob/b2602be77cb7b0de45dd616407fd210daa48aa75/packages/coding-agent/docs/settings.md
+[cursor-config-source]: https://cursor.com/docs/cli/reference/configuration
+[antigravity-config-source]: https://antigravity.google/docs/mcp/
 
 ## Savings Contracts
 

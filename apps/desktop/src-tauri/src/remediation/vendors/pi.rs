@@ -29,9 +29,13 @@ impl VendorRemediationPolicy for PiPolicy {
         if source == SourceFormat::PiV3Jsonl
             && matches!(
                 action,
-                RemediationAction::AutomaticEdit(_)
-                    | RemediationAction::RecoverUncertainWrite(_)
-                    | RemediationAction::PublicationAttribution(_)
+                RemediationAction::AutomaticEdit(
+                    ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction
+                ) | RemediationAction::RecoverUncertainWrite(
+                    ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction
+                ) | RemediationAction::PublicationAttribution(
+                    ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction
+                )
             )
         {
             ActionSupport::Supported

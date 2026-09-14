@@ -7,11 +7,11 @@ use super::{OperationSelector, Target, VendorConfig, VendorPolicy};
 use crate::agent_config::filesystem::{path_entry_exists, read_checked};
 use crate::agent_config::{ConfigScope, ConfigSetting, ConfigUnavailableReason};
 
-pub(super) struct Antigravity;
+pub(super) struct Cursor;
 
-pub(super) static ANTIGRAVITY: Antigravity = Antigravity;
+pub(super) static CURSOR: Cursor = Cursor;
 
-impl VendorConfig for Antigravity {
+impl VendorConfig for Cursor {
     fn policy(&self, setting: ConfigSetting) -> VendorPolicy {
         match setting {
             ConfigSetting::Model => VendorPolicy::AutomaticEdit,
@@ -32,16 +32,31 @@ impl VendorConfig for Antigravity {
         setting: ConfigSetting,
         home: &Path,
         _workspace_cwd: Option<&Path>,
-        _trusted_workspace_root: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
     ) -> Result<Target, ConfigUnavailableReason> {
         if setting != ConfigSetting::Model {
             return Err(ConfigUnavailableReason::UnsupportedSetting);
         }
-        let path = home.join(".gemini/antigravity-cli/settings.json");
+        let operation = OperationSelector::JsonKey("model");
+        if let Some(root) = trusted_workspace_root {
+            let path = root.join(".cursor/cli.json");
+            if path_entry_exists(&path)?
+                && self
+                    .read_value(&read_checked(&path, root)?.bytes, &operation)?
+                    .is_some()
+            {
+                return Ok(Target {
+                    path,
+                    safety_root: root.to_owned(),
+                    scope: ConfigScope::Project,
+                    operation,
+                });
+            }
+        }
+        let path = home.join(".cursor/cli-config.json");
         if !path_entry_exists(&path)? {
             return Err(ConfigUnavailableReason::MissingConfig);
         }
-        let operation = OperationSelector::JsonKey("model");
         if self
             .read_value(&read_checked(&path, home)?.bytes, &operation)?
             .is_none()
@@ -56,6 +71,47 @@ impl VendorConfig for Antigravity {
         })
     }
 
+    fn resolve_targets(
+        &self,
+        setting: ConfigSetting,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<Vec<Target>, ConfigUnavailableReason> {
+        let primary = self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root)?;
+        let operation = OperationSelector::JsonKey("model");
+        let mut targets = vec![primary];
+        for (path, safety_root, scope) in [
+            (
+                home.join(".cursor/cli-config.json"),
+                home.to_owned(),
+                ConfigScope::Global,
+            ),
+            (
+                trusted_workspace_root
+                    .map(|root| root.join(".cursor/cli.json"))
+                    .unwrap_or_default(),
+                trusted_workspace_root.unwrap_or(home).to_owned(),
+                ConfigScope::Project,
+            ),
+        ] {
+            if path_entry_exists(&path)?
+                && !targets.iter().any(|target| target.path == path)
+                && self
+                    .read_value(&read_checked(&path, &safety_root)?.bytes, &operation)?
+                    .is_some()
+            {
+                targets.push(Target {
+                    path,
+                    safety_root,
+                    scope,
+                    operation: operation.clone(),
+                });
+            }
+        }
+        Ok(targets)
+    }
+
     #[cfg(not(windows))]
     fn standalone_global(
         &self,
@@ -67,7 +123,7 @@ impl VendorConfig for Antigravity {
             return Err(ConfigUnavailableReason::UnsupportedSetting);
         }
         Ok((
-            home.join(".gemini/antigravity-cli/settings.json"),
+            home.join(".cursor/cli-config.json"),
             serde_json::to_vec_pretty(&serde_json::json!({ "model": proposed }))
                 .map_err(|_| ConfigUnavailableReason::MalformedConfig)?,
         ))

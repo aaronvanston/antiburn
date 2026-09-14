@@ -19,7 +19,7 @@ The engine and desktop shell have separate responsibilities.
 | `crates/antiburn-local/src/remediation/estimates.rs`    | Calculate all nine typed estimate methods.                                                             |
 | `apps/desktop/src-tauri/src/remediation/`               | Group current findings, issue IDs, join actions, run watches, recover writes, and expose safe results. |
 | `apps/desktop/src-tauri/src/remediation/vendors/`       | Define each agent's source, attribution, override, and action policy.                                  |
-| `apps/desktop/src-tauri/src/agent_config/`              | Resolve effective settings and prepare or apply one exact file edit.                                   |
+| `apps/desktop/src-tauri/src/agent_config/`              | Resolve effective settings and prepare or apply one safe batch of file edits.                          |
 | `apps/desktop/src-tauri/src/agent_config/vendors/`      | Define each agent's files, precedence, selectors, parsing, and edits.                                  |
 | `apps/desktop/src-tauri/src/store/remediation.rs`       | Store durable attempts, snapshots, action joins, and contributions.                                    |
 | `apps/desktop/src/views/main-window/`                   | Load reports and targets only while the Burn checks section is active and visible.                     |
@@ -67,9 +67,14 @@ never enters analytics.
 
 ## Scope And Precedence
 
-The editor changes an existing effective project or global setting. It does not
-create a config file. A project value wins only when the agent's exact
-precedence rule selects it. Otherwise, the effective global value wins.
+The editor batches existing active supported model and reasoning layers. It never
+creates a project file. It can create a missing global model file only when the
+vendor has a tested standalone JSON entry.
+
+For D only, the editor can enable an existing automatic-compaction control or
+lower an existing numeric compaction limit to the finding depth cap. It does not
+create a compaction control, change an enabled in-range control, or infer that
+ordinary session growth or fixed instructions have a configurable cause.
 
 | Agent       | Project resolution                                                                                                                                     | Global resolution                                                                                                    |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
@@ -77,6 +82,8 @@ precedence rule selects it. Otherwise, the effective global value wins.
 | Codex       | `<root>/.codex/config.toml`; the setting must exist; the global config must mark the exact root as trusted                                             | `~/.codex/config.toml`                                                                                               |
 | OpenCode    | Merge `opencode.json` then `opencode.jsonc` from the trusted root through the actual cwd; then merge `.opencode` directories from cwd back to the root | Merge `config.json`, `opencode.json`, and `opencode.jsonc` under the effective config root; then merge `~/.opencode` |
 | Pi          | `<cwd>/.pi/settings.json` when it contains both `defaultProvider` and `defaultModel`; reasoning can use the project model map or default level         | The effective Pi agent directory `settings.json`                                                                     |
+| Cursor      | `<root>/.cursor/cli.json`                                                                                                                              | `~/.cursor/cli-config.json`                                                                                          |
+| Antigravity | No project model target is registered                                                                                                                  | `~/.gemini/antigravity-cli/settings.json`                                                                            |
 
 OpenCode uses the last matching model value in its reviewed merge order. Pi
 rejects a split provider and model route. Codex rejects an active profile and a
@@ -89,6 +96,12 @@ The actual cwd comes from the session. It selects cwd-sensitive project config.
 OpenCode and Pi allow a cwd below the trusted root. Codex requires the cwd to
 equal the trusted root. Recovery stores only the cwd relative to the trusted
 root and reconstructs it inside that root.
+
+Cursor MCP files are `<root>/.cursor/mcp.json` and `~/.cursor/mcp.json`.
+Antigravity MCP files are `<root>/.agents/mcp_config.json` and
+`~/.gemini/config/mcp_config.json`. Generic agent skill inventory paths are
+`<root>/.agents/skills` and `~/.agents/skills`. These resource paths are
+documented for Phase 4 only. Current Phase 3 resolution does not mutate them.
 
 Global findings use a hashed physical target as their scope key. Project
 findings use the hashed trusted workspace. Session and worker targets stay
@@ -152,20 +165,26 @@ Auto Fix uses two explicit steps.
 The review names the agent, scope, setting, current value, proposed value,
 effect, and side effect. It does not expose a path or raw config.
 
-The editor rejects missing or ambiguous targets, dynamic values, runtime
-overrides, managed config, unsupported profiles, malformed or duplicate data,
+The editor rejects ambiguous targets, dynamic values, malformed or duplicate data,
 files above 256 KiB, non-regular files, symlinks in the target path, unsafe
 roots, and unsupported Unix ownership. It preserves unrelated values. TOML
 keeps formatting where `toml_edit` can preserve it. JSON uses formatted output.
 
-Apply writes an exclusive temporary file in the same directory. It preserves
+The editor can prepare when the controller reports a runtime or managed override.
+The review warns that the effective behavior might not change. Vendor-detected
+environment, remote, organization, and profile overrides remain unavailable.
+
+Apply stages an exclusive temporary file in every affected directory. It preserves
 permissions and Unix owner and group. It syncs the file, checks the original
 identity and bytes, atomically replaces the target, syncs the directory, reads
 the file again, and verifies the typed setting. A conflict never retargets or
 rebuilds the edit.
 
-A failure before replacement cancels the reservation. A result that can follow
-replacement enters durable `recoveryNeeded`. Recovery resolves the same agent,
+A batch rechecks each original before its replacement and attempts to roll back
+completed replacements if a later replacement fails. A rollback failure changes
+the result to uncertain and enters durable `recoveryNeeded`. A failure before
+replacement cancels the reservation. A result that can follow replacement enters
+durable `recoveryNeeded`. Recovery resolves the same agent,
 source, setting, scope, trusted root, relative cwd, physical selector, and
 replacement value. It starts verification only when readback proves the change.
 An old value cancels the uncertain write. A changed or unprovable target remains

@@ -4,6 +4,28 @@ import type { AutoFixReviewPayload } from "../../../lib/insightsIpc"
 import { agentDisplayName } from "../../../lib/presentation/agents"
 import { scopeLabel } from "./BurnCheckTargetPresentation"
 
+const settingLabels: Record<AutoFixReviewPayload["setting"], string> = {
+  model: "Model",
+  reasoning: "Reasoning effort",
+  compaction: "Compaction",
+  subagentModel: "Subagent model",
+  mcpServer: "MCP server",
+  builtInTool: "Built-in tool",
+  skill: "Skill",
+  fastMode: "Fast mode",
+}
+
+const effectDescriptions: Record<AutoFixReviewPayload["effect"], string> = {
+  modelSelection: "This plan changes future model selection. Existing sessions do not change.",
+  reasoningEffort: "This plan lowers reasoning effort for future requests. Existing sessions do not change.",
+  sessionCompaction: "This plan changes future session compaction. Existing sessions do not change.",
+  workerModelSelection: "This plan changes future worker model selection. Existing sessions do not change.",
+  mcpAvailability: "This plan changes MCP server availability for future requests.",
+  toolAvailability: "This plan changes built-in tool availability for future requests.",
+  skillAvailability: "This plan changes skill availability for future requests.",
+  serviceTierSelection: "This plan changes the service tier for future requests.",
+}
+
 export function BurnCheckReviewDialog({
   title,
   titleId,
@@ -57,9 +79,7 @@ export function BurnCheckReviewDialog({
           Fix {title}
         </h4>
         <p className="mt-2 type-body text-label-secondary">
-          {review.effect === "futureModelSelection"
-            ? "This plan changes future model selection. Existing sessions do not change."
-            : "This plan lowers reasoning effort for future requests. Existing sessions do not change."}
+          {effectDescriptions[review.effect]}
         </p>
         <dl className="mt-5 grid grid-cols-2 gap-3 rounded-control bg-surface-secondary px-3 py-3">
           <div>
@@ -69,7 +89,7 @@ export function BurnCheckReviewDialog({
           <div>
             <dt className="type-footnote text-label-tertiary">Setting</dt>
             <dd className="mt-0.5 type-callout text-label">
-              {review.setting === "model" ? "Model" : "Reasoning effort"}
+              {settingLabels[review.setting]}
             </dd>
           </div>
           <div className="col-span-2">
@@ -83,12 +103,23 @@ export function BurnCheckReviewDialog({
             </dd>
           </div>
           <div className="col-span-2">
+            <dt className="type-footnote text-label-tertiary">Setting path</dt>
+            <dd className="mt-0.5 break-all type-callout font-mono text-label">
+              {review.selectorLabel}
+            </dd>
+          </div>
+          <div className="col-span-2">
             <dt className="type-footnote text-label-tertiary">Config change</dt>
             <dd className="mt-0.5 type-callout font-mono text-label">
               {review.currentValue} → {review.proposedValue}
             </dd>
           </div>
         </dl>
+        {review.behaviorOverrideWarning && (
+          <p role="alert" className="mt-4 type-callout text-system-yellow-text">
+            An active override can keep current behavior unchanged after this edit.
+          </p>
+        )}
         {status && (
           <p role="alert" className="mt-4 type-callout text-system-red-text">
             {status}

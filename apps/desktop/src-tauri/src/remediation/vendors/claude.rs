@@ -20,9 +20,23 @@ impl VendorRemediationPolicy for ClaudePolicy {
     fn action_support(&self, action: RemediationAction, source: SourceFormat) -> ActionSupport {
         match (action, source) {
             (
-                RemediationAction::AutomaticEdit(_)
-                | RemediationAction::RecoverUncertainWrite(_)
-                | RemediationAction::PublicationAttribution(_),
+                RemediationAction::AutomaticEdit(
+                    ConfigSetting::Model
+                    | ConfigSetting::Reasoning
+                    | ConfigSetting::Compaction
+                    | ConfigSetting::FastMode
+                    | ConfigSetting::SubagentModel,
+                )
+                | RemediationAction::RecoverUncertainWrite(
+                    ConfigSetting::Model
+                    | ConfigSetting::Reasoning
+                    | ConfigSetting::Compaction
+                    | ConfigSetting::FastMode
+                    | ConfigSetting::SubagentModel,
+                )
+                | RemediationAction::PublicationAttribution(
+                    ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction,
+                ),
                 SourceFormat::ClaudeJsonl,
             ) => ActionSupport::Supported,
             _ => ActionSupport::Unsupported,

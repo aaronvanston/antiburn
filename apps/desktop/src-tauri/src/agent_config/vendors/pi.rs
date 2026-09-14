@@ -12,8 +12,19 @@ pub(super) struct Pi;
 pub(super) static PI: Pi = Pi;
 
 impl VendorConfig for Pi {
-    fn policy(&self, _: ConfigSetting) -> VendorPolicy {
-        VendorPolicy::AutomaticEdit
+    fn policy(&self, setting: ConfigSetting) -> VendorPolicy {
+        match setting {
+            ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction => {
+                VendorPolicy::AutomaticEdit
+            }
+            ConfigSetting::SubagentModel
+            | ConfigSetting::McpServer
+            | ConfigSetting::BuiltInTool
+            | ConfigSetting::Skill
+            | ConfigSetting::FastMode => {
+                VendorPolicy::Unsupported(ConfigUnavailableReason::UnsupportedSetting)
+            }
+        }
     }
 
     fn resolve_target(
@@ -73,7 +84,117 @@ impl VendorConfig for Pi {
                     .ok_or(ConfigUnavailableReason::MissingTarget)?;
                 Ok(target(&path, &global_root, ConfigScope::Global, operation))
             }
+            ConfigSetting::Compaction => {
+                for (path, document, root, scope) in project
+                    .iter()
+                    .map(|(path, document)| {
+                        (
+                            path,
+                            document,
+                            trusted_workspace_root.unwrap() as &Path,
+                            ConfigScope::Project,
+                        )
+                    })
+                    .chain(global.iter().map(|(path, document)| {
+                        (path, document, &global_root as &Path, ConfigScope::Global)
+                    }))
+                {
+                    for key in ["enabled", "reserveTokens", "keepRecentTokens"] {
+                        let Some(value) = document
+                            .get("compaction")
+                            .and_then(Value::as_object)
+                            .and_then(|value| value.get(key))
+                        else {
+                            continue;
+                        };
+                        if (key == "enabled" && value == &Value::Bool(false))
+                            || (key != "enabled" && value.is_number())
+                        {
+                            return Ok(target(
+                                path,
+                                root,
+                                scope,
+                                OperationSelector::JsonPath(vec!["compaction", key]),
+                            ));
+                        }
+                    }
+                }
+                Err(ConfigUnavailableReason::MissingTarget)
+            }
+            ConfigSetting::SubagentModel
+            | ConfigSetting::McpServer
+            | ConfigSetting::BuiltInTool
+            | ConfigSetting::Skill
+            | ConfigSetting::FastMode => Err(ConfigUnavailableReason::UnsupportedSetting),
         }
+    }
+
+    fn resolve_targets(
+        &self,
+        setting: ConfigSetting,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<Vec<Target>, ConfigUnavailableReason> {
+        let primary = self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root)?;
+        let mut targets = vec![primary];
+        let global_root = global_root(home)?;
+        let global = global_root.join("settings.json");
+        if path_entry_exists(&global)?
+            && !targets.iter().any(|target| target.path == global)
+            && self
+                .read_value(
+                    &read_checked(&global, &global_root)?.bytes,
+                    &targets[0].operation,
+                )?
+                .is_some()
+        {
+            targets.push(target(
+                &global,
+                &global_root,
+                ConfigScope::Global,
+                targets[0].operation.clone(),
+            ));
+        }
+        if let (Some(cwd), Some(root)) = (workspace_cwd, trusted_workspace_root) {
+            let project = cwd.join(".pi/settings.json");
+            if path_entry_exists(&project)?
+                && !targets.iter().any(|target| target.path == project)
+                && self
+                    .read_value(&read_checked(&project, root)?.bytes, &targets[0].operation)?
+                    .is_some()
+            {
+                targets.push(target(
+                    &project,
+                    root,
+                    ConfigScope::Project,
+                    targets[0].operation.clone(),
+                ));
+            }
+        }
+        Ok(targets)
+    }
+
+    #[cfg(not(windows))]
+    fn standalone_global(
+        &self,
+        setting: ConfigSetting,
+        home: &Path,
+        proposed: &str,
+    ) -> Result<(std::path::PathBuf, Vec<u8>), ConfigUnavailableReason> {
+        let value = match setting {
+            ConfigSetting::Model => {
+                let (provider, model) = split_route(proposed)?;
+                serde_json::json!({ "defaultProvider": provider, "defaultModel": model })
+            }
+            ConfigSetting::Reasoning => serde_json::json!({ "defaultThinkingLevel": proposed }),
+            _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
+        };
+        Ok((
+            global_root(home)?.join("settings.json"),
+            serde_json::to_vec_pretty(&value)
+                .map_err(|_| ConfigUnavailableReason::MalformedConfig)?,
+        ))
     }
 
     fn read_value(
@@ -96,6 +217,16 @@ impl VendorConfig for Pi {
                         .as_str()
                         .map(ToOwned::to_owned)
                         .ok_or(ConfigUnavailableReason::MalformedConfig)
+                })
+                .transpose(),
+            OperationSelector::JsonPath(path) if path.len() == 2 => document
+                .get(path[0])
+                .and_then(Value::as_object)
+                .and_then(|object| object.get(path[1]))
+                .map(|value| match value {
+                    Value::Bool(value) => Ok(value.to_string()),
+                    Value::Number(value) => Ok(value.to_string()),
+                    _ => Err(ConfigUnavailableReason::MalformedConfig),
                 })
                 .transpose(),
             _ => Err(ConfigUnavailableReason::UnsupportedSetting),
@@ -143,6 +274,30 @@ impl VendorConfig for Pi {
                     return Err(ConfigUnavailableReason::MissingTarget);
                 }
                 levels.insert(route.clone(), Value::String(proposed.into()));
+            }
+            OperationSelector::JsonPath(path) if path.len() == 2 => {
+                let value = if path[1] == "enabled" {
+                    Value::Bool(
+                        proposed
+                            .parse()
+                            .map_err(|_| ConfigUnavailableReason::InvalidTarget)?,
+                    )
+                } else {
+                    Value::Number(
+                        proposed
+                            .parse::<u64>()
+                            .map_err(|_| ConfigUnavailableReason::InvalidTarget)?
+                            .into(),
+                    )
+                };
+                let compaction = document
+                    .get_mut(path[0])
+                    .and_then(Value::as_object_mut)
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                if !compaction.contains_key(path[1]) {
+                    return Err(ConfigUnavailableReason::MissingTarget);
+                }
+                compaction.insert(path[1].into(), value);
             }
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         }

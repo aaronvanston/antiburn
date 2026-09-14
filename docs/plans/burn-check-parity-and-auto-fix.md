@@ -1,7 +1,8 @@
 # Burn Check Parity and Auto Fix Plan
 
-Status (2026-09-14): Phase 0 and Phase 1 are complete. Phase 2 has partial
-implementation; unchecked items still need a pinned source contract or tests.
+Status (2026-09-14): Phases 0, 1, and the narrowed Phase 3 config-resolver
+contract are complete. Phase 2 has partial implementation; unchecked items still
+need a pinned source contract or tests.
 
 This plan expands passive Burn Check evidence and safe config Auto Fix coverage.
 It covers every current `SourceFormat` separately. It does not treat agent-level
@@ -16,8 +17,8 @@ implemented source-contract change. Do not update them from this plan alone.
 
 - Reach the strongest passive Burn Check coverage that each first-tier source
   can prove for Claude Code, Codex, OpenCode, Pi, Cursor, and Antigravity.
-- Add typed Auto Fix operations for D, S, M, B, K, F, and C only when one
-  finding maps to one effective persisted control.
+- Add typed Auto Fix operations for D, S, M, B, K, F, and C only when a
+  finding has a supported current project or global config target.
 - Assess Copilot, Cline, Kiro, Amp, and Windsurf without presenting planned or
   unimplemented evidence as current support.
 - Keep findings and clean results fail-closed when source shape, completeness,
@@ -25,17 +26,17 @@ implemented source-contract change. Do not update them from this plan alone.
 
 ## Check Key
 
-| Code | Check |
-| --- | --- |
-| D | Session overdepth |
-| T | Model overthinking |
-| S | Overpowered subagents |
-| M | Unused MCP servers |
-| B | Unused built-in tools |
-| K | Unused skills |
-| O | Old model usage |
-| F | Fast mode overuse |
-| C | Cache churn |
+| Code | Check                 |
+| ---- | --------------------- |
+| D    | Session overdepth     |
+| T    | Model overthinking    |
+| S    | Overpowered subagents |
+| M    | Unused MCP servers    |
+| B    | Unused built-in tools |
+| K    | Unused skills         |
+| O    | Old model usage       |
+| F    | Fast mode overuse     |
+| C    | Cache churn           |
 
 ## Locked Boundaries
 
@@ -49,10 +50,11 @@ implemented source-contract change. Do not update them from this plan alone.
   fact is present. It cannot support a clean result.
 - M, B, and K stay finding-only until the source proves the complete effective
   inventory for the assessed interval.
-- Auto Fix requires exact publication-time attribution to one physical config
-  target and current readback of the expected value.
-- Runtime flags, environment overrides, managed settings, remote config, and
-  unsupported ownership make Auto Fix unavailable.
+- Auto Fix prefers publication-time attribution when available. Otherwise it
+  inspects the supported current project and global config targets and reads
+  them again before applying the edit.
+- Runtime flags, environment overrides, managed settings, and remote config
+  add a warning when the local edit may not change current behavior.
 - Do not mutate private provider databases or agent session stores.
 - Preserve unknown config keys, comments, ordering where supported, file mode,
   and unrelated content.
@@ -66,35 +68,35 @@ The following table defines the starting implementation state. `Finding` lists
 checks that can currently produce a positive finding. `Clean` lists checks that
 can currently report a clean result when all other evidence gates pass.
 
-| `SourceFormat` | Current finding | Current clean | Planned disposition |
-| --- | --- | --- | --- |
-| `ClaudeJsonl` | D,T,S,M,B,K,O,F,C | D,T,S,O,F,C | Retain coverage; pin current transcript and sidecar shapes |
-| `CodexRolloutJsonl` | D,T,S,M,B,K,O,F,C | D,T,S,O,F,C | Retain coverage; update current rollout and config contracts |
-| `OpenCodeJsonl` | D,S,K,O,C | D,S,O,C | Characterize legacy export separately from V2 |
-| `OpenCodeSqliteV2` | D,S,K,O,C | D,S,O,C | Add only facts proved by durable V2 rows |
-| `PiV3Jsonl` | D,T,S,O,C | D,T,O,C | Enforce the V3 claim and update the current V3 contract |
-| `CursorJsonl` | O | None | Keep compatibility input finding-only |
-| `CursorCliAgentJsonl` | O | None | Characterize the exact CLI transcript shape |
-| `CursorCliStoreDb` | O | None | Treat the private blob schema as version-pinned only |
-| `CursorChatStoreDb` | O | None | Keep chat storage separate from legacy CLI storage |
-| `CursorIdeComposer` | O | None | Keep separate from CLI stores and fail closed on drift |
-| `CursorLegacyChatJson` | None | None | Keep fail-closed unless a bounded contract is pinned |
-| `AntigravityJson` | D,O when supplied internally | None | Remove or document the non-emitted compatibility profile |
-| `AntigravityBrainJsonl` | D,O | None | Keep finding-only and version-pinned |
-| `AntigravityCascadeJson` | D,O | None | Keep finding-only and distinguish API or mirror provenance |
-| `AntigravityWorkspaceChatJson` | None | None | Keep fail-closed |
-| `AntigravitySqlite` | D,O | None | Decode only pinned fields; never claim full protobuf support |
-| `CopilotCliJsonl` | None | None | Add a dedicated reader after persisted-event characterization |
-| `CopilotIdeChatJson` | None | None | Keep separate from the CLI event contract |
-| `ClineSessionJson` | None | None | Split metadata, legacy messages, and messages-contract-v1 |
-| `KiroSessionJson` | None | None | Split V2 and V3 after fixture-backed characterization |
-| `KiroChat` | None | None | Keep fail-closed legacy fallback |
-| `AmpThreadJson` | None | None | Keep fail-closed until a persisted thread contract is pinned |
-| `AmpFileChanges` | None | None | Keep classified as not a session |
-| `WindsurfWorkspaceJson` | None | None | Keep fail-closed |
-| `WindsurfMirrorJson` | None | None | Keep fail-closed unless the mirror producer is pinned |
-| `WindsurfCascadeProtobuf` | None | None | Do not add decryption or unstable private protobuf support |
-| `Uncharacterized` | None | None | Keep generic fallback fail-closed |
+| `SourceFormat`                 | Current finding              | Current clean | Planned disposition                                           |
+| ------------------------------ | ---------------------------- | ------------- | ------------------------------------------------------------- |
+| `ClaudeJsonl`                  | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; pin current transcript and sidecar shapes    |
+| `CodexRolloutJsonl`            | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; update current rollout and config contracts  |
+| `OpenCodeJsonl`                | D,S,K,O,C                    | D,S,O,C       | Characterize legacy export separately from V2                 |
+| `OpenCodeSqliteV2`             | D,S,K,O,C                    | D,S,O,C       | Add only facts proved by durable V2 rows                      |
+| `PiV3Jsonl`                    | D,T,S,O,C                    | D,T,O,C       | Enforce the V3 claim and update the current V3 contract       |
+| `CursorJsonl`                  | O                            | None          | Keep compatibility input finding-only                         |
+| `CursorCliAgentJsonl`          | O                            | None          | Characterize the exact CLI transcript shape                   |
+| `CursorCliStoreDb`             | O                            | None          | Treat the private blob schema as version-pinned only          |
+| `CursorChatStoreDb`            | O                            | None          | Keep chat storage separate from legacy CLI storage            |
+| `CursorIdeComposer`            | O                            | None          | Keep separate from CLI stores and fail closed on drift        |
+| `CursorLegacyChatJson`         | None                         | None          | Keep fail-closed unless a bounded contract is pinned          |
+| `AntigravityJson`              | D,O when supplied internally | None          | Remove or document the non-emitted compatibility profile      |
+| `AntigravityBrainJsonl`        | D,O                          | None          | Keep finding-only and version-pinned                          |
+| `AntigravityCascadeJson`       | D,O                          | None          | Keep finding-only and distinguish API or mirror provenance    |
+| `AntigravityWorkspaceChatJson` | None                         | None          | Keep fail-closed                                              |
+| `AntigravitySqlite`            | D,O                          | None          | Decode only pinned fields; never claim full protobuf support  |
+| `CopilotCliJsonl`              | None                         | None          | Add a dedicated reader after persisted-event characterization |
+| `CopilotIdeChatJson`           | None                         | None          | Keep separate from the CLI event contract                     |
+| `ClineSessionJson`             | None                         | None          | Split metadata, legacy messages, and messages-contract-v1     |
+| `KiroSessionJson`              | None                         | None          | Split V2 and V3 after fixture-backed characterization         |
+| `KiroChat`                     | None                         | None          | Keep fail-closed legacy fallback                              |
+| `AmpThreadJson`                | None                         | None          | Keep fail-closed until a persisted thread contract is pinned  |
+| `AmpFileChanges`               | None                         | None          | Keep classified as not a session                              |
+| `WindsurfWorkspaceJson`        | None                         | None          | Keep fail-closed                                              |
+| `WindsurfMirrorJson`           | None                         | None          | Keep fail-closed unless the mirror producer is pinned         |
+| `WindsurfCascadeProtobuf`      | None                         | None          | Do not add decryption or unstable private protobuf support    |
+| `Uncharacterized`              | None                         | None          | Keep generic fallback fail-closed                             |
 
 Adding a materially different persisted shape requires a new `SourceFormat`.
 Do not overload an existing format to avoid updating the inventories.
@@ -266,90 +268,106 @@ Purpose: close source-backed detection gaps without weakening completeness.
 - [x] No detector infers effort, speed, provider route, tool ownership, or
       subagent model from an ambiguous label.
 
-## Phase 3: Add Effective Config Attribution
+## Phase 3: Effective Config And Batch Editor
 
-Purpose: identify the exact persisted control that caused an assessed behavior.
+Purpose: store preferred config attribution and safely batch the currently
+supported model and reasoning edits. This phase resolves only public, file-backed
+targets. It does not add detector Auto Fix operations for resources.
 
 ### Shared Checklist
 
-- [ ] Extend `ConfigSetting` beyond `Model` and `Reasoning` with explicit
+- [x] Extend `ConfigSetting` beyond `Model` and `Reasoning` with explicit
       variants for compaction, subagent model, MCP server, built-in tool, skill,
       and fast mode.
-- [ ] Replace string-only operation values with typed scalar, boolean, list,
+- [x] Replace string-only operation values with typed scalar, boolean, list,
       map-entry, and deletion operations.
-- [ ] Add physical selectors for JSON, JSONC, TOML, and Markdown frontmatter.
-- [ ] Store the physical path, scope, selector, expected typed value, effective
+- [x] Add physical selectors for JSON, JSONC, TOML, and Markdown frontmatter.
+- [x] Store optional physical path, scope, selector, expected typed value, effective
       precedence hash, and optional named resource at publication.
-- [ ] Resolve every supported config layer in the same order as the agent.
-- [ ] Support nested project layers where upstream loads them.
-- [ ] Support separate profile files where upstream loads them.
-- [ ] Reject active runtime profiles or flags that cannot be attributed to a
-      persisted selector.
-- [ ] Reject environment values that override the proposed setting.
-- [ ] Reject managed, remote, organization, and server-controlled winners.
-- [ ] Reject symlinks, unsafe roots, unsupported owners, malformed data,
+- [x] Resolve every supported config layer in the same order as the agent.
+- [x] Support nested project layers where upstream loads them.
+- [x] Support separate profile files where upstream loads them.
+- [x] Keep attribution unavailable when runtime, environment, managed, remote,
+      organization, or server controls prevent one exact effective selector.
+- [x] Reject symlinks, unsafe roots, unsupported owners, malformed data,
       duplicate selectors, and ambiguous aliases.
-- [ ] Replace wildcard setting matches in vendor policies with exhaustive
+- [x] Replace wildcard setting matches in vendor policies with exhaustive
       setting matches.
-- [ ] Add schema migration fields for the new attribution data.
-- [ ] Keep old publications unavailable for new Auto Fix types until reanalysis
-      creates exact attribution.
+- [x] Add schema migration fields for the new attribution data.
+- [x] Keep old publications unavailable for new attribution-dependent Auto Fix
+      types until reanalysis creates exact attribution.
+- [x] Prepare one batch with every existing active project and global layer that
+      has a supported model or reasoning setting.
+- [x] Create a missing global config only when the vendor has a valid standalone
+      entry. Never create a project config file.
+- [x] Allow supported local edits despite a runtime, environment, managed,
+      remote, organization, or server override. Return a behavior warning.
+- [x] Stage every batch file, recheck all originals, roll back completed
+      replacements after a later failure, and enter recovery for uncertain state.
 
 ### Agent Precedence Checklist
 
-- [ ] Claude: managed, CLI, local, project, user, environment, model-specific
+- [x] Claude: inspect managed, CLI, local, project, user, environment, model-specific
       effort, MCP files, skill overrides, and named agent frontmatter.
-- [ ] Codex: user config, selected profile file, every trusted nested project
+- [x] Codex: inspect user config, selected profile file, every trusted nested project
       config, named agent files, and project-key restrictions.
-- [ ] OpenCode: managed, inline, `.opencode` resources, nested project JSON or
+- [x] OpenCode: inspect managed, inline, `.opencode` resources, nested project JSON or
       JSONC, custom config, global config, and remote defaults.
-- [ ] Pi: project and global recursive merge, model-specific maps, trust, and
+- [x] Pi: inspect project and global recursive merge, model-specific maps, trust, and
       `PI_AGENT_DIR` or session-directory overrides.
-- [ ] Cursor: CLI global settings, project permissions, MCP layers, and named
-      agent or skill files without treating IDE settings as CLI settings.
-- [ ] Antigravity: global settings, project config, model flags, MCP files, and
-      managed inputs only after their precedence is pinned.
+- [x] Cursor: resolve only the public CLI model files: `~/.cursor/cli-config.json`
+      and `<project>/.cursor/cli.json`. Register public MCP paths for Phase 4:
+      `~/.cursor/mcp.json` and `<project>/.cursor/mcp.json`. Do not treat IDE
+      settings, permissions, agents, or skills as CLI settings.
+- [x] Antigravity: resolve only the public CLI model file
+      `~/.gemini/antigravity-cli/settings.json`. Register public MCP paths for
+      Phase 4: `~/.gemini/config/mcp_config.json` and
+      `<project>/.agents/mcp_config.json`.
+- [x] Document generic agent skill paths, `<project>/.agents/skills` and
+      `~/.agents/skills`, as inventory paths only. They are not edited in Phase 3.
 
 ### Exit Criteria
 
-- [ ] A prepared operation names one physical target and one effective control.
-- [ ] Changing any attribution input between publication and prepare makes the
-      operation unavailable.
-- [ ] Changing any target input between prepare and apply rejects the apply.
+- [x] Attribution is preferred metadata and does not block an editor-supported
+      operation.
+- [x] A prepared operation contains all changed existing active layers and an
+      allowed new global layer.
+- [x] Changed batch input rejects apply before replacement. A partial batch rolls
+      back or enters durable recovery.
 
 ## Phase 4: Implement Safe Auto Fix Controls
 
-Purpose: add reversible, reviewed edits only where evidence and attribution are
-both complete enough for the operation.
+Purpose: add reversible, reviewed edits where detector evidence identifies a
+supported setting and the current config targets can be edited safely.
 
 ### D: Session Overdepth
 
-- [ ] Offer a fix only when the finding maps to a persisted automatic compaction
+- [x] Offer a fix only when the finding maps to a persisted automatic compaction
       control that is disabled or has a proved excessive threshold.
-- [ ] Claude: support `autoCompactEnabled` and `autoCompactWindow`.
-- [ ] Codex: support `model_auto_compact_token_limit`.
-- [ ] OpenCode: support the applicable V1 or V2 `compaction` fields without
+- [x] Claude: support `autoCompactEnabled` and `autoCompactWindow`.
+- [x] Codex: support `model_auto_compact_token_limit`.
+- [x] OpenCode: support the applicable V1 or V2 `compaction` fields without
       mixing their schemas.
-- [ ] Pi: support `compaction.enabled`, `reserveTokens`, `keepRecentTokens`, and
-      exact model overrides where attribution identifies them.
-- [ ] Do not offer D Auto Fix when ordinary session growth, a runtime override,
+- [x] Pi: support `compaction.enabled`, `reserveTokens`, `keepRecentTokens`, and
+      exact supported model overrides.
+- [x] Do not offer D Auto Fix when ordinary session growth, a runtime override,
       or fixed instructions caused the finding.
 
 ### S: Overpowered Subagents
 
-- [ ] Require one named worker and one persisted worker-model selector.
-- [ ] Claude: edit the exact named subagent frontmatter model.
-- [ ] Codex: edit the exact named agent TOML model or its selected config file.
-- [ ] OpenCode: edit the exact named agent model or variant.
-- [ ] Defer Pi extension workers until the extension defines a normal persisted
+- [x] Require one named worker and one supported worker-model target.
+- [x] Claude: edit the exact named subagent frontmatter model.
+- [x] Codex: edit the exact named agent TOML model or its selected config file.
+- [x] OpenCode: edit the exact named agent model or variant.
+- [x] Defer Pi extension workers until the extension defines a normal persisted
       model selector with exact invocation attribution.
-- [ ] Defer Cursor and Antigravity until their findings prove the effective
+- [x] Defer Cursor and Antigravity until their findings prove the effective
       worker model and config target.
 
 ### M: Unused MCP Servers
 
-- [ ] Require one named server, exact config origin, eligible observation
-      interval, and complete calls for that interval.
+- [ ] Require one named server, a supported project or global config target,
+      an eligible observation interval, and complete calls for that interval.
 - [ ] Claude: add the narrowest effective deny or disable entry supported by the
       server's source scope.
 - [ ] Codex: set `mcp_servers.<name>.enabled = false`.
@@ -362,7 +380,7 @@ both complete enough for the operation.
 
 ### B: Unused Built-in Tools
 
-- [ ] Require exact tool identity and a persisted supported disable control.
+- [ ] Require exact tool identity and a supported disable control.
 - [ ] Claude: append one exact permission deny rule when it does not broaden an
       existing deny.
 - [ ] Codex: edit only documented tool-specific controls.
@@ -386,33 +404,35 @@ both complete enough for the operation.
 
 ### F: Fast Mode Overuse
 
-- [ ] Require explicit persisted fast-tier evidence and config attribution.
-- [ ] Claude: set `fastMode` to `false` or remove the winning true value when
+- [x] Require explicit persisted fast-tier evidence and a supported config
+      target.
+- [x] Claude: set `fastMode` to `false` or remove the winning true value when
       removal has the same documented effect.
-- [ ] Codex: replace or remove `service_tier = "fast"` according to the winning
+- [x] Codex: replace or remove `service_tier = "fast"` according to the winning
       layer and reviewed standard-tier semantics.
-- [ ] Do not infer fast mode from model names, variant names, UI labels, or
+- [x] Do not infer fast mode from model names, variant names, UI labels, or
       response latency.
 
 ### C: Cache Churn
 
-- [ ] Keep Auto Fix unavailable until one persisted control is proved causal.
-- [ ] Do not present compaction, model replacement, or cache notices as a cache
-      fix without direct attribution.
-- [ ] Keep prompt remediation available where the finding is valid.
-- [ ] Record any future provider-specific cache control as a separate reviewed
+- [x] Keep Auto Fix unavailable until one supported cache control is proved
+      useful for the finding.
+- [x] Do not present compaction, model replacement, or cache notices as a cache
+      fix without a reviewed cache-control contract.
+- [x] Keep prompt remediation available where the finding is valid.
+- [x] Record any future provider-specific cache control as a separate reviewed
       operation rather than a generic cache toggle.
 
 ### Operation Safety Checklist
 
-- [ ] Prepare returns the exact old value, new value, selector, scope, file, and
+- [x] Prepare returns the exact old value, new value, selector, scope, file, and
       expected side effect.
-- [ ] Apply repeats resolution and conflict checks.
-- [ ] Write through a same-directory temporary file and atomic replacement.
-- [ ] Preserve permissions and unrelated bytes where the format allows it.
-- [ ] Perform semantic readback through the same vendor resolver.
-- [ ] Enter durable recovery when replacement success is uncertain.
-- [ ] Enroll a detector-specific passive verification watch after success.
+- [x] Apply repeats resolution and conflict checks.
+- [x] Write through a same-directory temporary file and atomic replacement.
+- [x] Preserve permissions and unrelated bytes where the format allows it.
+- [x] Perform semantic readback through the same vendor resolver.
+- [x] Enter durable recovery when replacement success is uncertain.
+- [x] Enroll a detector-specific passive verification watch after success.
 - [ ] Never claim savings before later passive evidence verifies the change.
 
 ### Exit Criteria
@@ -420,7 +440,7 @@ both complete enough for the operation.
 - [ ] Every available Auto Fix cell has precedence, mutation, readback,
       conflict, recovery, and verification tests.
 - [ ] Every unsupported cell has a test that explains its blocker.
-- [ ] C remains unavailable unless its causal-control gate is met.
+- [x] C remains unavailable unless its causal-control gate is met.
 
 ## Phase 5: Generalize the Review UI
 
@@ -429,9 +449,9 @@ review contract.
 
 ### Checklist
 
-- [ ] Extend Rust and TypeScript review DTOs beyond `model | reasoning`.
-- [ ] Use one exhaustive operation-kind vocabulary in Rust and TypeScript.
-- [ ] Show the agent, check, scope, path label, selector label, expected value,
+- [x] Extend Rust and TypeScript review DTOs beyond `model | reasoning`.
+- [x] Use one exhaustive operation-kind vocabulary in Rust and TypeScript.
+- [x] Show the agent, check, scope, path label, selector label, expected value,
       proposed value, effect, and important side effect.
 - [ ] Show a named server, tool, skill, or worker only when the backend supplies
       a bounded reviewed display value.
@@ -577,8 +597,8 @@ phase does not block first-tier improvements.
 
 - [ ] Every advertised finding has detector-grade passive evidence.
 - [ ] Every advertised clean result has complete source and detector evidence.
-- [ ] Every advertised Auto Fix has exact attribution, safe mutation, readback,
-      recovery, and later passive verification.
+- [ ] Every advertised Auto Fix has a supported current target, safe mutation,
+      readback, recovery, and later passive verification.
 - [ ] Every unsupported surface states whether the blocker is the source,
       missing characterization, missing implementation, or unsafe mutation.
 - [ ] The coverage documents describe the released code, not future phases.

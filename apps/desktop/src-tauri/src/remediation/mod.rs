@@ -37,7 +37,8 @@ use serde_json::json;
 use sha2::Sha256;
 
 use crate::agent_config::{
-    AgentConfigEditor, ConfigContext, ConfigOperation, ConfigScope, ConfigSetting, PreparedChange,
+    AgentConfigEditor, ConfigContext, ConfigOperation, ConfigScope, ConfigSetting,
+    PreparedOperation,
 };
 use crate::insights_report::{self, CurrentFinding, CurrentFindingsRequest};
 use crate::store::{PassiveRemediation, SessionKey};
@@ -47,8 +48,8 @@ use crate::store::{
 };
 use vendors::{ActionSupport, RemediationAction, vendor_policy};
 
-pub(crate) use config::publication_config_attribution;
 use config::*;
+pub(crate) use config::{PublicationSettingAttribution, publication_config_attribution};
 #[cfg(test)]
 pub(crate) use config::{hashed_workspace_key, publication_config_attribution_with_home};
 use display::*;
@@ -141,10 +142,10 @@ struct TimedTarget {
     created_at_epoch: i64,
 }
 
-struct PreparedOperation {
+struct PreparedAutoFix {
     id: String,
     target: CachedTarget,
-    prepared: Option<PreparedChange>,
+    prepared: Option<PreparedOperation>,
     retained_bytes: usize,
     created_at_epoch: i64,
     completed: Option<AutoFixResult>,
@@ -153,7 +154,7 @@ struct PreparedOperation {
 #[derive(Default)]
 struct ControllerState {
     targets: VecDeque<TimedTarget>,
-    prepared: VecDeque<PreparedOperation>,
+    prepared: VecDeque<PreparedAutoFix>,
 }
 
 pub struct RemediationController {
@@ -545,25 +546,48 @@ impl RemediationController {
                 AutoFixUnavailableReason::SafetyCheckFailed,
             ));
         }
+        let setting = match config.operation.setting {
+            ConfigSetting::Model => AutoFixSetting::Model,
+            ConfigSetting::Reasoning => AutoFixSetting::Reasoning,
+            ConfigSetting::Compaction => AutoFixSetting::Compaction,
+            ConfigSetting::FastMode => AutoFixSetting::FastMode,
+            ConfigSetting::SubagentModel => AutoFixSetting::SubagentModel,
+            ConfigSetting::McpServer | ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
+                return Err(ControllerError::AutoFixUnavailable(
+                    AutoFixUnavailableReason::UnsupportedOrUnprovenTarget,
+                ));
+            }
+        };
         let review = AutoFixReview {
             prepared_operation_id: prepared_operation_id.clone(),
             expires_at_epoch: now.saturating_add(ID_TTL.as_secs() as i64),
             agent: target.agent,
             scope: scope_display(&target.scope_kind),
-            setting: match config.operation.setting {
-                ConfigSetting::Model => AutoFixSetting::Model,
-                ConfigSetting::Reasoning => AutoFixSetting::Reasoning,
-            },
+            setting,
             config_file: display_config_file(prepared.physical_identity().0, &context.home_root),
-            current_value: config.operation.expected_value.clone(),
-            proposed_value: config.operation.proposed_value.clone(),
-            effect: match config.operation.setting {
-                ConfigSetting::Model => AutoFixEffect::FutureModelSelection,
-                ConfigSetting::Reasoning => AutoFixEffect::FutureReasoningEffort,
+            selector_label: prepared.physical_identity().1.to_owned(),
+            current_value: config.operation.expected_value.display_value(),
+            proposed_value: config.operation.proposed_value.display_value(),
+            behavior_override_warning: prepared.behavior_override_warning(),
+            effect: match setting {
+                AutoFixSetting::Model => AutoFixEffect::ModelSelection,
+                AutoFixSetting::Reasoning => AutoFixEffect::ReasoningEffort,
+                AutoFixSetting::Compaction => AutoFixEffect::SessionCompaction,
+                AutoFixSetting::SubagentModel => AutoFixEffect::WorkerModelSelection,
+                AutoFixSetting::McpServer => AutoFixEffect::McpAvailability,
+                AutoFixSetting::BuiltInTool => AutoFixEffect::ToolAvailability,
+                AutoFixSetting::Skill => AutoFixEffect::SkillAvailability,
+                AutoFixSetting::FastMode => AutoFixEffect::ServiceTierSelection,
             },
-            side_effect: match config.operation.setting {
-                ConfigSetting::Model => AutoFixSideEffect::ModelBehaviorMayChange,
-                ConfigSetting::Reasoning => AutoFixSideEffect::ResponsesMayUseLessReasoning,
+            side_effect: match setting {
+                AutoFixSetting::Model => AutoFixSideEffect::ModelBehaviorMayChange,
+                AutoFixSetting::Reasoning => AutoFixSideEffect::ResponsesMayUseLessReasoning,
+                AutoFixSetting::Compaction => AutoFixSideEffect::EarlierSessionSummarization,
+                AutoFixSetting::SubagentModel => AutoFixSideEffect::WorkerBehaviorMayChange,
+                AutoFixSetting::McpServer => AutoFixSideEffect::ServerWillNotBeAvailable,
+                AutoFixSetting::BuiltInTool => AutoFixSideEffect::ToolWillNotBeAvailable,
+                AutoFixSetting::Skill => AutoFixSideEffect::SkillWillNotBeAvailable,
+                AutoFixSetting::FastMode => AutoFixSideEffect::ResponsesMayTakeLonger,
             },
         };
         let mut state = self.state.lock().map_err(|_| ControllerError::Internal)?;
@@ -577,7 +601,7 @@ impl RemediationController {
                 ));
             }
         }
-        state.prepared.push_back(PreparedOperation {
+        state.prepared.push_back(PreparedAutoFix {
             id: prepared_operation_id,
             target,
             prepared: Some(prepared),
@@ -753,19 +777,26 @@ impl RemediationController {
         let secret = store
             .provider_account_secret()
             .map_err(|_| ControllerError::Internal)?;
-        let identity = target_identity(&secret, &finding, project_root.as_deref());
+        let mut identity = target_identity(&secret, &finding, project_root.as_deref());
         let mut config = None;
-        if let (Some(home), Some(operation)) = (
-            home,
-            reviewed_config_operation(agent, finding.finding.cause()),
-        ) && automatic_editor_supported(
-            agent,
-            operation.setting,
-            finding.finding.source_format,
-            &identity.scope_kind,
-            &finding.environment_key,
-            current_editor_platform(),
-        ) && (finding.workspace_candidate().is_none() || project_root.is_some())
+        let operation = reviewed_config_operation(agent, finding.finding.cause());
+        if let Some(home) = home
+            && (operation.is_some()
+                || matches!(
+                    finding.finding.cause(),
+                    FindingCause::SessionsOverDepth { .. }
+                ))
+            && automatic_editor_supported(
+                agent,
+                operation
+                    .as_ref()
+                    .map_or(ConfigSetting::Compaction, |operation| operation.setting),
+                finding.finding.source_format,
+                &identity.scope_kind,
+                &finding.environment_key,
+                current_editor_platform(),
+            )
+            && (finding.workspace_candidate().is_none() || project_root.is_some())
             && workspace_precedence_supported(
                 agent,
                 finding.workspace_candidate(),
@@ -795,8 +826,15 @@ impl RemediationController {
             };
             context.runtime_override_present = runtime_override_present(agent);
             context.managed_configuration_present = managed_configuration_present(agent, home);
-            if let Ok(effective) = self.editor.effective(&context, operation.setting)
-                && effective.value == operation.expected_value
+            if let Some(operation) = operation.or_else(|| {
+                self.editor
+                    .effective(&context, ConfigSetting::Compaction)
+                    .ok()
+                    .and_then(|effective| {
+                        compaction_operation(finding.finding.cause(), &effective.value)
+                    })
+            }) && let Ok(effective) = self.editor.effective(&context, operation.setting)
+                && operation.expected_value.display_value() == effective.value
             {
                 let selector_qualifier = physical_selector_qualifier(
                     &self.editor,
@@ -810,9 +848,46 @@ impl RemediationController {
                     selector_qualifier.as_deref(),
                 )
                 .map_err(|_| ControllerError::Internal)?;
-                if identity.physical_target_key.as_deref() == Some(key.as_str())
-                    && identity.scope_kind == scope_name(effective.scope)
-                {
+                if operation.setting == ConfigSetting::FastMode {
+                    identity.scope_kind = scope_name(effective.scope).to_owned();
+                    identity.scope_key = if effective.scope == ConfigScope::Global {
+                        key.clone()
+                    } else {
+                        identity
+                            .workspace_key
+                            .clone()
+                            .unwrap_or_else(|| key.clone())
+                    };
+                    identity.physical_target_key = Some(key.clone());
+                    identity.group_key = hashed_parts_with_secret(
+                        &secret,
+                        TARGET_DOMAIN,
+                        &[
+                            &finding.environment_key,
+                            agent.slug(),
+                            &identity.scope_kind,
+                            &identity.scope_key,
+                            &key,
+                            &identity.canonical_identity,
+                        ],
+                    );
+                    identity.target_key = hashed_parts_with_secret(
+                        &secret,
+                        TARGET_DOMAIN,
+                        &[
+                            &finding.environment_key,
+                            agent.slug(),
+                            &key,
+                            &identity.canonical_identity,
+                        ],
+                    );
+                    config = Some(CachedConfig {
+                        context,
+                        operation,
+                        physical_key: key,
+                    });
+                } else if identity.scope_kind == scope_name(effective.scope) {
+                    identity.physical_target_key = Some(key.clone());
                     config = Some(CachedConfig {
                         context,
                         operation,
@@ -865,7 +940,7 @@ impl RemediationController {
         &self,
         store: &Store,
         target: &CachedTarget,
-        prepared: &PreparedChange,
+        prepared: &PreparedOperation,
     ) -> Result<(), ControllerError> {
         self.revalidate(target)?;
         let config = target
@@ -891,7 +966,7 @@ impl RemediationController {
             selector_qualifier.as_deref(),
         )
         .map_err(|_| ControllerError::Internal)?;
-        if effective.value != config.operation.expected_value
+        if config.operation.expected_value.display_value() != effective.value
             || effective.setting != prepared.setting()
             || effective.scope != prepared.scope()
             || effective.scope
@@ -1085,6 +1160,7 @@ fn watch_verification_available(
                 && definition.target_model.is_some()
                 && definition.target_control.is_some()
         }
+        DetectorId::OverpoweredSubagents => false,
         _ => false,
     }
 }

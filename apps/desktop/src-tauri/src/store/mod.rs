@@ -1841,9 +1841,12 @@ impl Store {
                     claimed_at_epoch = NULL, lease_expires_at_epoch = NULL,
                      next_attempt_at_epoch = NULL, published_fence = ?12,
                      effective_model_target_hash = ?14,
-                     effective_model_scope = ?15, effective_model = ?16,
-                     effective_reasoning_target_hash = ?17,
-                     effective_reasoning_scope = ?18, effective_reasoning = ?19
+                      effective_model_scope = ?15, effective_model = ?16,
+                      effective_reasoning_target_hash = ?17,
+                      effective_reasoning_scope = ?18, effective_reasoning = ?19,
+                      effective_config_path = ?20, effective_config_selector = ?21,
+                      effective_config_precedence_hash = ?22,
+                      effective_config_resource_name = NULL, effective_config_value_json = ?23
               WHERE evidence.environment_key = ?1
                 AND evidence.agent = ?2 AND evidence.session_id = ?3
                 AND evidence.status = 'processing' AND evidence.claim_fence = ?13
@@ -1892,6 +1895,12 @@ impl Store {
                     .reasoning
                     .as_ref()
                     .map(|value| value.2.as_str()),
+                config_attribution_json(&config_attribution.records, |record| &record.path),
+                config_attribution_json(&config_attribution.records, |record| &record.selector),
+                config_attribution_json(&config_attribution.records, |record| {
+                    &record.precedence_hash
+                }),
+                config_attribution_values_json(&config_attribution.records),
             ],
         )?;
         if updated == 0 {
@@ -2822,6 +2831,49 @@ impl Store {
             params![key, enabled],
         )?;
         Ok(changed > 0)
+    }
+}
+
+fn config_attribution_json(
+    records: &[crate::remediation::PublicationSettingAttribution],
+    value: impl Fn(&crate::remediation::PublicationSettingAttribution) -> &str,
+) -> Option<String> {
+    (!records.is_empty()).then(|| {
+        let mut values = serde_json::Map::new();
+        for record in records {
+            values.insert(
+                config_setting_name(record.setting).to_owned(),
+                serde_json::Value::String(value(record).to_owned()),
+            );
+        }
+        serde_json::Value::Object(values).to_string()
+    })
+}
+
+fn config_attribution_values_json(
+    records: &[crate::remediation::PublicationSettingAttribution],
+) -> Option<String> {
+    (!records.is_empty()).then(|| {
+        let mut values = serde_json::Map::new();
+        for record in records {
+            let value = serde_json::from_str(&record.expected_value_json)
+                .expect("attribution serializes its typed expected value");
+            values.insert(config_setting_name(record.setting).to_owned(), value);
+        }
+        serde_json::Value::Object(values).to_string()
+    })
+}
+
+fn config_setting_name(setting: crate::agent_config::ConfigSetting) -> &'static str {
+    match setting {
+        crate::agent_config::ConfigSetting::Model => "model",
+        crate::agent_config::ConfigSetting::Reasoning => "reasoning",
+        crate::agent_config::ConfigSetting::Compaction => "compaction",
+        crate::agent_config::ConfigSetting::SubagentModel => "subagentModel",
+        crate::agent_config::ConfigSetting::McpServer => "mcpServer",
+        crate::agent_config::ConfigSetting::BuiltInTool => "builtInTool",
+        crate::agent_config::ConfigSetting::Skill => "skill",
+        crate::agent_config::ConfigSetting::FastMode => "fastMode",
     }
 }
 

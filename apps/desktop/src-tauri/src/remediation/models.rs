@@ -266,8 +266,10 @@ pub struct AutoFixReview {
     pub scope: BurnCheckScopeKind,
     pub setting: AutoFixSetting,
     pub config_file: String,
+    pub selector_label: String,
     pub current_value: String,
     pub proposed_value: String,
+    pub behavior_override_warning: bool,
     pub effect: AutoFixEffect,
     pub side_effect: AutoFixSideEffect,
 }
@@ -276,18 +278,36 @@ pub struct AutoFixReview {
 pub enum AutoFixSetting {
     Model,
     Reasoning,
+    Compaction,
+    SubagentModel,
+    McpServer,
+    BuiltInTool,
+    Skill,
+    FastMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoFixEffect {
-    FutureModelSelection,
-    FutureReasoningEffort,
+    ModelSelection,
+    ReasoningEffort,
+    SessionCompaction,
+    WorkerModelSelection,
+    McpAvailability,
+    ToolAvailability,
+    SkillAvailability,
+    ServiceTierSelection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoFixSideEffect {
     ModelBehaviorMayChange,
     ResponsesMayUseLessReasoning,
+    EarlierSessionSummarization,
+    WorkerBehaviorMayChange,
+    ServerWillNotBeAvailable,
+    ToolWillNotBeAvailable,
+    SkillWillNotBeAvailable,
+    ResponsesMayTakeLonger,
 }
 
 #[derive(Debug, Clone, PartialEq)]

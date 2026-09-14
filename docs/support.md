@@ -61,8 +61,10 @@ bounded prompts cover the exact check matrix in
 | Antigravity    | Finding-only D/O  | None                        | Prompts for D and O |
 | Windsurf       | Unavailable       | None                        | No remediation prompt |
 
-Auto Fix changes one existing effective global or project setting after a
-separate review and confirmation. Native Windows can read supported setting
+Auto Fix can batch existing active model layers after a separate review and
+confirmation. It never creates a project file or a missing global file. A
+controller-reported runtime or managed override can prevent an immediate behavior
+change; the review shows this warning. Native Windows can read supported setting
 attribution but cannot apply a change. Pi session discovery remains unavailable
 on native Windows. WSL is separate and cannot edit native host config. See the
 [implementation guide](remediation.md) for precedence, verification, savings,

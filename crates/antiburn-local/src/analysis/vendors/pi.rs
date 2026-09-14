@@ -952,6 +952,8 @@ impl PiStreamState {
         if self.subagent_incomplete || self.subagent_calls.values().any(|call| !call.resolved) {
             coverage_gaps.push(PartialReason::AttributionIncomplete);
         }
+        coverage_gaps.sort_unstable();
+        coverage_gaps.dedup();
         SessionSummary {
             cache_write_tokens_available: self.cache_write_tokens_available.unwrap_or(true),
             context_window: None,

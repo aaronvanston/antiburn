@@ -200,8 +200,9 @@ fn antigravity_database() -> (tempfile::TempDir, std::path::PathBuf) {
     connection
         .execute_batch(
             "CREATE TABLE steps (idx INTEGER PRIMARY KEY, metadata BLOB);
-             CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER NOT NULL DEFAULT 0);
-             INSERT INTO steps(idx) VALUES (0), (1);",
+              CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER NOT NULL DEFAULT 0);
+              INSERT INTO steps(idx) VALUES (0), (1);
+              PRAGMA user_version = 1;",
         )
         .unwrap();
     connection

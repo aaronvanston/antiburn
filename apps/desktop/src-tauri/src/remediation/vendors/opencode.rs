@@ -30,9 +30,13 @@ impl VendorRemediationPolicy for OpenCodePolicy {
             SourceFormat::OpenCodeJsonl | SourceFormat::OpenCodeSqliteV2
         ) && matches!(
             action,
-            RemediationAction::AutomaticEdit(ConfigSetting::Model)
-                | RemediationAction::RecoverUncertainWrite(ConfigSetting::Model)
-                | RemediationAction::PublicationAttribution(ConfigSetting::Model)
+            RemediationAction::AutomaticEdit(
+                ConfigSetting::Model | ConfigSetting::Compaction | ConfigSetting::SubagentModel
+            ) | RemediationAction::RecoverUncertainWrite(
+                ConfigSetting::Model | ConfigSetting::Compaction | ConfigSetting::SubagentModel
+            ) | RemediationAction::PublicationAttribution(
+                ConfigSetting::Model | ConfigSetting::Compaction
+            )
         ) {
             ActionSupport::Supported
         } else {

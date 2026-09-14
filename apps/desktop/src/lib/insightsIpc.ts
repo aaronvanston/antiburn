@@ -325,12 +325,38 @@ export interface AutoFixReviewPayload {
   expiresAtEpoch: number
   agent: string
   scope: "global" | "project" | "session" | "worker"
-  setting: "model" | "reasoning"
+  setting:
+    | "model"
+    | "reasoning"
+    | "compaction"
+    | "subagentModel"
+    | "mcpServer"
+    | "builtInTool"
+    | "skill"
+    | "fastMode"
   configFile: string
+  selectorLabel: string
   currentValue: string
   proposedValue: string
-  effect: "futureModelSelection" | "futureReasoningEffort"
-  sideEffect: "modelBehaviorMayChange" | "responsesMayUseLessReasoning"
+  behaviorOverrideWarning: boolean
+  effect:
+    | "modelSelection"
+    | "reasoningEffort"
+    | "sessionCompaction"
+    | "workerModelSelection"
+    | "mcpAvailability"
+    | "toolAvailability"
+    | "skillAvailability"
+    | "serviceTierSelection"
+  sideEffect:
+    | "modelBehaviorMayChange"
+    | "responsesMayUseLessReasoning"
+    | "earlierSessionSummarization"
+    | "workerBehaviorMayChange"
+    | "serverWillNotBeAvailable"
+    | "toolWillNotBeAvailable"
+    | "skillWillNotBeAvailable"
+    | "responsesMayTakeLonger"
 }
 
 export type PrepareAutoFixBurnCheckTargetOutcome =

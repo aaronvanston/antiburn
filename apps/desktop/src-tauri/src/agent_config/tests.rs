@@ -24,6 +24,90 @@ fn write(path: &Path, value: &str) {
 }
 
 #[cfg(not(windows))]
+#[test]
+fn named_subagent_model_requires_one_matching_current_worker_and_reads_back() {
+    let cases = [
+        (
+            AgentKind::Claude,
+            ".claude/agents/reviewer.md",
+            "---\nmodel: claude-opus-5\n---\nReview the change.\n",
+            "claude-sonnet-5",
+        ),
+        (
+            AgentKind::Codex,
+            ".codex/agents/reviewer.toml",
+            "model = \"gpt-5.6-sol\"\n",
+            "gpt-5.6-luna",
+        ),
+        (
+            AgentKind::OpenCode,
+            ".opencode/agents/reviewer.md",
+            "---\nmodel: gemini-3.8-pro\n---\nReview the change.\n",
+            "gemini-3.8-flash",
+        ),
+    ];
+    for (agent, relative, contents, replacement) in cases {
+        let (_temporary, home, project) = roots();
+        let path = home.join(relative);
+        write(&path, contents);
+        let expected = match agent {
+            AgentKind::Claude => "claude-opus-5",
+            AgentKind::Codex => "gpt-5.6-sol",
+            AgentKind::OpenCode => "gemini-3.8-pro",
+            _ => unreachable!(),
+        };
+        let editor = AgentConfigEditor::new();
+        let context = ConfigContext::native(agent, &home, Some(project));
+        let prepared = editor
+            .prepare_operation(
+                &context,
+                &operation(ConfigSetting::SubagentModel, expected, replacement),
+            )
+            .unwrap_or_else(|error| panic!("{agent:?}: {error:?}"));
+        editor
+            .apply(&prepared)
+            .unwrap_or_else(|error| panic!("{agent:?}: {error:?}"));
+        assert!(fs::read_to_string(path).unwrap().contains(replacement));
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn named_subagent_model_rejects_ambiguous_or_unsupported_workers() {
+    let (_temporary, home, project) = roots();
+    write(
+        &home.join(".claude/agents/first.md"),
+        "---\nmodel: claude-opus-5\n---\n",
+    );
+    write(
+        &home.join(".claude/agents/second.md"),
+        "---\nmodel: claude-opus-5\n---\n",
+    );
+    let operation = operation(
+        ConfigSetting::SubagentModel,
+        "claude-opus-5",
+        "claude-sonnet-5",
+    );
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, home, Some(project)),
+            &operation
+        ),
+        Err(ConfigUnavailableReason::MissingTarget)
+    ));
+    for agent in [AgentKind::Pi, AgentKind::Cursor, AgentKind::Antigravity] {
+        let (_temporary, home, project) = roots();
+        assert!(matches!(
+            AgentConfigEditor::new().prepare_operation(
+                &ConfigContext::native(agent, home, Some(project)),
+                &operation
+            ),
+            Err(ConfigUnavailableReason::UnsupportedSetting)
+        ));
+    }
+}
+
+#[cfg(not(windows))]
 fn operation(setting: ConfigSetting, expected: &str, proposed: &str) -> ConfigOperation {
     ConfigOperation {
         setting,
@@ -103,6 +187,17 @@ fn vendor_setting_scope_cases_prepare_apply_and_read_back() {
             proposed: "medium",
             selector: "modelThinkingLevels",
         },
+        Case {
+            agent: AgentKind::Cursor,
+            setting: ConfigSetting::Model,
+            global_path: ".cursor/cli-config.json",
+            global: r#"{"model":"global"}"#,
+            project_path: ".cursor/cli.json",
+            project: r#"{"model":"old"}"#,
+            expected: "old",
+            proposed: "new",
+            selector: "model",
+        },
     ];
 
     for case in cases {
@@ -178,6 +273,119 @@ fn inherited_settings_use_global_scope() {
         assert_eq!(effective.scope, ConfigScope::Global, "{agent:?}");
         assert_eq!(effective.value, "high", "{agent:?}");
     }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn batch_updates_existing_global_and_project_model_layers() {
+    let (_temporary, home, project) = roots();
+    let global = home.join(".claude/settings.json");
+    let project_file = project.join(".claude/settings.local.json");
+    write(&global, r#"{"model":"old"}"#);
+    write(&project_file, r#"{"model":"old"}"#);
+    let editor = AgentConfigEditor::new();
+    let prepared = editor
+        .prepare(
+            &ConfigContext::native(AgentKind::Claude, &home, Some(project)),
+            &ConfigChange {
+                expected_value: "old".into(),
+                proposed_value: "new".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(prepared.changes.len(), 2);
+    editor.apply(&prepared).unwrap();
+    for path in [global, project_file] {
+        let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(document["model"], "new");
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn batch_prepares_when_context_reports_an_override() {
+    let (_temporary, home, project) = roots();
+    write(&home.join(".claude/settings.json"), r#"{"model":"old"}"#);
+    let mut context = ConfigContext::native(AgentKind::Claude, &home, Some(project));
+    context.runtime_override_present = true;
+    context.managed_configuration_present = true;
+    let prepared = AgentConfigEditor::new()
+        .prepare(
+            &context,
+            &ConfigChange {
+                expected_value: "old".into(),
+                proposed_value: "new".into(),
+            },
+        )
+        .unwrap();
+    assert!(prepared.behavior_override_warning());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn missing_global_model_configs_are_created_for_each_supported_vendor() {
+    let cases = [
+        (AgentKind::Claude, "new"),
+        (AgentKind::Codex, "new"),
+        (AgentKind::OpenCode, "provider/new"),
+        (AgentKind::Pi, "provider/new"),
+        (AgentKind::Cursor, "new"),
+        (AgentKind::Antigravity, "new"),
+    ];
+    for (agent, proposed) in cases {
+        let (_temporary, home, project) = roots();
+        let editor = AgentConfigEditor::new();
+        let prepared = editor
+            .prepare(
+                &ConfigContext::native(agent, &home, Some(project)),
+                &ConfigChange {
+                    expected_value: "old".into(),
+                    proposed_value: proposed.into(),
+                },
+            )
+            .unwrap();
+        assert!(prepared.changes.is_empty(), "{agent:?}");
+        editor.apply(&prepared).unwrap();
+        assert_eq!(
+            editor
+                .effective_model(&ConfigContext::native(agent, &home, None))
+                .unwrap()
+                .value,
+            proposed
+        );
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn antigravity_uses_only_the_public_global_cli_settings_file() {
+    let (_temporary, home, project) = roots();
+    let path = home.join(".gemini/antigravity-cli/settings.json");
+    write(&path, r#"{"model":"old"}"#);
+    write(
+        &project.join(".agents/settings.json"),
+        r#"{"model":"project"}"#,
+    );
+    let editor = AgentConfigEditor::new();
+    let context = ConfigContext::native(AgentKind::Antigravity, &home, Some(project));
+    assert_eq!(
+        editor.effective_model(&context).unwrap().scope,
+        ConfigScope::Global
+    );
+    let prepared = editor
+        .prepare(
+            &context,
+            &ConfigChange {
+                expected_value: "old".into(),
+                proposed_value: "new".into(),
+            },
+        )
+        .unwrap();
+    editor.apply(&prepared).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["model"],
+        "new"
+    );
 }
 
 #[test]
@@ -498,20 +706,30 @@ fn untrusted_workspace_context_fails_closed() {
 }
 
 #[test]
-fn codex_nested_workspace_is_ambiguous() {
+fn codex_trusted_nested_workspace_uses_the_closest_project_config() {
     let (_temporary, home, root) = roots();
     let nested = root.join("nested");
     fs::create_dir(&nested).unwrap();
-    write(&home.join(".codex/config.toml"), "model = \"global\"\n");
-    assert_eq!(
-        AgentConfigEditor::new().effective_model(&ConfigContext::native_workspace(
+    let root_key = root.canonicalize().unwrap();
+    write(
+        &home.join(".codex/config.toml"),
+        &format!(
+            "model = \"global\"\n[projects.{}]\ntrust_level = \"trusted\"\n",
+            toml_edit::Value::from(root_key.to_string_lossy().as_ref())
+        ),
+    );
+    write(&root.join(".codex/config.toml"), "model = \"root\"\n");
+    write(&nested.join(".codex/config.toml"), "model = \"nested\"\n");
+    let effective = AgentConfigEditor::new()
+        .effective_model(&ConfigContext::native_workspace(
             AgentKind::Codex,
             home,
             nested,
             root,
-        )),
-        Err(ConfigUnavailableReason::InvalidPrecedence)
-    );
+        ))
+        .unwrap();
+    assert_eq!(effective.scope, ConfigScope::Project);
+    assert_eq!(effective.value, "nested");
 }
 
 #[cfg(not(windows))]
@@ -556,11 +774,11 @@ fn apply_rejects_new_nested_precedence_for_cwd_local_vendors() {
         let canonical_nested = nested.canonicalize().unwrap();
         let canonical_root = root.canonicalize().unwrap();
         assert_eq!(
-            prepared.workspace_cwd.as_deref(),
+            prepared.primary().workspace_cwd.as_deref(),
             Some(canonical_nested.as_path())
         );
         assert_eq!(
-            prepared.trusted_workspace_root.as_deref(),
+            prepared.primary().trusted_workspace_root.as_deref(),
             Some(canonical_root.as_path())
         );
 
