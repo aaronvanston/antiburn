@@ -116,7 +116,6 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use time::OffsetDateTime;
 
-#[cfg(target_os = "macos")]
 use crate::provider_usage::live::SourceErrorDetail;
 use crate::provider_usage::live::anthropic;
 use crate::provider_usage::live::model::{

@@ -987,11 +987,13 @@ describe("the grace period", () => {
   it("fails a settled-but-dead sign-in past the window and carries the detail", () => {
     const reading = provider({ observedAt: "2027-01-15T11:49:00Z" })
     const error = sourceError({ category: "authentication", detail: "signInRequired" })
-    expect(liveProviderStatus({ errors: [error], generatedAt: GENERATED_AT }, reading)).toEqual({
-      kind: "failed",
-      category: "authentication",
-      detail: "signInRequired",
-    })
+    expect(liveProviderStatus({ errors: [error], generatedAt: GENERATED_AT }, reading)).toEqual(
+      {
+        kind: "failed",
+        category: "authentication",
+        detail: "signInRequired",
+      },
+    )
   })
 
   it("reads exactly the grace boundary as still grace", () => {

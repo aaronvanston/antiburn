@@ -215,7 +215,8 @@ const KEYCHAIN_SERVICE: &str = "gemini";
 #[cfg(target_os = "macos")]
 const KEYCHAIN_ACCOUNT: &str = "antigravity";
 
-/// The CLI's own executable name on `PATH`.
+/// The CLI's own executable name on `PATH`. Only the macOS branch checks it.
+#[cfg(target_os = "macos")]
 const BINARY: &str = "agy";
 
 /// The one vendor-specific presence check: whether the IDE's state database

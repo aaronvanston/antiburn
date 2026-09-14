@@ -228,7 +228,9 @@ describe("UsagePane", () => {
     const toggle = screen.getByRole("switch", { name: "Show Google meter" })
     expect(toggle).toBeChecked()
     expect(
-      screen.getByText(/No readings yet\. antiburn reuses the login from the Antigravity IDE or `agy` CLI/),
+      screen.getByText(
+        /No readings yet\. antiburn reuses the login from the Antigravity IDE or `agy` CLI/,
+      ),
     ).toBeInTheDocument()
 
     fireEvent.click(toggle)

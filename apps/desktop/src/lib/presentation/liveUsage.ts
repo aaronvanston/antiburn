@@ -458,7 +458,11 @@ export function liveProviderStatus(
   const ageMs = Date.parse(summary.generatedAt) - Date.parse(provider.observedAt)
   // A pending delegated refresh is not a failure yet: the next check the
   // reader starts runs it. Keep the reading in grace rather than fail it.
-  if (Number.isNaN(ageMs) || ageMs <= LIVE_USAGE_GRACE_MS || error.detail === "refreshPending") {
+  if (
+    Number.isNaN(ageMs) ||
+    ageMs <= LIVE_USAGE_GRACE_MS ||
+    error.detail === "refreshPending"
+  ) {
     return {
       kind: "grace",
       category: error.category,
