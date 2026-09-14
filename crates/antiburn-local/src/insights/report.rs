@@ -7,6 +7,7 @@ use crate::analysis::{
 use crate::pricing::{ModelPricing, canonical_model_key};
 
 use super::detectors::{self, DetectorFold, DetectorStatus, ReportCatalogs, complete};
+use super::provider_incidents::{ProviderIncidentsAccumulator, ProviderIncidentsSection};
 use super::quota::{QuotaPressureAccumulator, QuotaPressureSection};
 use super::{CoverageBucket, DetectorId};
 
@@ -420,6 +421,7 @@ pub struct EfficiencyReport {
     pub detectors: [DetectorCounts; DetectorId::COUNT],
     pub detector_statuses: [DetectorStatus; DetectorId::COUNT],
     pub quota_pressure: QuotaPressureSection,
+    pub provider_incidents: ProviderIncidentsSection,
     pub catalog_revision: i64,
     pub coverage_reasons: BTreeMap<CoverageReason, u64>,
     pub unrecognized_records: UnrecognizedRecords,
@@ -1177,6 +1179,7 @@ pub struct EfficiencyReportAccumulator {
     detectors: [DetectorCounts; DetectorId::COUNT],
     folds: [DetectorFold; DetectorId::COUNT],
     quota: QuotaPressureAccumulator,
+    provider: ProviderIncidentsAccumulator,
     catalogs: ReportCatalogs,
     coverage_reasons: BTreeMap<CoverageReason, u64>,
     unrecognized_records: UnrecognizedRecords,
@@ -1205,6 +1208,7 @@ impl EfficiencyReportAccumulator {
             detectors: [DetectorCounts::default(); DetectorId::COUNT],
             folds: core::array::from_fn(|_| DetectorFold::default()),
             quota: QuotaPressureAccumulator::default(),
+            provider: ProviderIncidentsAccumulator::default(),
             catalogs,
             coverage_reasons: BTreeMap::new(),
             unrecognized_records: UnrecognizedRecords::default(),
@@ -1270,10 +1274,13 @@ impl EfficiencyReportAccumulator {
             self.actively_growing += 1;
         }
 
-        // The quota section reads every cohort session. It stays
-        // outside the nine-category eligibility loop below.
+        // The quota and provider-incidents sections read every cohort
+        // session. They stay outside the nine-category eligibility loop
+        // below.
         self.quota
             .observe_session(&evidence.identity, &evidence.quota_incidents);
+        self.provider
+            .observe_session(&evidence.identity, &evidence.provider_incidents);
 
         // Lazily allocate the identity example only if this session has a detector gap.
         let mut bounded_example: Option<SessionExample> = None;
@@ -1387,6 +1394,7 @@ impl EfficiencyReportAccumulator {
             detectors: self.detectors,
             detector_statuses,
             quota_pressure: self.quota.finish(),
+            provider_incidents: self.provider.finish(),
             catalog_revision: self.catalogs.revision,
             coverage_reasons: self.coverage_reasons,
             unrecognized_records: self.unrecognized_records,
@@ -1403,13 +1411,14 @@ mod tests {
     use super::*;
     use crate::analysis::{
         ANALYZER_REVISION, ContextEvidence, EVIDENCE_SCHEMA_REVISION, EvidenceSource,
-        FAST_SPEED_KEY, LoadedSource, ModelTokens, PARSER_REVISION, QuotaConfidence,
-        QuotaHitSeverity, QuotaIncident, QuotaLimitKind, RepeatedContext,
-        RepeatedContextAccounting, SessionEvidenceAccumulator, SessionQuotaEvidence,
-        SignalCoverage, SourceCapabilities, SourceFormat, SourceKind, ToolDefinition, TurnCounts,
-        TurnFacts,
+        FAST_SPEED_KEY, LoadedSource, ModelTokens, PARSER_REVISION, ProviderIncident,
+        ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity, QuotaIncident, QuotaLimitKind,
+        RepeatedContext, RepeatedContextAccounting, SessionEvidenceAccumulator,
+        SessionProviderEvidence, SessionQuotaEvidence, SignalCoverage, SourceCapabilities,
+        SourceFormat, SourceKind, ToolDefinition, TurnCounts, TurnFacts,
     };
     use crate::insights::detectors::{ModelFamily, ModelReplacementEntry, NotAssessedReason};
+    use crate::insights::provider_incidents::ProviderIncidentsSection;
     use crate::insights::quota::QuotaPressureSection;
 
     #[test]
@@ -2844,6 +2853,10 @@ mod tests {
             );
         }
         assert_eq!(report.quota_pressure, QuotaPressureSection::NotAssessed);
+        assert_eq!(
+            report.provider_incidents,
+            ProviderIncidentsSection::NotAssessed
+        );
     }
 
     #[test]
@@ -3006,6 +3019,7 @@ mod tests {
             record_identity: true,
             linear_record_order: true,
             quota_incidents: true,
+            provider_incidents: true,
             harness_version: true,
             repeated_context_accounting: Some(RepeatedContextAccounting::CacheWrite),
         };
@@ -3835,6 +3849,49 @@ mod tests {
         assert_eq!(
             findings.hits_by_limit_kind,
             BTreeMap::from([(QuotaLimitKind::RollingWindow, 1)])
+        );
+        assert_eq!(findings.affected_session_count, 1);
+        assert_eq!(
+            findings.affected_models,
+            ["model-a".to_owned()].into_iter().collect()
+        );
+        assert_eq!(findings.observed_times_ms, vec![700]);
+    }
+
+    #[test]
+    fn provider_section_is_not_assessed_without_transcript_provider_evidence() {
+        let mut accumulator = EfficiencyReportAccumulator::new();
+        accumulator.observe_session(evidence("no-provider"));
+        let report = accumulator.finish(context(CoverageCounts::default()));
+
+        assert_eq!(
+            report.provider_incidents,
+            ProviderIncidentsSection::NotAssessed
+        );
+    }
+
+    #[test]
+    fn provider_section_reports_deduplicated_transcript_incidents() {
+        let hit = ProviderIncident {
+            ts_ms: 700,
+            kind: ProviderIncidentKind::Capacity,
+            model: Some("model-a".to_owned()),
+        };
+        let mut row = evidence("provider-limited");
+        row.provider_incidents = EvidenceValue::Complete(SessionProviderEvidence {
+            incidents: vec![hit.clone(), hit],
+        });
+        let mut accumulator = EfficiencyReportAccumulator::new();
+        accumulator.observe_session(row);
+        let report = accumulator.finish(context(CoverageCounts::default()));
+
+        let ProviderIncidentsSection::Findings(findings) = &report.provider_incidents else {
+            panic!("expected provider findings");
+        };
+        assert_eq!(findings.total_hits, 1);
+        assert_eq!(
+            findings.hits_by_kind,
+            BTreeMap::from([(ProviderIncidentKind::Capacity, 1)])
         );
         assert_eq!(findings.affected_session_count, 1);
         assert_eq!(

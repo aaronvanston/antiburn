@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use antiburn_local::analysis::{
     AppendOnlyGuarantee, CompositeSink, CoverageReason, EvidenceCoverage, EvidenceSource,
-    EvidenceValue, FAST_SPEED_KEY, MemoryTurnRowStore, NormalizedSession, PartialReason, RawSource,
-    RecordCoverage, SessionCollector, SessionEvidence, SessionEvidenceAccumulator, SessionInput,
+    EvidenceValue, FAST_SPEED_KEY, MemoryTurnRowStore, NormalizedSession, PartialReason,
+    ProviderIncidentKind, QuotaHitSeverity, QuotaLimitKind, RawSource, RecordCoverage,
+    SessionCollector, SessionEvidence, SessionEvidenceAccumulator, SessionInput,
     SessionMetricsAccumulator, SourceCapabilities, SourceClaim, SourceKind, TurnCounts, TurnFacts,
     TurnRowSink, TurnRowStore, VisitOutcome, analyze_sources_with, append_only_guarantee,
     normalize_source, reader_for,
@@ -89,11 +90,14 @@ fn fixture(name: &str) -> &'static str {
         "collab_agent_records" => {
             include_str!("fixtures/codex_characterization/collab_agent_records.jsonl")
         }
+        "task_complete_errors" => {
+            include_str!("fixtures/codex_characterization/task_complete_errors.jsonl")
+        }
         _ => panic!("unknown Codex characterization fixture: {name}"),
     }
 }
 
-fn fixture_names() -> [&'static str; 22] {
+fn fixture_names() -> [&'static str; 23] {
     [
         "records_all_kinds",
         "malformed_between_valid",
@@ -117,6 +121,7 @@ fn fixture_names() -> [&'static str; 22] {
         "context_reread",
         "cache_write_tokens",
         "collab_agent_records",
+        "task_complete_errors",
     ]
 }
 
@@ -676,15 +681,22 @@ fn codex_capabilities_match_published_evidence() {
     assert!(capabilities.thread_identity);
     assert!(!capabilities.record_identity);
     assert!(capabilities.linear_record_order);
-    assert!(!capabilities.quota_incidents);
+    assert!(capabilities.quota_incidents);
+    assert!(capabilities.provider_incidents);
     assert!(capabilities.harness_version);
     assert!(matches!(
         evidence.context_sources,
         EvidenceValue::Complete(_)
     ));
+    // `records_all_kinds` has no `task_complete` error, so the group is a
+    // complete, empty incident list, not `Unsupported`.
     assert!(matches!(
         evidence.quota_incidents,
-        EvidenceValue::Unsupported
+        EvidenceValue::Complete(_)
+    ));
+    assert!(matches!(
+        evidence.provider_incidents,
+        EvidenceValue::Complete(_)
     ));
     assert!(matches!(
         evidence.provenance.harness_version,
@@ -746,6 +758,10 @@ fn claude_capabilities_still_match_published_evidence() {
     assert!(is_supported(&evidence.compactions));
     assert!(matches!(
         evidence.quota_incidents,
+        EvidenceValue::Unsupported
+    ));
+    assert!(matches!(
+        evidence.provider_incidents,
         EvidenceValue::Unsupported
     ));
     assert!(matches!(
@@ -1048,6 +1064,172 @@ fn cache_write_tokens_codex_fixture_matches_golden() {
 #[test]
 fn collab_agent_records_codex_fixture_matches_golden() {
     check_golden("collab_agent_records");
+}
+
+#[test]
+fn task_complete_errors_codex_fixture_matches_golden() {
+    check_golden("task_complete_errors");
+}
+
+/// The fixture's three mapped `task_complete` errors become a `QuotaIncident`
+/// or a `ProviderIncident`, in file order, with the model from the request's
+/// own `turn_context`. `server_overloaded` is a provider incident, since a
+/// provider outage is not caused by the user's own usage; the other two
+/// reviewed codes are quota incidents. The other `task_complete` shapes (a
+/// clean turn, an unmapped code, a struct variant, a missing
+/// `codex_error_info`, and a missing top-level `timestamp`) produce none,
+/// and the record stays allowlisted-eventless.
+#[test]
+fn task_complete_errors_map_only_the_three_reviewed_codes() {
+    let (evidence, _) = composite(&input("task_complete_errors"));
+
+    assert_eq!(evidence.coverage, EvidenceCoverage::Complete);
+    assert_eq!(evidence.diagnostics.records_unrecognized_inert, 0);
+
+    let EvidenceValue::Complete(quota) = &evidence.quota_incidents else {
+        panic!("quota incidents must be complete for this fixture");
+    };
+    let observed: Vec<_> = quota
+        .incidents
+        .iter()
+        .map(|incident| {
+            (
+                incident.limit_kind,
+                incident.severity,
+                incident.model.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        observed,
+        vec![
+            (
+                QuotaLimitKind::RateLimit,
+                QuotaHitSeverity::HardHit,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                QuotaLimitKind::UsageLimit,
+                QuotaHitSeverity::HardHit,
+                Some("gpt-6-astra".to_owned())
+            ),
+        ]
+    );
+
+    let EvidenceValue::Complete(provider) = &evidence.provider_incidents else {
+        panic!("provider incidents must be complete for this fixture");
+    };
+    let observed_provider: Vec<_> = provider
+        .incidents
+        .iter()
+        .map(|incident| (incident.kind, incident.model.clone()))
+        .collect();
+    assert_eq!(
+        observed_provider,
+        vec![(
+            ProviderIncidentKind::Capacity,
+            Some("gpt-6-astra".to_owned())
+        )]
+    );
+
+    let rendered = serde_json::to_string(&evidence).unwrap();
+    assert!(!rendered.contains("synthetic capacity error"));
+}
+
+/// Mirrors the compaction-boundaries cap: a bounded pass keeps the first
+/// `MAX_QUOTA_INCIDENTS` (64) incidents and reports the group `Partial`
+/// with [`CoverageReason::CapExceeded`], the same reason the compaction
+/// cap path uses.
+#[test]
+fn quota_incidents_cap_at_the_bound_and_flag_the_overflow() {
+    const MAX_QUOTA_INCIDENTS: usize = 64;
+
+    let mut source = String::new();
+    source.push_str(
+        &json!({"timestamp":"2026-08-05T10:00:00Z","type":"session_meta","payload":{}}).to_string(),
+    );
+    source.push('\n');
+    source.push_str(
+        &json!({"timestamp":"2026-08-05T10:00:01Z","type":"turn_context","payload":{"model":"gpt-6-astra","effort":"medium"}})
+            .to_string(),
+    );
+    source.push('\n');
+    for index in 0..70 {
+        let minute = 1 + index / 60;
+        let second = index % 60;
+        let record = json!({
+            "timestamp": format!("2026-08-05T10:{minute:02}:{second:02}Z"),
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "last_agent_message": null,
+                "error": {"message":"synthetic quota error","codex_error_info":"rate_limit_exceeded"}
+            }
+        });
+        source.push_str(&record.to_string());
+        source.push('\n');
+    }
+    let input = SessionInput {
+        agent: "codex".to_owned(),
+        session_id: "quota-incidents-cap".to_owned(),
+        source: RawSource::Jsonl(source),
+        fork_parent_session_id: None,
+    };
+    let (evidence, _) = composite(&input);
+
+    let EvidenceValue::Partial { observed, reason } = &evidence.quota_incidents else {
+        panic!("a capped incident collection must report Partial");
+    };
+    assert_eq!(*reason, CoverageReason::CapExceeded);
+    assert_eq!(observed.incidents.len(), MAX_QUOTA_INCIDENTS);
+}
+
+/// Mirrors [`quota_incidents_cap_at_the_bound_and_flag_the_overflow`] for the
+/// sibling provider-incidents group: a bounded pass keeps the first
+/// `MAX_PROVIDER_INCIDENTS` (64) incidents and reports the group `Partial`
+/// with [`CoverageReason::CapExceeded`].
+#[test]
+fn provider_incidents_cap_at_the_bound_and_flag_the_overflow() {
+    const MAX_PROVIDER_INCIDENTS: usize = 64;
+
+    let mut source = String::new();
+    source.push_str(
+        &json!({"timestamp":"2026-08-05T10:00:00Z","type":"session_meta","payload":{}}).to_string(),
+    );
+    source.push('\n');
+    source.push_str(
+        &json!({"timestamp":"2026-08-05T10:00:01Z","type":"turn_context","payload":{"model":"gpt-6-astra","effort":"medium"}})
+            .to_string(),
+    );
+    source.push('\n');
+    for index in 0..70 {
+        let minute = 1 + index / 60;
+        let second = index % 60;
+        let record = json!({
+            "timestamp": format!("2026-08-05T10:{minute:02}:{second:02}Z"),
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "last_agent_message": null,
+                "error": {"message":"synthetic capacity error","codex_error_info":"server_overloaded"}
+            }
+        });
+        source.push_str(&record.to_string());
+        source.push('\n');
+    }
+    let input = SessionInput {
+        agent: "codex".to_owned(),
+        session_id: "provider-incidents-cap".to_owned(),
+        source: RawSource::Jsonl(source),
+        fork_parent_session_id: None,
+    };
+    let (evidence, _) = composite(&input);
+
+    let EvidenceValue::Partial { observed, reason } = &evidence.provider_incidents else {
+        panic!("a capped incident collection must report Partial");
+    };
+    assert_eq!(*reason, CoverageReason::CapExceeded);
+    assert_eq!(observed.incidents.len(), MAX_PROVIDER_INCIDENTS);
 }
 
 #[test]

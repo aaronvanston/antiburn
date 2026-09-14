@@ -48,7 +48,8 @@
       "linearRecordOrder": true,
       "mcpInventory": false,
       "modelIdentity": true,
-      "quotaIncidents": false,
+      "providerIncidents": true,
+      "quotaIncidents": true,
       "reasoningEffortTier": true,
       "recordIdentity": false,
       "repeatedContextAccounting": "uncached_input",
@@ -203,19 +204,34 @@
     },
     "provenance": {
       "analyzerRevision": 24,
-      "evidenceSchemaRevision": 18,
+      "evidenceSchemaRevision": 19,
       "harnessVersion": {
         "state": "unsupported"
       },
       "ordering": "monotonic",
-      "parserRevision": 36,
+      "parserRevision": 37,
       "sourceAcceptance": "unvalidated",
       "sourceKind": "jsonl"
     },
-    "quotaIncidents": {
-      "state": "unsupported"
+    "providerIncidents": {
+      "state": "partial",
+      "value": {
+        "observed": {
+          "incidents": []
+        },
+        "reason": "malformed_record"
+      }
     },
-    "schemaRevision": 18,
+    "quotaIncidents": {
+      "state": "partial",
+      "value": {
+        "observed": {
+          "incidents": []
+        },
+        "reason": "malformed_record"
+      }
+    },
+    "schemaRevision": 19,
     "subagents": {
       "state": "partial",
       "value": {
