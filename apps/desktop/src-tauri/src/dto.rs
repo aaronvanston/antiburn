@@ -12,11 +12,12 @@
 
 use antiburn_local::analysis::{
     ActiveSessionsSummary, EfficiencyTotals, EvidenceValue, FAST_SPEED_KEY, ModelRun,
-    QuotaLimitKind, RepeatedContextAccounting, SessionCost, SessionEvidence, SourceFormat,
+    ProviderIncidentKind, QuotaLimitKind, RepeatedContextAccounting, SessionCost, SessionEvidence,
+    SourceFormat,
 };
 use antiburn_local::insights::{
     BadgeId, BadgeStatus, DetectorId, DetectorStatus, EfficiencyReport, NotAssessedReason,
-    QuotaPressureSection, ReportCatalogs, SessionBadge, model_family,
+    ProviderIncidentsSection, QuotaPressureSection, ReportCatalogs, SessionBadge, model_family,
 };
 use antiburn_local::pricing::canonical_model_key;
 use serde::{Deserialize, Serialize};
@@ -555,6 +556,42 @@ pub struct InsightsQuotaPressurePayload {
     pub findings: Option<InsightsQuotaFindingsPayload>,
 }
 
+/// Deduplicated hits for one provider-incident kind.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsProviderIncidentKindPayload {
+    /// Stable incident-kind identifier, e.g. `capacity`.
+    pub kind: &'static str,
+    pub hits: u64,
+}
+
+/// Bounded provider-incident findings from transcript-attributable incidents.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsProviderIncidentFindingsPayload {
+    pub total_hits: u64,
+    pub affected_session_count: u64,
+    pub hits_by_kind: Vec<InsightsProviderIncidentKindPayload>,
+    /// Bounded set of transcript-attributed model names.
+    pub affected_models: Vec<String>,
+    pub affected_models_truncated: bool,
+    pub first_observed_ts_ms: i64,
+    pub last_observed_ts_ms: i64,
+}
+
+/// The provider-incidents section, outside the nine-category contract.
+///
+/// A sibling of [`InsightsQuotaPressurePayload`]: this section carries
+/// provider-side failures the user's own usage did not cause, so it is
+/// never folded into quota pressure.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsProviderIncidentsPayload {
+    /// False exactly when the transcripts carry no provider incident evidence.
+    pub assessed: bool,
+    pub findings: Option<InsightsProviderIncidentFindingsPayload>,
+}
+
 /// Bounded unknown record vocabulary from the local evidence cohort.
 ///
 /// Type discriminators are schema vocabulary, not transcript content.
@@ -588,6 +625,7 @@ pub struct InsightsReportPayload {
     pub assessed_sessions: u64,
     pub categories: Vec<InsightsCategoryPayload>,
     pub quota_pressure: InsightsQuotaPressurePayload,
+    pub provider_incidents: InsightsProviderIncidentsPayload,
     pub unrecognized_records: InsightsUnrecognizedRecordsPayload,
     pub catalog_revision: i64,
 }
@@ -1983,7 +2021,12 @@ fn quota_limit_kind_str(kind: QuotaLimitKind) -> &'static str {
         QuotaLimitKind::WeightedUsage => "weightedUsage",
         QuotaLimitKind::RateLimit => "rateLimit",
         QuotaLimitKind::UsageLimit => "usageLimit",
-        QuotaLimitKind::ProviderCapacity => "providerCapacity",
+    }
+}
+
+fn provider_incident_kind_str(kind: ProviderIncidentKind) -> &'static str {
+    match kind {
+        ProviderIncidentKind::Capacity => "capacity",
     }
 }
 
@@ -2045,6 +2088,31 @@ impl From<EfficiencyReport> for InsightsReportPayload {
                 }),
             },
         };
+        let provider_incidents = match &report.provider_incidents {
+            ProviderIncidentsSection::NotAssessed => InsightsProviderIncidentsPayload {
+                assessed: false,
+                findings: None,
+            },
+            ProviderIncidentsSection::Findings(findings) => InsightsProviderIncidentsPayload {
+                assessed: true,
+                findings: Some(InsightsProviderIncidentFindingsPayload {
+                    total_hits: findings.total_hits,
+                    affected_session_count: findings.affected_session_count,
+                    hits_by_kind: findings
+                        .hits_by_kind
+                        .iter()
+                        .map(|(&kind, &hits)| InsightsProviderIncidentKindPayload {
+                            kind: provider_incident_kind_str(kind),
+                            hits,
+                        })
+                        .collect(),
+                    affected_models: findings.affected_models.iter().cloned().collect(),
+                    affected_models_truncated: findings.affected_models_truncated,
+                    first_observed_ts_ms: findings.first_observed_ts_ms,
+                    last_observed_ts_ms: findings.last_observed_ts_ms,
+                }),
+            },
+        };
         Self {
             environment_key: report.context.environment_key,
             window_start_epoch: report.context.window.start_epoch,
@@ -2065,6 +2133,7 @@ impl From<EfficiencyReport> for InsightsReportPayload {
             assessed_sessions: report.assessed_sessions,
             categories,
             quota_pressure,
+            provider_incidents,
             unrecognized_records: InsightsUnrecognizedRecordsPayload {
                 types: report.unrecognized_records.types.into_iter().collect(),
                 types_truncated: report.unrecognized_records.types_truncated,
@@ -2445,6 +2514,7 @@ mod tests {
                     "computedAtEpoch",
                     "coverage",
                     "environmentKey",
+                    "providerIncidents",
                     "quotaPressure",
                     "unrecognizedRecords",
                     "windowEndEpoch",
@@ -2545,6 +2615,7 @@ mod tests {
             assert!(value["categories"][0].get("examples").is_none());
             assert!(value.get("coverage").is_none());
             assert!(value.get("quotaPressure").is_none());
+            assert!(value.get("providerIncidents").is_none());
             assert_eq!(value["evidenceSettled"], true);
             assert_eq!(value["pendingEvidence"], 0);
             assert_eq!(value["estimatedTokenBurnBasisPoints"], 1_625);
@@ -2630,6 +2701,16 @@ mod tests {
             let value = serde_json::to_value(InsightsReportPayload::from(report())).unwrap();
             assert_eq!(value["quotaPressure"]["assessed"], false);
             assert!(value["quotaPressure"]["findings"].is_null());
+        }
+
+        /// A provider-incidents section with no evidence serializes as not
+        /// assessed, never as an empty findings shape a view could read as
+        /// clean. Mirrors `an_unassessed_quota_section_serializes_with_null_findings`.
+        #[test]
+        fn an_unassessed_provider_incidents_section_serializes_with_null_findings() {
+            let value = serde_json::to_value(InsightsReportPayload::from(report())).unwrap();
+            assert_eq!(value["providerIncidents"]["assessed"], false);
+            assert!(value["providerIncidents"]["findings"].is_null());
         }
 
         #[test]
