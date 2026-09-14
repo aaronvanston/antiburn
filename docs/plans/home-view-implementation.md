@@ -434,3 +434,14 @@ switch.
 | Publication — five planned PR slices | Published 2026-09-14: [#529](https://github.com/antiburn/antiburn/pull/529) → [#530](https://github.com/antiburn/antiburn/pull/530) → [#531](https://github.com/antiburn/antiburn/pull/531) → [#532](https://github.com/antiburn/antiburn/pull/532) → [#533](https://github.com/antiburn/antiburn/pull/533). All assigned to Zack (`z0w0`); screenshot placeholders await Keith’s upload. Completed-stack Rust formatting, Clippy, and 1,241 tests passed; slop and secret scans passed. |
 | Overview follow-up — usage-only card | Replaces the background-free usage variation (2026-09-14): restore usage card fill and outline; remove card chrome from the checks and sessions section. Keep widths and padding. Formatting, ESLint, type-check, 12 panel tests, design drift, and diff checks pass. Keith approved the result and requested pushing it to PR #533 (2026-09-14). |
 | Overview follow-up — burn finding cards | Implemented locally: match the recent session cards with shared fill, radius, padding, gaps, and hover treatment. Formatting, ESLint, type-check, six panel tests, design drift, and diff checks pass. Keith approved the result and requested pushing it to PR #533 (2026-09-14). |
+
+## CI export fix (2026-09-14)
+
+Make `localDateOf`, `overviewRecentSessions`, and `overviewChecksSummary` private to their modules. Apply each fix at its first affected PR, merge the fixes forward without rewriting published commits, run Knip on each affected slice and the frontend checks on the completed stack, then push and verify CI.
+
+| Step | Status |
+| --- | --- |
+| Identify CI failures | Done: unused exports in Linux Knip on #530–#533; #529 passes. |
+| Fix and propagate exports | Done on #530–#533 with signed commits and forward merges. |
+| Local verification | Passed: Knip on all four affected slices; focused tests and type checks on intermediate slices; final clean checkout formatting, lint, type-check, all 1,558 tests, and build. Slop, secrets, design drift, and diff checks passed. |
+| Push and CI verification | Fixes prepared for #530–#533. Live CI results are recorded on the linked PR checks. |
