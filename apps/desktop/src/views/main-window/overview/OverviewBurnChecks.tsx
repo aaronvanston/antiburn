@@ -10,6 +10,8 @@ import { sessionCountLabel } from "../../../lib/presentation/providerUsage"
 import { checkRowPresentation } from "../../checks/checkUi"
 
 import { BurnCheckIndicator } from "../../../components/burn-checks/BurnCheckIndicator"
+import { BURN_CHECK_MARKS } from "../../../components/burn-checks/burnCheckMarks"
+import { SegmentedRadialDial } from "../../../components/ui/SegmentedRadialDial"
 import { Skeleton } from "../../../components/ui/Skeleton"
 
 /** The most finding rows the panel lists. The full report has the rest. */
@@ -18,10 +20,17 @@ const OVERVIEW_FINDING_ROWS = 2
 /** The session list's check dial, at a size that carries a two-line title. */
 const OVERVIEW_DIAL_SIZE = 44
 
+/** A whole burn gauge, in basis points. */
+const BURN_GAUGE_FULL_BASIS_POINTS = 10_000
+/** The smallest arc the gauge draws, so a trace of burn still shows. */
+const BURN_GAUGE_MIN_BASIS_POINTS = 100
+
 type OverviewChecksState = "findings" | "passed" | "pending"
 
 interface OverviewChecksSummary {
   state: OverviewChecksState
+  /** The estimated burn share in basis points, or null when unknown. */
+  burn: number | null
   /** The prominent line: the burn estimate when known, else the result. */
   headline: string
   /** The muted line under the headline, or null when nothing adds to it. */
@@ -67,6 +76,7 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
     if (burn != null) {
       return {
         state: "findings",
+        burn,
         headline: `${formatTokenBurnPercent(burn).replace("<", "Less than ")} estimated burn`,
         detail: result,
         rows: failures.slice(0, OVERVIEW_FINDING_ROWS),
@@ -74,6 +84,7 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
     }
     return {
       state: "findings",
+      burn: null,
       headline: result,
       detail: report.evidenceSettled
         ? null
@@ -84,6 +95,7 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
   if (report.evidenceSettled && passed > 0) {
     return {
       state: "passed",
+      burn: null,
       headline: `All ${countLabel(passed, "check")} passed`,
       detail: null,
       rows: [],
@@ -91,6 +103,7 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
   }
   return {
     state: "pending",
+    burn: null,
     headline: report.evidenceSettled ? "No checks assessed" : "Assessing sessions",
     detail: report.evidenceSettled
       ? "Findings appear after the first scan."
@@ -100,11 +113,39 @@ export function overviewChecksSummary(report: ChecksReportPayload): OverviewChec
 }
 
 /**
- * The session list's segmented check dial for the whole report: one arc per
- * check, failed in the finding colour and passed in the clean colour. A
+ * The dial beside the headline. With a burn estimate it is a gauge: the
+ * finding colour fills the estimated share of the ring and the neutral
+ * colour the rest, so it reads with the "estimated burn" line. Without an
+ * estimate it is the session list's check dial, one arc per check. A
  * missing report draws the pending mark.
  */
-function ChecksDial({ report }: { report: ChecksReportPayload | null }) {
+function ChecksDial({
+  report,
+  burn,
+}: {
+  report: ChecksReportPayload | null
+  burn: number | null
+}) {
+  if (burn != null) {
+    const lit = Math.min(
+      BURN_GAUGE_FULL_BASIS_POINTS,
+      Math.max(BURN_GAUGE_MIN_BASIS_POINTS, burn),
+    )
+    return (
+      <SegmentedRadialDial
+        size={OVERVIEW_DIAL_SIZE}
+        strokeWidth={3}
+        segments={[
+          { id: "burn", value: lit, className: BURN_CHECK_MARKS.finding.iconClass },
+          {
+            id: "rest",
+            value: BURN_GAUGE_FULL_BASIS_POINTS - lit,
+            className: BURN_CHECK_MARKS.notAssessed.iconClass,
+          },
+        ]}
+      />
+    )
+  }
   const presentation = report
     ? aggregateBurnCheckPresentation(report)
     : emptyBurnCheckPresentation("pending")
@@ -112,9 +153,10 @@ function ChecksDial({ report }: { report: ChecksReportPayload | null }) {
 }
 
 /**
- * The Burn checks panel: the check dial beside the burn estimate, then at
+ * The Burn checks panel: the burn gauge beside the burn estimate, then at
  * most two finding rows. The header and every row are buttons that
- * open the full Burn checks section.
+ * open the full Burn checks section. The panel draws no card of its own;
+ * the Overview page's stack card holds it above the recent sessions.
  */
 export function OverviewBurnChecks({
   report,
@@ -128,11 +170,7 @@ export function OverviewBurnChecks({
   const summary = report ? overviewChecksSummary(report) : null
   const FooterIcon = summary?.state === "passed" ? CheckCircle2 : CircleDashed
   return (
-    <section
-      aria-label="Burn checks"
-      aria-busy={loading || undefined}
-      className="rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
-    >
+    <section aria-label="Burn checks" aria-busy={loading || undefined} className="min-w-0">
       <button
         type="button"
         onClick={onOpen}
@@ -140,7 +178,7 @@ export function OverviewBurnChecks({
         className="group flex w-full items-center gap-[var(--space-md)] rounded-control text-left"
       >
         <span aria-hidden="true" className="grid shrink-0 place-items-center">
-          <ChecksDial report={report} />
+          <ChecksDial report={report} burn={summary?.burn ?? null} />
         </span>
         <span className="min-w-0 flex-1">
           {summary ? (

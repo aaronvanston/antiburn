@@ -151,8 +151,8 @@
 
    The page measures itself as a container. The three spend totals sit in a
    row and stack below 540px, where three hero figures no longer fit. The
-   limits and checks panels sit in a row and stack below 700px, where the
-   meter dots of the limits panel no longer fit beside the checks.
+   stack card and the limits card sit in a row and stack below 700px, where
+   the meter dots of the limits card no longer fit beside the checks.
    ========================================================================== */
 
 .overview-page {
@@ -210,13 +210,26 @@
   padding-inline-end: var(--space-lg);
 }
 
-/* The two panels share one height, so the shorter card never leaves a
-   hole under itself beside the taller one. */
+/* The sessions card fills the space beside the fixed-width provider limits card. */
 .overview-panels {
+  --overview-provider-width: 180px;
+
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) var(--overview-provider-width);
   align-items: stretch;
   gap: var(--space-xl);
+}
+
+.overview-provider-limits {
+  inline-size: var(--overview-provider-width);
+}
+
+/* Inside the stack card, a rule and a gap separate the sessions from the
+   checks above them. */
+.overview-stack > * + * {
+  margin-block-start: var(--space-lg);
+  border-block-start: 1px solid var(--color-separator);
+  padding-block-start: var(--space-md);
 }
 
 @container (max-width: 700px) {

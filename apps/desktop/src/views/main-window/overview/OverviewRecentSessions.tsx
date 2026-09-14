@@ -33,7 +33,8 @@ export function OverviewRecentSessions({
       aria-busy={loading || undefined}
       className="flex flex-col gap-[var(--space-sm)]"
     >
-      <div className="flex justify-end">
+      <div className="flex items-baseline justify-between">
+        <h2 className="type-caption text-label-secondary">Recent</h2>
         <button
           type="button"
           onClick={onOpenAll}

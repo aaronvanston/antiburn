@@ -58,10 +58,10 @@ function MeterGroup({ windows, now }: { windows: LiveUsageWindowPayload[]; now: 
 }
 
 /**
- * The provider limits panel: one group per provider account with a dot meter
- * for each of its windows and the reset time under each meter. The meters
- * take the group's width and add dots as it grows. The stale tag floats in
- * the top-right corner. The panel shows no
+ * The provider limits panel: one group per provider account, stacked with a
+ * rule between, with a dot meter for each of its windows and the reset time
+ * under each meter. The meters take the card's width and add dots as it
+ * grows. The stale tag floats in the top-right corner. The panel shows no
  * local cost figure; those belong to the totals above the panel.
  */
 export function OverviewProviderLimits({
@@ -93,7 +93,7 @@ export function OverviewProviderLimits({
     <section
       aria-label="Provider limits"
       aria-busy={loading || undefined}
-      className="relative rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
+      className="overview-provider-limits relative rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card"
     >
       {limited.length > 0 && stale && (
         <p
@@ -103,7 +103,7 @@ export function OverviewProviderLimits({
         </p>
       )}
       {loading || !live ? (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[var(--space-2xl)]">
+        <div className="flex flex-col gap-[var(--space-2xl)]">
           {["first", "second"].map((seat) => (
             <div key={seat} className="flex flex-col gap-[var(--space-md)]">
               <Skeleton className="h-3 w-28" />
@@ -118,7 +118,7 @@ export function OverviewProviderLimits({
           Settings.
         </p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[var(--space-2xl)]">
+        <div className="flex flex-col divide-y divide-separator">
           {limited.map(({ reading, key }) => {
             const count = providerCounts.get(reading.provider) ?? 1
             const displayName =
@@ -136,7 +136,7 @@ export function OverviewProviderLimits({
                 key={key}
                 role="group"
                 aria-label={plan ? `${displayName}, ${plan} plan` : displayName}
-                className="min-w-0"
+                className="min-w-0 py-[var(--space-lg)] first:pt-0 last:pb-0"
               >
                 <h3 className="type-footnote min-w-0 truncate pr-12 font-medium tracking-wide text-label">
                   <span className="uppercase">{displayName}</span>
@@ -154,7 +154,7 @@ export function OverviewProviderLimits({
               key={entry.provider}
               role="group"
               aria-label={entry.displayName}
-              className="min-w-0"
+              className="min-w-0 py-[var(--space-lg)] first:pt-0 last:pb-0"
             >
               <h3 className="type-footnote truncate font-medium tracking-wide text-label uppercase">
                 {entry.displayName}

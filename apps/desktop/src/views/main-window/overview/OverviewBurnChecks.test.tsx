@@ -46,6 +46,13 @@ describe("OverviewBurnChecks", () => {
     const panel = screen.getByRole("region", { name: "Burn checks" })
     expect(within(panel).getByText("3 findings · 1 passed")).toBeVisible()
     expect(within(panel).getByText("Less than 1% estimated burn")).toBeVisible()
+    // The gauge shows the burn share, floored to a trace, not the check count.
+    const burnArc = panel.querySelector('[data-segment-id="burn"]')
+    const restArc = panel.querySelector('[data-segment-id="rest"]')
+    expect(burnArc).not.toBeNull()
+    expect(Number(burnArc!.getAttribute("data-arc-angle"))).toBeLessThan(
+      Number(restArc!.getAttribute("data-arc-angle")) / 50,
+    )
     const rows = within(panel).getAllByRole("listitem")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Excess cache rehydration4 sessions")

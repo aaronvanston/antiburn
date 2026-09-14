@@ -447,6 +447,12 @@ The token reference is the YAML front matter above. Light and Dark live in one f
 every `colors` entry carries both values, and only those values differ between themes.
 Notes for what isn't expressible as a token:
 
+- **Overview panels** — the provider usage meter card stays 180 CSS pixels wide
+  (180 native logical points), including when the panels stack below 700px. The
+  checks and sessions card fills the remaining column. “Recent” sits at the left
+  of the sessions header, on the same baseline as “All sessions”, with both using
+  `type-caption text-label-secondary`. The width stays local to `overview.css`.
+
 - **Popover spend summary** — one shared `surface-card` card uses `rounded-control`,
   a 12px top inset, 8px side insets, 12px horizontal and 8px vertical internal padding, and three equal columns with 8px gaps.
   The following component owns the gap below the card; the summary adds no bottom padding.

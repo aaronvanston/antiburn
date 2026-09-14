@@ -1,7 +1,7 @@
 # Overview view — implementation plan
 
 **Date:** 2026-09-14
-**Status:** reviewed by Keith 2026-09-14 (six threads, all resolved); no code written
+**Status:** implemented; Keith requested publication and assignment to Zack on 2026-09-14.
 **Branch:** `claude/home-screen-planning-0d134f`, reset onto `origin/main` (`0456d51e`)
 **Name:** the design handoff calls this view Home. Keith renamed it **Overview** on
 2026-09-14 (review thread u-5). Code, files, and the sidebar label use Overview; the
@@ -429,4 +429,6 @@ switch.
 | Slice 2 — totals and daily chart              | done (2026-09-14)                                                                                                                                                              |
 | Slice 3 — provider limits                     | done (2026-09-14)                                                                                                                                                              |
 | Slice 4 — burn checks and recent sessions     | done (2026-09-14)                                                                                                                                                              |
-| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first two hands-on tests done (2026-09-14, see Round 2 and Round 3); four layout variants for the checks/sessions/limits rows in a proto (Round 4), pending his pick; `/design-review` on a live instance still to run |
+| Slice 5 — polish, design review, Keith's test | polish done (2026-09-14); Keith's first two hands-on tests done (2026-09-14, see Round 2 and Round 3); selected layout implemented: checks and recent sessions share a card beside fixed-width provider limits; `/design-review` on a live instance still to run |
+| Overview follow-up — fixed 180pt usage card and Recent header | Done (2026-09-14). Formatting, lint, type-check, all 1,558 desktop tests, frontend build, design drift, and diff checks pass. Native visual review pending. |
+| Publication — five planned PR slices | Authorized 2026-09-14; preparing signed commits and stacked PRs assigned to Zack (`z0w0`). |

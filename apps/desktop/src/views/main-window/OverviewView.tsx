@@ -14,11 +14,11 @@ import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
 import "./overview/overview.css"
 
 /**
- * The main window's landing section: local spend totals, Burn checks beside
- * recent sessions, provider limits, and the daily spend chart along the
- * bottom, where it takes any height the window has to spare. The Burn
- * checks and Sessions panels are summaries; their controls leave for the
- * full sections.
+ * The main window's landing section: local spend totals, then one card
+ * with Burn checks over recent sessions beside the provider limits card,
+ * and the daily spend chart along the bottom, where it takes any height
+ * the window has to spare. The Burn checks and Sessions panels are
+ * summaries; their controls leave for the full sections.
  */
 export function OverviewView({
   active,
@@ -79,22 +79,24 @@ export function OverviewView({
             )}
             <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
             <div className="overview-panels">
-              <OverviewBurnChecks
-                report={state.report}
-                loading={loading && !state.report}
-                onOpen={onOpenBurnChecks}
-              />
-              <OverviewRecentSessions
-                entries={state.recentSessions}
-                loading={loading && !state.recentSessions}
-                onSelect={onSelectSession}
-                onOpenAll={onOpenSessions}
+              <div className="overview-stack rounded-control bg-surface-card p-[var(--space-lg)] shadow-stats-card">
+                <OverviewBurnChecks
+                  report={state.report}
+                  loading={loading && !state.report}
+                  onOpen={onOpenBurnChecks}
+                />
+                <OverviewRecentSessions
+                  entries={state.recentSessions}
+                  loading={loading && !state.recentSessions}
+                  onSelect={onSelectSession}
+                  onOpenAll={onOpenSessions}
+                />
+              </div>
+              <OverviewProviderLimits
+                live={state.liveUsage}
+                loading={loading && !state.liveUsage}
               />
             </div>
-            <OverviewProviderLimits
-              live={state.liveUsage}
-              loading={loading && !state.liveUsage}
-            />
             <OverviewSpendChart
               days={usage?.days ?? []}
               previousDays={usage?.previousDays ?? []}
