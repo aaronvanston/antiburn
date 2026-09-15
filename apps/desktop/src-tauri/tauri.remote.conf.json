@@ -4,9 +4,7 @@
   "identifier": "dev.aaronvanston.antiburn.remote",
   "bundle": {
     "createUpdaterArtifacts": false,
-    "targets": [
-      "app"
-    ],
+    "targets": ["app"],
     "macOS": {
       "infoPlist": "Info.remote.plist",
       "entitlements": "Entitlements.remote.plist",
