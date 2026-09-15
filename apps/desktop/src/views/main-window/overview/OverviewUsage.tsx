@@ -29,9 +29,9 @@ const METRICS: ReadonlyArray<{ value: OverviewMetric; label: string }> = [
  * whatever the token count, so the dollar figure answers a question they do
  * not have.
  *
- * The unit control sits over the chart and the figures together, because it
- * changes both. A control beside one of them would read as the control of
- * that one alone.
+ * The unit control sits centered over the chart and the figures together,
+ * because it changes both. A control at one edge would read as the control
+ * of the block it sits nearest.
  *
  * The chart comes first: the shape of the last 30 days is the reason to
  * open this page, and the figures under it summarize that shape.
@@ -64,7 +64,7 @@ export function OverviewUsage({
         onChange={onMetricChange}
         ariaLabel="Usage unit"
         variant="text-tabs"
-        className="self-start"
+        className="self-center"
       />
       {metric === "cost" ? (
         <>
