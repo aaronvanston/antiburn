@@ -259,6 +259,23 @@ export interface AllowanceUsageAccountPayload {
    * plan-fit figure. The two windows answer different questions. */
   burst: AllowanceUtilizationPayload | null
   overage: AllowanceOveragePayload
+  /** The trailing thirty days, oldest first. */
+  days: AllowanceDayPayload[]
+  /** The thirty days before those, for the same comparison the cost chart
+   * draws. */
+  previousDays: AllowanceDayPayload[]
+}
+
+/** One day of an account's allowance series. Mirrors Rust `AllowanceDay`. */
+export interface AllowanceDayPayload {
+  /** The reader's calendar date, `YYYY-MM-DD`. */
+  localDate: string
+  /** Points of the allowance the reader consumed on this day, or null when
+   * no reading speaks for the day. A gap is unknown, never zero. */
+  usedPercent: number | null
+  /** Blocks that started on this day. A block is its own fact, so it is
+   * reported even for a day the meter says nothing about. */
+  blockCount: number
 }
 
 /** The allowance numbers for every account. Mirrors Rust `AllowanceUsageSummary`. */

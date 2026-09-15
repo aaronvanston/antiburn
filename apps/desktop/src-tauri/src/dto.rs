@@ -502,6 +502,25 @@ pub struct AllowanceUsageAccount {
     /// plan-fit figure. The two windows answer different questions.
     pub burst: Option<AllowanceUtilization>,
     pub overage: AllowanceOverage,
+    /// The trailing thirty days, oldest first.
+    pub days: Vec<AllowanceDay>,
+    /// The thirty days before those, for the same comparison the cost chart
+    /// draws.
+    pub previous_days: Vec<AllowanceDay>,
+}
+
+/// One day of an account's allowance series.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceDay {
+    /// The reader's calendar date, `YYYY-MM-DD`.
+    pub local_date: String,
+    /// Points of the allowance the reader consumed on this day, or `null`
+    /// when no reading speaks for the day. A gap is unknown, never zero.
+    pub used_percent: Option<f64>,
+    /// Blocks that started on this day. A block is its own fact, so it is
+    /// reported even for a day the meter says nothing about.
+    pub block_count: u32,
 }
 
 /// The allowance numbers for every account, as one snapshot.

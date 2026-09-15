@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProviderUsageDayPayload } from "../providerUsageIpc"
+import type { AllowanceDayPayload, ProviderUsageDayPayload } from "../providerUsageIpc"
 import {
+  allowanceDeltaLabel,
+  allowancePointsLabel,
+  allowanceSeriesMax,
   axisDayLabel,
+  blockDayLabel,
   dayLabel,
   niceCeiling,
+  percentCeiling,
   seriesMax,
   spendDeltaLabel,
 } from "./overviewChart"
@@ -48,5 +53,49 @@ describe("overviewChart", () => {
     expect(spendDeltaLabel(day(null), day(1))).toBeNull()
     expect(spendDeltaLabel(day(1), day(null))).toBeNull()
     expect(spendDeltaLabel(day(1), undefined)).toBeNull()
+  })
+})
+
+describe("allowance scale", () => {
+  function allowanceDay(usedPercent: number | null, blockCount = 0): AllowanceDayPayload {
+    return { localDate: "2026-09-14", usedPercent, blockCount }
+  }
+
+  it("stops the scale at one whole allowance", () => {
+    expect(percentCeiling(0)).toBe(5)
+    expect(percentCeiling(4)).toBe(5)
+    expect(percentCeiling(6)).toBe(10)
+    expect(percentCeiling(11)).toBe(25)
+    expect(percentCeiling(80)).toBe(100)
+    expect(percentCeiling(140)).toBe(100)
+  })
+
+  it("takes the scale from the known days of both series", () => {
+    expect(allowanceSeriesMax([allowanceDay(12), allowanceDay(null)], [allowanceDay(30)])).toBe(
+      30,
+    )
+    expect(allowanceSeriesMax([allowanceDay(null)])).toBe(0)
+  })
+
+  it("names a day with no reading rather than calling it zero", () => {
+    expect(allowancePointsLabel(null)).toBe("no reading")
+    expect(allowancePointsLabel(0)).toBe("0.0 points")
+    expect(allowancePointsLabel(4.25)).toBe("4.3 points")
+    expect(allowancePointsLabel(31.4)).toBe("31 points")
+  })
+
+  it("compares two days only when both carry a reading", () => {
+    expect(allowanceDeltaLabel(allowanceDay(5), allowanceDay(3))).toBe("+2.0 points")
+    expect(allowanceDeltaLabel(allowanceDay(3), allowanceDay(5))).toBe("−2.0 points")
+    expect(allowanceDeltaLabel(allowanceDay(3), allowanceDay(3))).toBe("no change")
+    expect(allowanceDeltaLabel(allowanceDay(3), allowanceDay(null))).toBeNull()
+    expect(allowanceDeltaLabel(allowanceDay(null), allowanceDay(3))).toBeNull()
+    expect(allowanceDeltaLabel(allowanceDay(3), undefined)).toBeNull()
+  })
+
+  it("states a day's blocks and stays silent when there are none", () => {
+    expect(blockDayLabel(0)).toBeNull()
+    expect(blockDayLabel(1)).toBe("1 block")
+    expect(blockDayLabel(3)).toBe("3 blocks")
   })
 })

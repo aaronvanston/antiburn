@@ -33,15 +33,16 @@ use crate::agents::kind_from_slug;
 use crate::analysis;
 use crate::consent;
 use crate::dto::{
-    ActivityEntry, AgentScanState, AggregateWinsPayload, AllowanceOverage, AllowanceUsageAccount,
-    AllowanceUsageSummary, AllowanceUtilization, AppInfo, ApplyPreparedBurnCheckOperationOutcome,
-    AutoFixUnavailableReason, BurnCheckDetectorId, BurnCheckTargetListPayload, ChecksReportPayload,
-    CopyPromptFixBurnCheckOutcome, CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir,
-    HygieneSummaryPayload, InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary,
-    OrchestrationStatus, PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason,
-    ProviderUsageSummary, RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload,
-    SessionHygieneRequest, SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary,
-    SessionRelation, SessionRelations, SubagentMember,
+    ActivityEntry, AgentScanState, AggregateWinsPayload, AllowanceDay, AllowanceOverage,
+    AllowanceUsageAccount, AllowanceUsageSummary, AllowanceUtilization, AppInfo,
+    ApplyPreparedBurnCheckOperationOutcome, AutoFixUnavailableReason, BurnCheckDetectorId,
+    BurnCheckTargetListPayload, ChecksReportPayload, CopyPromptFixBurnCheckOutcome,
+    CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir, HygieneSummaryPayload,
+    InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary, OrchestrationStatus,
+    PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason, ProviderUsageSummary,
+    RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload, SessionHygieneRequest,
+    SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary, SessionRelation,
+    SessionRelations, SubagentMember,
 };
 use crate::insights_ipc::InsightsController;
 use crate::insights_report::ReportRequest;
@@ -973,15 +974,38 @@ const OVERAGE_SPAN_DAYS: i64 = 30;
 /// demand refused, from the refusals the provider stated. Neither follows
 /// from the other, so the surface reports both.
 #[tauri::command]
-pub async fn get_allowance_usage(app: tauri::AppHandle) -> CommandResult<AllowanceUsageSummary> {
+pub async fn get_allowance_usage(
+    app: tauri::AppHandle,
+    utc_offset_minutes: Option<i32>,
+) -> CommandResult<AllowanceUsageSummary> {
     let now = scan::unix_now();
     let store = app.state::<Store>().inner().clone();
+    let offset_minutes = utc_offset_minutes.unwrap_or(0);
     tauri::async_runtime::spawn_blocking(move || {
         let since_epoch = now.saturating_sub(OVERAGE_SPAN_DAYS * 86_400);
+        let bounds = provider_usage::window_bounds(now, offset_minutes);
+        let offset = provider_usage::local_offset(offset_minutes);
         let rollups = store
             .provider_usage_period_rollups(0, MAX_ALLOWANCE_PERIODS)
             .map_err(fail)?;
         let incidents = store.quota_incidents(since_epoch).map_err(fail)?;
+        // Reach one window further back than the series. A period that spans
+        // the first day started before it, and its first reading states the
+        // whole rise from the period's start.
+        let readings = store
+            .provider_usage_readings(
+                bounds
+                    .previous_30_days_start
+                    .saturating_sub(ALLOWANCE_SERIES_LEAD_SECS),
+                PRIMARY_LONG_ROLE,
+                MAX_ALLOWANCE_READINGS,
+            )
+            .map_err(fail)?;
+        let consumption = provider_usage::allowance::consumption(&readings);
+        let blocks = provider_usage::allowance::account_blocks(
+            &incidents,
+            since_epoch.saturating_mul(1_000),
+        );
         let allowances = provider_usage::allowance::account_allowances(
             &rollups,
             &incidents,
@@ -990,8 +1014,15 @@ pub async fn get_allowance_usage(app: tauri::AppHandle) -> CommandResult<Allowan
         Ok(AllowanceUsageSummary {
             accounts: allowances
                 .into_iter()
-                .map(
-                    |((provider, account_key), allowance)| AllowanceUsageAccount {
+                .map(|((provider, account_key), allowance)| {
+                    let id = (provider.clone(), account_key.clone());
+                    let (days, previous_days) = allowance_days(
+                        consumption.get(&id),
+                        blocks.get(&id).map_or(&[][..], |blocks| &blocks[..]),
+                        &bounds,
+                        offset,
+                    );
+                    AllowanceUsageAccount {
                         display_name: provider_usage::providers::display_name(&provider)
                             .to_string(),
                         provider,
@@ -1011,8 +1042,10 @@ pub async fn get_allowance_usage(app: tauri::AppHandle) -> CommandResult<Allowan
                                 .last_block_at_ms
                                 .map(|at_ms| crate::store::iso_from_epoch(Some(at_ms / 1_000))),
                         },
-                    },
-                )
+                        days,
+                        previous_days,
+                    }
+                })
                 .collect(),
             overage_span_days: u32::try_from(OVERAGE_SPAN_DAYS).unwrap_or(u32::MAX),
             generated_at: crate::store::iso_from_epoch(Some(now)),
@@ -1020,6 +1053,66 @@ pub async fn get_allowance_usage(app: tauri::AppHandle) -> CommandResult<Allowan
     })
     .await
     .map_err(fail)?
+}
+
+/// The window role whose periods measure plan fit.
+const PRIMARY_LONG_ROLE: &str = "primaryLong";
+
+/// How far before the series the reading query reaches: one weekly window,
+/// the longest window any provider states.
+const ALLOWANCE_SERIES_LEAD_SECS: i64 = 7 * 86_400;
+
+/// How many readings the daily series reads at most.
+const MAX_ALLOWANCE_READINGS: usize = 200_000;
+
+/// Both daily series for one account: the trailing thirty days, and the
+/// thirty days before them.
+///
+/// A day the readings do not cover reports no figure. The meter is the only
+/// source here, and a day it says nothing about is unknown, not idle.
+fn allowance_days(
+    consumption: Option<&provider_usage::allowance::AccountConsumption>,
+    blocks: &[provider_usage::allowance::Block],
+    bounds: &provider_usage::WindowBounds,
+    offset: time::UtcOffset,
+) -> (Vec<AllowanceDay>, Vec<AllowanceDay>) {
+    const SLOTS: usize = 2 * provider_usage::SERIES_DAYS;
+    let start = bounds.previous_30_days_start;
+    let slot_of = |epoch: i64| -> Option<usize> {
+        usize::try_from((epoch - start).div_euclid(provider_usage::DAY))
+            .ok()
+            .filter(|slot| *slot < SLOTS)
+    };
+
+    let mut consumed = [0.0_f64; SLOTS];
+    let mut known = [false; SLOTS];
+    let mut block_counts = [0_u32; SLOTS];
+
+    if let Some(consumption) = consumption {
+        for entry in &consumption.consumed {
+            if let Some(slot) = slot_of(entry.at_epoch) {
+                consumed[slot] += entry.percent;
+            }
+        }
+        for (slot, known) in known.iter_mut().enumerate() {
+            let day_start = start + slot as i64 * provider_usage::DAY;
+            *known = consumption.covers(day_start, day_start + provider_usage::DAY - 1);
+        }
+    }
+    for block in blocks {
+        if let Some(slot) = slot_of(block.started_at_ms / 1_000) {
+            block_counts[slot] = block_counts[slot].saturating_add(1);
+        }
+    }
+
+    let day = |slot: usize| AllowanceDay {
+        local_date: provider_usage::local_date(start + slot as i64 * provider_usage::DAY, offset),
+        used_percent: known[slot].then_some(consumed[slot]),
+        block_count: block_counts[slot],
+    };
+    let previous_days = (0..provider_usage::SERIES_DAYS).map(day).collect();
+    let days = (provider_usage::SERIES_DAYS..SLOTS).map(day).collect();
+    (days, previous_days)
 }
 
 fn utilization_payload(

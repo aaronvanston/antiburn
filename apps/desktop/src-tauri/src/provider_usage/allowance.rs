@@ -20,7 +20,7 @@ use antiburn_local::analysis::{QuotaIncident, QuotaLimitKind, QuotaResetClock};
 use serde::Deserialize;
 
 use crate::store::QuotaIncidentRecord;
-use crate::store::provider_usage_history::ProviderUsagePeriodRollup;
+use crate::store::provider_usage_history::{ProviderUsagePeriodRollup, ProviderUsageReading};
 
 /// The gap that separates two refusals.
 ///
@@ -339,6 +339,97 @@ pub fn account_allowances(
         accounts.entry(id).or_default().overage = overage(&incidents, since_ms);
     }
     accounts
+}
+
+/// What one reading added to its period, and when the provider stated it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Consumed {
+    pub at_epoch: i64,
+    /// Percentage points of the allowance the reader consumed since the
+    /// reading before this one.
+    pub percent: f64,
+}
+
+/// The span one account's readings cover, and what each reading consumed.
+///
+/// A day inside the span but without a reading of its own consumed nothing:
+/// the meter stood still between two readings that bracket it. A day outside
+/// the span is unknown, because no reading speaks for it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AccountConsumption {
+    pub consumed: Vec<Consumed>,
+    /// The spans the readings cover, as inclusive epoch pairs. One span for
+    /// each period, because a period with one reading covers one instant.
+    pub covered: Vec<(i64, i64)>,
+}
+
+impl AccountConsumption {
+    /// True when a reading speaks for any part of this span.
+    ///
+    /// The provider states a running total, so two readings that bracket a
+    /// day say what that day consumed even when neither falls inside it.
+    pub fn covers(&self, from_epoch: i64, to_epoch: i64) -> bool {
+        self.covered
+            .iter()
+            .any(|(from, to)| *from <= to_epoch && *to >= from_epoch)
+    }
+}
+
+/// Turn ordered meter readings into what each one consumed.
+///
+/// The provider states a running total for the period, not a per-day figure.
+/// What a day consumed is the rise from the reading before it. The first
+/// reading of a period carries the whole rise from the period's start.
+///
+/// A fall inside a period counts as nothing consumed. The provider restated
+/// a lower figure; the reader did not give allowance back.
+pub fn consumption(readings: &[ProviderUsageReading]) -> BTreeMap<AccountId, AccountConsumption> {
+    let mut by_account: BTreeMap<AccountId, AccountConsumption> = BTreeMap::new();
+    let mut previous: Option<(i64, f64)> = None;
+    for reading in readings {
+        let id = (reading.provider.clone(), reading.account_key.clone());
+        let entry = by_account.entry(id).or_default();
+        let percent = match previous {
+            Some((period_id, before)) if period_id == reading.period_id => {
+                (reading.used_percent - before).max(0.0)
+            }
+            _ => reading.used_percent,
+        };
+        let starts_period = previous.is_none_or(|(period_id, _)| period_id != reading.period_id);
+        if starts_period {
+            entry
+                .covered
+                .push((reading.observed_at_epoch, reading.observed_at_epoch));
+        } else if let Some(span) = entry.covered.last_mut() {
+            span.1 = reading.observed_at_epoch;
+        }
+        entry.consumed.push(Consumed {
+            at_epoch: reading.observed_at_epoch,
+            percent,
+        });
+        previous = Some((reading.period_id, reading.used_percent));
+    }
+    by_account
+}
+
+/// The blocks each account met inside the span, in the order they happened.
+///
+/// The Overview marks the days that carry a block, so it needs the blocks
+/// themselves and not only how many there were.
+pub fn account_blocks(
+    incidents: &[QuotaIncidentRecord],
+    since_ms: i64,
+) -> BTreeMap<AccountId, Vec<Block>> {
+    incidents_by_account(incidents)
+        .into_iter()
+        .map(|(id, incidents)| {
+            let blocks = blocks(&incidents)
+                .into_iter()
+                .filter(|block| block.started_at_ms >= since_ms)
+                .collect();
+            (id, blocks)
+        })
+        .collect()
 }
 
 /// Gather every session's incidents under the accounts that session used.

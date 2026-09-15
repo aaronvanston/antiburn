@@ -86,6 +86,16 @@ pub struct ProviderUsagePeriodRollup {
     pub refusal_count: i64,
 }
 
+/// One meter reading, reduced to what a daily series needs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProviderUsageReading {
+    pub provider: String,
+    pub account_key: String,
+    pub period_id: i64,
+    pub observed_at_epoch: i64,
+    pub used_percent: f64,
+}
+
 /// A complete period and its ordered readings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderUsagePeriodHistory {
@@ -257,6 +267,47 @@ impl Store {
             .query_map(params![since_epoch, limit], row_to_rollup)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rollups)
+    }
+
+    /// Every whole-account reading in one window role since `since_epoch`.
+    ///
+    /// The rows come in time order inside each period. A daily series needs
+    /// that order, because what a day consumed is the rise from the reading
+    /// before it.
+    ///
+    /// A reading with no figure and a reading outside a period are both left
+    /// out. Neither states how much the reader consumed.
+    pub fn provider_usage_readings(
+        &self,
+        since_epoch: i64,
+        window_role: &str,
+        limit: usize,
+    ) -> Result<Vec<ProviderUsageReading>> {
+        let connection = self.lock();
+        let limit = i64::try_from(limit.clamp(1, 200_000)).expect("bounded page fits i64");
+        let mut statement = connection.prepare(
+            "SELECT provider, account_key, period_id, observed_at_epoch, used_percent
+               FROM provider_usage_observation
+              WHERE observed_at_epoch >= ?1
+                AND window_role = ?2
+                AND scope_key = 'account'
+                AND period_id IS NOT NULL
+                AND used_percent IS NOT NULL
+              ORDER BY provider, account_key, period_id, observed_at_epoch
+              LIMIT ?3",
+        )?;
+        let readings = statement
+            .query_map(params![since_epoch, window_role, limit], |row| {
+                Ok(ProviderUsageReading {
+                    provider: row.get(0)?,
+                    account_key: row.get(1)?,
+                    period_id: row.get(2)?,
+                    observed_at_epoch: row.get(3)?,
+                    used_percent: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(readings)
     }
 
     /// Remove expired readings and orphaned periods.

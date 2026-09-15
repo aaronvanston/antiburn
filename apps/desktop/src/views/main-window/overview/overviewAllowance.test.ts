@@ -46,6 +46,8 @@ function account(
       blocksWithoutWait: 0,
       lastBlockAt: null,
     },
+    days: [],
+    previousDays: [],
     ...overrides,
   }
 }

@@ -8,7 +8,9 @@ import { type MainOverviewSession } from "./MainOverviewSession"
 import { OverviewBurnChecks } from "./overview/OverviewBurnChecks"
 import { OverviewProviderLimits } from "./overview/OverviewProviderLimits"
 import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
+import { OverviewAllowanceChart } from "./overview/OverviewAllowanceChart"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
+import { allowanceAccounts } from "./overview/overviewAllowance"
 import { OverviewUsageTotals, type OverviewMetric } from "./overview/OverviewUsageTotals"
 
 import "./overview/overview.css"
@@ -107,11 +109,18 @@ export function OverviewView({
                 loading={loading && !state.liveUsage}
               />
             </div>
-            <OverviewSpendChart
-              days={usage?.days ?? []}
-              previousDays={usage?.previousDays ?? []}
-              loading={loading}
-            />
+            {metric === "cost" ? (
+              <OverviewSpendChart
+                days={usage?.days ?? []}
+                previousDays={usage?.previousDays ?? []}
+                loading={loading}
+              />
+            ) : (
+              <OverviewAllowanceChart
+                accounts={allowanceAccounts(state.allowance)}
+                loading={loading && !state.allowance}
+              />
+            )}
           </div>
         </ScrollPane>
       )}

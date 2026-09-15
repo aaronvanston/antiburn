@@ -986,7 +986,9 @@ export async function getProviderUsage(): Promise<ProviderUsageSummaryPayload> {
  */
 export async function getAllowanceUsage(): Promise<AllowanceUsageSummaryPayload> {
   if (!hasShell()) return EMPTY_ALLOWANCE_USAGE
-  return invoke<AllowanceUsageSummaryPayload>("get_allowance_usage")
+  return invoke<AllowanceUsageSummaryPayload>("get_allowance_usage", {
+    utcOffsetMinutes: -new Date().getTimezoneOffset(),
+  })
 }
 
 export const EMPTY_ALLOWANCE_USAGE: AllowanceUsageSummaryPayload = {

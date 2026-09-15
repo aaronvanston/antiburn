@@ -93,9 +93,9 @@
   animation-delay: calc(var(--overview-bar-index, 0) * var(--overview-bar-stagger));
 }
 
-/* A day with tokens that no price covers: an outline the height of a dot,
-   so it is visibly a reading with no figure rather than a zero. */
-.overview-bar[data-unpriced] {
+/* A day the chart has no figure for: an outline the height of a dot, so it
+   is visibly a day with no figure rather than a day at zero. */
+.overview-bar[data-outline] {
   background: transparent;
   box-shadow: inset 0 0 0 1px currentcolor;
 }
@@ -293,4 +293,35 @@
     padding-inline-start: 0;
     padding-block-start: var(--space-md);
   }
+}
+
+/* ==========================================================================
+   Overview allowance chart.
+
+   One chart for each provider account, because each account has its own
+   meter and its own allowance. The charts share the height the window has
+   to spare. A day that carried a block gets a mark above its bars; a block
+   is its own fact and does not change the height of a bar.
+   ========================================================================== */
+
+.overview-allowance-charts {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-block-size: 0;
+}
+
+.overview-day-marked {
+  position: relative;
+}
+
+.overview-block-mark {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  inline-size: var(--overview-bar-width);
+  block-size: var(--overview-bar-width);
+  transform: translateX(-50%);
+  border-radius: 9999px;
 }

@@ -57,6 +57,30 @@ mod history_tests {
         }
     }
 
+    /// The same snapshot in the long window, which is the one a daily
+    /// allowance series reads.
+    fn weekly_snapshot(
+        account: &str,
+        observed_at: i64,
+        starts_at: Option<i64>,
+        resets_at: Option<i64>,
+        used_percent: Option<f64>,
+    ) -> ProviderUsageSnapshot {
+        let mut snapshot = snapshot(
+            account,
+            observed_at,
+            "seven-day",
+            starts_at,
+            resets_at,
+            used_percent,
+        );
+        for window in &mut snapshot.windows {
+            window.role = WindowRole::PrimaryLong;
+            window.kind = UsageWindowKind::Weekly;
+        }
+        snapshot
+    }
+
     fn session() -> SessionRecord {
         SessionRecord {
             key: SessionKey::new("native", "claude-code", "session"),
@@ -750,5 +774,58 @@ mod history_tests {
             history.observations[0].plan_tier.as_deref(),
             Some("standard")
         );
+    }
+
+    /// The daily series reads the long window only, in time order, and
+    /// leaves out a reading the provider stated no figure for.
+    #[test]
+    fn readings_come_back_in_time_order_for_the_long_window_only() {
+        let store = store();
+        let start = NOW - 3 * 86_400;
+        store
+            .record_provider_usage_snapshots(&[
+                weekly_snapshot(ACCOUNT_A, start, Some(start), Some(NOW), Some(10.0)),
+                weekly_snapshot(ACCOUNT_A, start + 3_600, Some(start), Some(NOW), Some(28.0)),
+                weekly_snapshot(ACCOUNT_A, start + 7_200, Some(start), Some(NOW), None),
+                snapshot(
+                    ACCOUNT_A,
+                    start + 10_800,
+                    "five-hour",
+                    Some(start),
+                    Some(NOW),
+                    Some(90.0),
+                ),
+            ])
+            .unwrap();
+
+        let readings = store
+            .provider_usage_readings(0, "primaryLong", 100)
+            .unwrap();
+
+        let figures: Vec<f64> = readings.iter().map(|row| row.used_percent).collect();
+        assert_eq!(figures, vec![10.0, 28.0]);
+        assert_eq!(readings[0].observed_at_epoch, start);
+        assert_eq!(readings[1].observed_at_epoch, start + 3_600);
+        assert_eq!(readings[0].period_id, readings[1].period_id);
+    }
+
+    /// A reading older than the bound is not one the series asks for.
+    #[test]
+    fn readings_start_at_the_bound_the_caller_states() {
+        let store = store();
+        let start = NOW - 10 * 86_400;
+        store
+            .record_provider_usage_snapshots(&[
+                weekly_snapshot(ACCOUNT_A, start, Some(start), Some(NOW), Some(10.0)),
+                weekly_snapshot(ACCOUNT_A, NOW - 3_600, Some(start), Some(NOW), Some(40.0)),
+            ])
+            .unwrap();
+
+        let readings = store
+            .provider_usage_readings(NOW - 86_400, "primaryLong", 100)
+            .unwrap();
+
+        assert_eq!(readings.len(), 1);
+        assert_eq!(readings[0].used_percent, 40.0);
     }
 }

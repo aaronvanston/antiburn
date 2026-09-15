@@ -239,3 +239,109 @@ fn the_newest_period_names_the_window() {
     assert_eq!(reduced.window_kind, "weekly");
     assert_eq!(reduced.peak_percent, 62.0);
 }
+
+fn reading(period_id: i64, observed_at_epoch: i64, used_percent: f64) -> ProviderUsageReading {
+    ProviderUsageReading {
+        provider: "openai".to_string(),
+        account_key: "account".to_string(),
+        period_id,
+        observed_at_epoch,
+        used_percent,
+    }
+}
+
+fn only_consumption(readings: &[ProviderUsageReading]) -> AccountConsumption {
+    consumption(readings)
+        .into_values()
+        .next()
+        .expect("the readings name one account")
+}
+
+/// The provider states a running total. What a day consumed is the rise.
+#[test]
+fn a_reading_consumes_the_rise_since_the_reading_before_it() {
+    let readings = vec![
+        reading(1, 1_000, 12.0),
+        reading(1, 2_000, 30.0),
+        reading(1, 3_000, 41.0),
+    ];
+
+    let consumed = only_consumption(&readings);
+
+    let percents: Vec<f64> = consumed
+        .consumed
+        .iter()
+        .map(|entry| entry.percent)
+        .collect();
+    assert_eq!(percents, vec![12.0, 18.0, 11.0]);
+}
+
+/// A new period restarts the total. Its first reading is a rise from zero,
+/// not a fall from the period before it.
+#[test]
+fn a_new_period_restarts_the_total() {
+    let readings = vec![
+        reading(1, 1_000, 80.0),
+        reading(2, 2_000, 5.0),
+        reading(2, 3_000, 9.0),
+    ];
+
+    let consumed = only_consumption(&readings);
+
+    let percents: Vec<f64> = consumed
+        .consumed
+        .iter()
+        .map(|entry| entry.percent)
+        .collect();
+    assert_eq!(percents, vec![80.0, 5.0, 4.0]);
+}
+
+/// A restated lower figure consumes nothing. The reader did not give
+/// allowance back.
+#[test]
+fn a_fall_inside_a_period_consumes_nothing() {
+    let readings = vec![reading(1, 1_000, 40.0), reading(1, 2_000, 38.0)];
+
+    let consumed = only_consumption(&readings);
+
+    assert_eq!(consumed.consumed[1].percent, 0.0);
+}
+
+/// Two readings that bracket a day speak for it. A day outside every span
+/// does not, and reads as unknown rather than as idle.
+#[test]
+fn readings_speak_for_the_days_between_them_and_for_no_others() {
+    let day = 86_400;
+    let readings = vec![reading(1, 10 * day, 10.0), reading(1, 13 * day, 25.0)];
+
+    let consumed = only_consumption(&readings);
+
+    assert!(consumed.covers(11 * day, 12 * day - 1));
+    assert!(!consumed.covers(14 * day, 15 * day - 1));
+    assert!(!consumed.covers(8 * day, 9 * day - 1));
+}
+
+/// A block outside the span is not one of the blocks the chart marks.
+#[test]
+fn account_blocks_keep_only_the_blocks_inside_the_span() {
+    let record = QuotaIncidentRecord {
+        agent: "claude".to_string(),
+        incidents_json: serde_json::to_string(&vec![
+            incident(
+                REFUSED_AT_MS - 40 * 86_400_000,
+                QuotaLimitKind::RollingWindow,
+            ),
+            incident(REFUSED_AT_MS, QuotaLimitKind::RollingWindow),
+        ])
+        .expect("the incidents serialize"),
+        provider_accounts_json: r#"[{"provider":"anthropic","accountKey":"account"}]"#.to_string(),
+    };
+
+    let blocks = account_blocks(&[record], REFUSED_AT_MS - 30 * 86_400_000);
+
+    let account = blocks
+        .get(&("anthropic".to_string(), "account".to_string()))
+        .expect("the record names one account");
+    assert_eq!(account.len(), 1);
+    assert_eq!(account[0].started_at_ms, REFUSED_AT_MS);
+}
