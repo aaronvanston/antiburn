@@ -196,13 +196,12 @@ describe("sessionDiscussionPrompt", () => {
     expect(result).toContain("Session overdepth: Finding — Session went too deep")
     expect(result).toContain("deepest request carried 250,000 tokens")
     expect(result).toContain("reviewed limit is 200,000")
-    expect(result).toContain("Model overthinking: Confirmed clean in stored evidence")
-    expect(result).toContain(
-      "this agent's logs don't record what this check needs (capabilityMissing)",
-    )
-    expect(result).toContain("Obsolete model: Not assessed — reason unavailable")
+    expect(result.split("\n")).toContain("- Passed — Model overthinking.")
+    expect(result).toContain("this agent's logs don't record what this check needs")
+    expect(result).not.toContain("capabilityMissing")
+    expect(result).toContain("Not assessed — Obsolete model (reason unavailable)")
     expect(result).toContain("Evidence: Unavailable in the loaded payload")
-    expect(result).toContain("Excess cache rehydration: Not assessed — no badge supplied")
+    expect(result).toContain("Not assessed — Excess cache rehydration (no result available)")
   })
 
   it.each<SessionHygieneFindingEvidence>([
@@ -265,8 +264,8 @@ describe("sessionDiscussionPrompt", () => {
   ] as const)("retains evidence state %s without inventing passes", (evidenceState) => {
     const result = prompt({ hygiene: { evidenceState, badges: [] } })
     expect(result).toContain(`Burn-check evidence: ${evidenceState}`)
-    expect(result).not.toContain(": Confirmed clean")
-    expect(result.match(/no badge supplied/g)).toHaveLength(6)
+    expect(result).not.toContain("- Passed —")
+    expect(result.match(/no result available/g)).toHaveLength(6)
   })
 
   it("does not present pending placeholders as metrics or clean evidence", () => {
@@ -277,7 +276,7 @@ describe("sessionDiscussionPrompt", () => {
     expect(result).toContain("Inclusive events: Unavailable")
     expect(result).not.toContain("$1.25")
     expect(result).not.toContain("input 110")
-    expect(result).not.toContain(": Confirmed clean")
+    expect(result).not.toContain("- Passed —")
   })
 
   it("keeps stored stale results while disclosing independent freshness and failed refresh", () => {

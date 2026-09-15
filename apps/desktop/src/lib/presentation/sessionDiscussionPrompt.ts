@@ -78,16 +78,15 @@ export function sessionDiscussionPrompt({
   const countScope = subject.subagent ? "Selected-transcript" : "Inclusive"
   const checks = sessionHygieneChecks(hygiene).flatMap((check) => {
     const badge = hygiene.badges.find((item) => item.id === check.id)
-    if (!badge)
-      return [`- ${check.name}: Not assessed — no badge supplied in the loaded payload.`]
+    if (!badge) return [`- Not assessed — ${check.name} (no result available).`]
     if (badge.status === "notAssessed") {
       const reason = badge.notAssessedReason
-        ? `${notAssessedReasonLabel(badge.notAssessedReason)} (${badge.notAssessedReason})`
+        ? notAssessedReasonLabel(badge.notAssessedReason)
         : "reason unavailable"
-      return [`- ${check.name}: Not assessed — ${reason}.`]
+      return [`- Not assessed — ${check.name} (${reason}).`]
     }
     if (badge.status === "clean") {
-      return [`- ${check.name}: Confirmed clean in stored evidence — ${check.title}.`]
+      return [`- Passed — ${check.name}.`]
     }
     const details = sessionHygieneDocumentation(check).findingDetails
     return [
