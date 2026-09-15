@@ -142,6 +142,24 @@ describe("OverviewUsage", () => {
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()
   })
 
+  it("says how antiburn makes each hero figure", () => {
+    // A hero figure has room for a name and none for a method. A reader who
+    // doubts the number wants the method and the span it covers.
+    renderTotals()
+    const cell = screen.getByRole("region", { name: "Allowance" })
+
+    const utilization = within(cell).getByText("41%").closest("[tabindex]")
+    fireEvent.focus(utilization!)
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/covers all 9 weeks/)
+    fireEvent.blur(utilization!)
+
+    const limitHits = within(cell).getByText("11h").closest("[tabindex]")
+    fireEvent.focus(limitHits!)
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /waited for the limit to reset, across 8 limit hits in the last 30 days/,
+    )
+  })
+
   it("counts the limit hits when none states a reset", () => {
     // Codex refuses without naming a reset. The limit hits still happened,
     // so the figure falls back to counting them.

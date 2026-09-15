@@ -4,9 +4,13 @@ import {
   limitHitsCaption,
   limitHitsFigure,
   limitHitsNote,
+  limitHitsTooltip,
   UTILIZATION_LABEL,
   utilizationFigure,
+  utilizationTooltip,
 } from "./overviewAllowance"
+
+import { Tooltip } from "../../../components/presentation/Tooltip"
 
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
@@ -33,6 +37,10 @@ import "./overview.css"
  * The utilization caption repeats the label word for word, so a screen
  * reader hears it once: the label carries it and the caption is drawn for
  * the eye alone.
+ *
+ * Each figure carries a tooltip that says how antiburn makes it and what
+ * it leaves out. A hero figure has room for a name and no room for a
+ * method, and a reader who doubts a number wants the method.
  */
 export function OverviewAllowanceTotals({
   accounts,
@@ -92,37 +100,41 @@ function AllowanceAccount({
       <p className="type-callout text-label-secondary">{account.displayName}</p>
       <dl className="overview-allowance-pair mt-[var(--space-sm)]">
         {utilization && (
-          <div className="min-w-0">
-            <dt className="sr-only">{UTILIZATION_LABEL}</dt>
-            <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
-              <SegmentFigure>{utilizationFigure(utilization)}</SegmentFigure>
-            </dd>
-            <dd
-              aria-hidden="true"
-              className="type-caption mt-[var(--space-xs)] text-label-tertiary"
-            >
-              {UTILIZATION_LABEL.toLowerCase()}
-            </dd>
-          </div>
+          <Tooltip label={utilizationTooltip(utilization)}>
+            <div className="min-w-0" tabIndex={0}>
+              <dt className="sr-only">{UTILIZATION_LABEL}</dt>
+              <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
+                <SegmentFigure>{utilizationFigure(utilization)}</SegmentFigure>
+              </dd>
+              <dd
+                aria-hidden="true"
+                className="type-caption mt-[var(--space-xs)] text-label-tertiary"
+              >
+                {UTILIZATION_LABEL.toLowerCase()}
+              </dd>
+            </div>
+          </Tooltip>
         )}
-        <div className="min-w-0">
-          <dt className="sr-only">Limit hits</dt>
-          <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
-            <SegmentFigure>{limitHitsFigure(account.overage)}</SegmentFigure>
-          </dd>
-          <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
-            {limitHitsCaption(account.overage, spanDays)}
-            {note && (
-              <>
-                <span aria-hidden="true"> · </span>
-                {note}
-              </>
+        <Tooltip label={limitHitsTooltip(account.overage, spanDays)}>
+          <div className="min-w-0" tabIndex={0}>
+            <dt className="sr-only">Limit hits</dt>
+            <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
+              <SegmentFigure>{limitHitsFigure(account.overage)}</SegmentFigure>
+            </dd>
+            <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
+              {limitHitsCaption(account.overage, spanDays)}
+              {note && (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  {note}
+                </>
+              )}
+            </dd>
+            {cause && (
+              <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">{cause}</dd>
             )}
-          </dd>
-          {cause && (
-            <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">{cause}</dd>
-          )}
-        </div>
+          </div>
+        </Tooltip>
       </dl>
     </div>
   )

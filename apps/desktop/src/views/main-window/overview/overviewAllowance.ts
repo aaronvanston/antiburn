@@ -63,6 +63,44 @@ function periodNoun(windowKind: string, count: number): string {
 export const UTILIZATION_LABEL = "Average subscription utilization"
 
 /**
+ * The long form of the utilization figure, for a tooltip.
+ *
+ * The caption names the figure and the tooltip says how antiburn makes it.
+ * A reader who doubts a number wants the method and the span it covers,
+ * and neither fits under a hero figure.
+ */
+export function utilizationTooltip(utilization: AllowanceUtilizationPayload): string {
+  const count = utilization.periodCount
+  const periods = `${count} ${periodNoun(utilization.windowKind, count)}`
+  const one = periodNoun(utilization.windowKind, 1)
+  return (
+    `The average share of your plan used in one ${one}, read from the ` +
+    `provider's own meter. It covers all ${periods} antiburn has readings ` +
+    `for. The meter stops at 100%, so it never counts the demand the ` +
+    `provider refused.`
+  )
+}
+
+/**
+ * The long form of the limit-hits figure, for a tooltip.
+ *
+ * The figure means two different things, so the tooltip does too. A wait
+ * and a count answer different questions, and a reader must know which one
+ * the figure over them states.
+ */
+export function limitHitsTooltip(overage: AllowanceOveragePayload, spanDays: number): string {
+  if (overage.blockCount === 0) {
+    return `How many times the provider refused a request in the last ${spanDays} days. It refused none.`
+  }
+  const hits = overage.blockCount === 1 ? "limit hit" : "limit hits"
+  const span = `${overage.blockCount} ${hits} in the last ${spanDays} days`
+  if (!statesWait(overage)) {
+    return `${span}. The figure counts them instead of timing them, because none of them stated when the limit resets. A run of retries counts as one.`
+  }
+  return `How long you waited for the limit to reset, across ${span}. A run of retries counts as one. A limit hit that states no reset adds no time to this figure.`
+}
+
+/**
  * True when the limit hits state enough resets to give a wait.
  *
  * A limit hit that states no usable reset adds no time. The figure and the

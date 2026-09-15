@@ -13,7 +13,9 @@ import {
   limitHitsNote,
   causeLine,
   hasAllowanceFigures,
+  limitHitsTooltip,
   utilizationFigure,
+  utilizationTooltip,
 } from "./overviewAllowance"
 
 function utilization(
@@ -69,6 +71,23 @@ describe("utilizationFigure", () => {
   })
 })
 
+describe("utilizationTooltip", () => {
+  it("names the window, the span it covers, and what the meter leaves out", () => {
+    expect(utilizationTooltip(utilization())).toBe(
+      "The average share of your plan used in one week, read from the " +
+        "provider's own meter. It covers all 9 weeks antiburn has readings " +
+        "for. The meter stops at 100%, so it never counts the demand the " +
+        "provider refused.",
+    )
+  })
+
+  it("follows the window the store names", () => {
+    const rolling = utilizationTooltip(utilization({ windowKind: "rolling", periodCount: 18 }))
+    expect(rolling).toContain("used in one window")
+    expect(rolling).toContain("all 18 windows")
+  })
+})
+
 function overage(overrides: Partial<AllowanceOveragePayload> = {}): AllowanceOveragePayload {
   return {
     blockCount: 2,
@@ -120,6 +139,31 @@ describe("limitHitsCaption and limitHitsNote", () => {
     expect(
       limitHitsNote(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
     ).toBe("no stated reset")
+  })
+})
+
+describe("limitHitsTooltip", () => {
+  it("says the figure is a wait, and what the wait leaves out", () => {
+    expect(limitHitsTooltip(overage(), 30)).toBe(
+      "How long you waited for the limit to reset, across 2 limit hits in " +
+        "the last 30 days. A run of retries counts as one. A limit hit that " +
+        "states no reset adds no time to this figure.",
+    )
+  })
+
+  it("says the figure is a count when no limit hit states a reset", () => {
+    const counted = overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })
+    expect(limitHitsTooltip(counted, 30)).toBe(
+      "1 limit hit in the last 30 days. The figure counts them instead of " +
+        "timing them, because none of them stated when the limit resets. A " +
+        "run of retries counts as one.",
+    )
+  })
+
+  it("says the provider refused nothing rather than describing a wait", () => {
+    expect(limitHitsTooltip(overage({ blockCount: 0, waitedSeconds: 0 }), 30)).toBe(
+      "How many times the provider refused a request in the last 30 days. It refused none.",
+    )
   })
 })
 
