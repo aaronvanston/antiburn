@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { SharedTooltipOwnerContext } from "../presentation/Tooltip"
 import { INITIAL_SESSION_HYGIENE } from "../../lib/presentation/sessionHygiene"
 import {
   inclusiveCostSubject,
@@ -1105,6 +1106,331 @@ describe("SessionDetailPresentation — copy path", () => {
 
     unmount()
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe("SessionDetailPresentation — discussion copy", () => {
+  const promptLabel = "Copy prompt to discuss session with agent"
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it.each(["altKey", "metaKey", "ctrlKey"])(
+    "copies a prompt on %s click without prior hover",
+    async (modifier) => {
+      const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+      const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+      view({ onCopySourcePath, onCopyDiscussionPrompt })
+      await act(async () =>
+        fireEvent.click(screen.getByLabelText("Copy path"), { [modifier]: true }),
+      )
+      expect(onCopyDiscussionPrompt).toHaveBeenCalledOnce()
+      expect(onCopySourcePath).not.toHaveBeenCalled()
+      expect(screen.getByRole("status")).toHaveTextContent("Prompt copied")
+      act(() => vi.advanceTimersByTime(1999))
+      expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+      act(() => vi.advanceTimersByTime(1))
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    },
+  )
+
+  it("copies on macOS Control-context-menu alone and keeps the two-second tick", async () => {
+    const platform = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Macintosh")
+    try {
+      const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+      const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+      view({ onCopySourcePath, onCopyDiscussionPrompt })
+      const button = screen.getByLabelText("Copy path")
+      fireEvent.mouseDown(button, { ctrlKey: true, button: 0 })
+      await act(async () => {
+        expect(fireEvent.contextMenu(button, { ctrlKey: true, button: 2 })).toBe(false)
+      })
+      fireEvent.mouseUp(button, { ctrlKey: true, button: 0 })
+      expect(onCopyDiscussionPrompt).toHaveBeenCalledOnce()
+      expect(onCopySourcePath).not.toHaveBeenCalled()
+      expect(screen.getByRole("status")).toHaveTextContent("Prompt copied")
+      act(() => vi.advanceTimersByTime(1999))
+      expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+      act(() => vi.advanceTimersByTime(1))
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it.each([
+    { first: "contextmenu", settleBetween: false },
+    { first: "contextmenu", settleBetween: true },
+    { first: "click", settleBetween: false },
+    { first: "click", settleBetween: true },
+  ])("deduplicates one Control gesture: %j", async ({ first, settleBetween }) => {
+    const platform = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Macintosh")
+    try {
+      let resolveCopy = () => {}
+      const onCopyDiscussionPrompt = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveCopy = resolve
+          }),
+      )
+      const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+      view({ onCopySourcePath, onCopyDiscussionPrompt })
+      const button = screen.getByLabelText("Copy path")
+      const contextMenu = () => {
+        expect(fireEvent.contextMenu(button, { ctrlKey: true, button: 2 })).toBe(false)
+      }
+      fireEvent.mouseDown(button, { ctrlKey: true, button: 0 })
+      if (first === "contextmenu") contextMenu()
+      fireEvent.mouseUp(button, { ctrlKey: true, button: 0 })
+      if (first === "click") fireEvent.click(button, { ctrlKey: true, detail: 1 })
+      if (settleBetween) await act(async () => resolveCopy())
+      if (first === "contextmenu") {
+        // The user can release Control before the companion click arrives.
+        fireEvent.click(button, { detail: 1 })
+      } else contextMenu()
+      expect(onCopyDiscussionPrompt).toHaveBeenCalledOnce()
+      expect(onCopySourcePath).not.toHaveBeenCalled()
+      if (!settleBetween) await act(async () => resolveCopy())
+
+      // A new press starts a new gesture, even while the success tick remains visible.
+      fireEvent.mouseDown(button, { ctrlKey: true, button: 0 })
+      fireEvent.mouseUp(button, { ctrlKey: true, button: 0 })
+      fireEvent.click(button, { ctrlKey: true, detail: 1 })
+      expect(onCopyDiscussionPrompt).toHaveBeenCalledTimes(2)
+      await act(async () => resolveCopy())
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it.each(["control", "plain", "shift", "keyboard"])(
+    "allows a new %s activation after an unpaired Control-context-menu",
+    async (activation) => {
+      const platform = vi
+        .spyOn(window.navigator, "userAgent", "get")
+        .mockReturnValue("Macintosh")
+      try {
+        const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+        const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+        view({ onCopySourcePath, onCopyDiscussionPrompt })
+        const button = screen.getByLabelText("Copy path")
+        fireEvent.mouseDown(button, { ctrlKey: true })
+        await act(async () => fireEvent.contextMenu(button, { ctrlKey: true, button: 2 }))
+        fireEvent.mouseUp(button, { ctrlKey: true })
+        const modifiers = {
+          ctrlKey: activation === "control",
+          shiftKey: activation === "shift",
+        }
+        if (activation === "keyboard") fireEvent.keyDown(button, { key: "Enter" })
+        else {
+          fireEvent.mouseDown(button, modifiers)
+          fireEvent.mouseUp(button, modifiers)
+        }
+        await act(async () =>
+          fireEvent.click(button, { ...modifiers, detail: activation === "keyboard" ? 0 : 1 }),
+        )
+        expect(onCopyDiscussionPrompt).toHaveBeenCalledTimes(activation === "control" ? 2 : 1)
+        expect(onCopySourcePath).toHaveBeenCalledTimes(activation === "control" ? 0 : 1)
+      } finally {
+        platform.mockRestore()
+      }
+    },
+  )
+
+  it.each([
+    { platformName: "Macintosh", ctrlKey: false, shiftKey: false, promptAvailable: true },
+    { platformName: "Macintosh", ctrlKey: false, shiftKey: true, promptAvailable: true },
+    { platformName: "Macintosh", ctrlKey: true, shiftKey: false, promptAvailable: false },
+    { platformName: "Windows NT", ctrlKey: true, shiftKey: false, promptAvailable: true },
+    { platformName: "Linux", ctrlKey: true, shiftKey: false, promptAvailable: true },
+  ])(
+    "leaves other context menus alone: %j",
+    ({ platformName, ctrlKey, shiftKey, promptAvailable }) => {
+      const platform = vi
+        .spyOn(window.navigator, "userAgent", "get")
+        .mockReturnValue(platformName)
+      try {
+        const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+        const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+        view({ onCopySourcePath, ...(promptAvailable ? { onCopyDiscussionPrompt } : {}) })
+        const button = screen.getByLabelText("Copy path")
+        fireEvent.mouseDown(button, { button: 2, ctrlKey, shiftKey })
+        expect(fireEvent.contextMenu(button, { button: 2, ctrlKey, shiftKey })).toBe(true)
+        fireEvent.mouseUp(button, { button: 2, ctrlKey, shiftKey })
+        expect(onCopySourcePath).not.toHaveBeenCalled()
+        expect(onCopyDiscussionPrompt).not.toHaveBeenCalled()
+        expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+      } finally {
+        platform.mockRestore()
+      }
+    },
+  )
+
+  it("does not carry Control-context-menu suppression into another session", async () => {
+    const platform = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Macintosh")
+    try {
+      const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+      const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+      const props = presentationProps({ onCopySourcePath, onCopyDiscussionPrompt })
+      const { rerender } = render(<SessionDetailPresentation {...props} />)
+      fireEvent.mouseDown(screen.getByLabelText("Copy path"), { ctrlKey: true })
+      await act(async () =>
+        fireEvent.contextMenu(screen.getByLabelText("Copy path"), { ctrlKey: true }),
+      )
+      rerender(
+        <SessionDetailPresentation
+          {...props}
+          session={{ ...props.session, sessionId: "session-2" }}
+        />,
+      )
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+      await act(async () => fireEvent.click(screen.getByLabelText("Copy path")))
+      expect(onCopySourcePath).toHaveBeenCalledOnce()
+      expect(onCopyDiscussionPrompt).toHaveBeenCalledOnce()
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it.each([{}, { shiftKey: true }])(
+    "keeps an unmodified or Shift-only click as a path copy: %j",
+    async (modifiers) => {
+      const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+      const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+      view({ onCopySourcePath, onCopyDiscussionPrompt })
+      await act(async () => fireEvent.click(screen.getByLabelText("Copy path"), modifiers))
+      expect(onCopySourcePath).toHaveBeenCalledOnce()
+      expect(onCopyDiscussionPrompt).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(["altKey", "metaKey", "ctrlKey"])(
+    "shows the wand when entering the toolbar with %s held",
+    (modifier) => {
+      view({ onCopySourcePath: async () => {}, onCopyDiscussionPrompt: async () => {} })
+      const toolbar = screen.getByLabelText("Copy path").closest(".session-detail-toolbar")!
+      fireEvent.mouseEnter(toolbar, { [modifier]: true })
+      expect(
+        screen.getByLabelText(promptLabel).querySelector(".lucide-wand-sparkles"),
+      ).toBeTruthy()
+      fireEvent.mouseLeave(toolbar)
+      expect(screen.getByLabelText("Copy path").querySelector(".lucide-copy")).toBeTruthy()
+    },
+  )
+
+  it("updates on keyboard changes while hovered and focused, and clears on blur", () => {
+    view({ onCopySourcePath: async () => {}, onCopyDiscussionPrompt: async () => {} })
+    const button = screen.getByLabelText("Copy path")
+    const toolbar = button.closest(".session-detail-toolbar")!
+    fireEvent.mouseEnter(toolbar, { shiftKey: true })
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+    fireEvent.keyDown(window, { key: "Alt", altKey: true })
+    expect(button).toHaveAttribute("aria-label", promptLabel)
+    fireEvent.keyDown(window, { key: "Control", altKey: true, ctrlKey: true })
+    fireEvent.keyUp(window, { key: "Alt", ctrlKey: true })
+    expect(button).toHaveAttribute("aria-label", promptLabel)
+    fireEvent.keyUp(window, { key: "Control" })
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+    fireEvent.mouseLeave(toolbar)
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true })
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+    act(() => button.focus())
+    expect(button).toHaveAttribute("aria-label", promptLabel)
+    fireEvent.keyUp(window, { key: "Control" })
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+    fireEvent.keyDown(button, { key: "Meta", metaKey: true })
+    expect(button).toHaveAttribute("aria-label", promptLabel)
+    act(() => button.blur())
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+    fireEvent.mouseEnter(toolbar, { altKey: true })
+    fireEvent.blur(window)
+    expect(button).toHaveAttribute("aria-label", "Copy path")
+  })
+
+  it("keeps the success timer across shared-tooltip label changes and resets after another copy", async () => {
+    const register = vi.fn(() => () => {})
+    const onCopyDiscussionPrompt = vi.fn().mockResolvedValue(undefined)
+    render(
+      <SharedTooltipOwnerContext.Provider value={{ register }}>
+        <SessionDetailPresentation
+          {...presentationProps({ onCopySourcePath: async () => {}, onCopyDiscussionPrompt })}
+        />
+      </SharedTooltipOwnerContext.Provider>,
+    )
+    const button = screen.getByLabelText("Copy path")
+    fireEvent.mouseEnter(button.closest(".session-detail-toolbar")!, { altKey: true })
+    expect(register).toHaveBeenCalledWith(
+      button,
+      expect.objectContaining({ label: promptLabel }),
+    )
+    await act(async () => fireEvent.click(button, { altKey: true }))
+    act(() => vi.advanceTimersByTime(1500))
+    fireEvent.keyUp(window, { key: "Alt" })
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true })
+    await act(async () => fireEvent.click(button, { ctrlKey: true }))
+    act(() => vi.advanceTimersByTime(1999))
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    expect(onCopyDiscussionPrompt).toHaveBeenCalledTimes(2)
+  })
+
+  it("clears success on prompt rejection and never adds a success timer", async () => {
+    const onCopyDiscussionPrompt = vi.fn().mockRejectedValue(new Error("denied"))
+    view({ onCopySourcePath: async () => {}, onCopyDiscussionPrompt })
+    const button = screen.getByLabelText("Copy path")
+    await act(async () => fireEvent.click(button))
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+    await act(async () => fireEvent.click(button, { altKey: true }))
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("isolates pending prompt writes and listeners across navigation, deactivation, and unmount", async () => {
+    const add = vi.spyOn(window, "addEventListener")
+    const remove = vi.spyOn(window, "removeEventListener")
+    let resolveOld = () => {}
+    let resolveNew = () => {}
+    const oldCopy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveOld = resolve
+        }),
+    )
+    const newCopy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveNew = resolve
+        }),
+    )
+    const onCopySourcePath = vi.fn().mockResolvedValue(undefined)
+    const props = presentationProps({ onCopySourcePath, onCopyDiscussionPrompt: oldCopy })
+    const { rerender, unmount } = render(<SessionDetailPresentation {...props} />)
+    fireEvent.click(screen.getByLabelText("Copy path"), { metaKey: true })
+    fireEvent.click(screen.getByLabelText("Copy path"))
+    expect(oldCopy).toHaveBeenCalledOnce()
+    expect(onCopySourcePath).not.toHaveBeenCalled()
+    rerender(
+      <SessionDetailPresentation
+        {...props}
+        session={{ ...props.session, sessionId: "session-2" }}
+        onCopyDiscussionPrompt={newCopy}
+      />,
+    )
+    fireEvent.click(screen.getByLabelText("Copy path"), { altKey: true })
+    await act(async () => resolveOld())
+    expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    await act(async () => resolveNew())
+    expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
+    rerender(<SessionDetailPresentation {...props} active={false} />)
+    fireEvent.keyDown(window, { key: "Alt", altKey: true })
+    expect(screen.getByLabelText("Copy path")).toBeTruthy()
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    for (const [event, listener] of add.mock.calls.filter(([event]) => event === "keyup")) {
+      expect(remove).toHaveBeenCalledWith(event, listener)
+    }
+    add.mockRestore()
+    remove.mockRestore()
   })
 })
 

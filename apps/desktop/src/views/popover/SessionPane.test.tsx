@@ -2,16 +2,43 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as IpcModule from "../../lib/ipc"
+import type * as HygieneModule from "../../lib/useSessionHygiene"
 import type { SessionAnalysisPayload } from "../../lib/ipc"
+import type { SessionHygienePayload } from "../../lib/insightsIpc"
+import type { LocalSessionIdentity } from "../../lib/types/session"
+import { localSessionKey } from "../../lib/presentation/localIdentity"
+import { sessionDiscussionPrompt } from "../../lib/presentation/sessionDiscussionPrompt"
 import { SessionPane, type SessionPaneProps } from "./SessionPane"
 
 const mocks = vi.hoisted(() => ({
   revealSource: vi.fn(),
+  hygiene: {
+    evidenceState: "stale",
+    badges: [
+      {
+        id: "fastModeOveruse",
+        status: "finding",
+        notAssessedReason: null,
+        findingEvidence: { kind: "fastModeOveruse", delegatedTurns: 4 },
+      },
+    ],
+  } as SessionHygienePayload,
 }))
 
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof IpcModule>()),
   revealSource: mocks.revealSource,
+}))
+
+vi.mock("../../lib/useSessionHygiene", async (importOriginal) => ({
+  ...(await importOriginal<typeof HygieneModule>()),
+  useSessionHygiene: (identities: LocalSessionIdentity[]) =>
+    new Map(
+      identities.map((identity) => [
+        localSessionKey(identity.agent, identity.sessionId, identity.wslDistro),
+        mocks.hygiene,
+      ]),
+    ),
 }))
 
 afterEach(cleanup)
@@ -90,6 +117,70 @@ describe("SessionPane — copy path", () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(sourcePath)
     expect(screen.getByTestId("copy-path-tick")).toBeTruthy()
   })
+
+  it.each(["altKey", "ctrlKey", "metaKey"])(
+    "copies the exact prompt from loaded analysis and hygiene synchronously on %s",
+    async (modifier) => {
+      const props = paneProps("/tmp/synthetic/session.jsonl")
+      render(<SessionPane {...props} />)
+      const expected = sessionDiscussionPrompt({
+        subject: props.subject,
+        payload: props.payload,
+        hygiene: mocks.hygiene,
+        loading: props.loading,
+        refreshing: props.refreshing,
+        error: props.error,
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText("Copy path"), { [modifier]: true })
+        expect(writeText).toHaveBeenCalledExactlyOnceWith(expected)
+      })
+      expect(expected).toContain("Fast mode was used for 4 delegated turns")
+      expect(expected).toContain("Burn-check evidence: stale")
+      expect(screen.getByRole("status")).toHaveTextContent("Prompt copied")
+      expect(mocks.revealSource).not.toHaveBeenCalled()
+    },
+  )
+
+  it("copies only the path with Shift held", async () => {
+    pane("/tmp/synthetic/session.jsonl")
+    await act(async () =>
+      fireEvent.click(screen.getByLabelText("Copy path"), { shiftKey: true }),
+    )
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("/tmp/synthetic/session.jsonl")
+  })
+
+  it("uses new loaded data after a refresh without copying old metrics", async () => {
+    const props = paneProps("/tmp/synthetic/session.jsonl")
+    const { rerender } = render(<SessionPane {...props} />)
+    const updated = { ...props.payload!, title: "Updated title", analysisStale: true }
+    rerender(<SessionPane {...props} payload={updated} refreshing />)
+    await act(async () => fireEvent.click(screen.getByLabelText("Copy path"), { altKey: true }))
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      sessionDiscussionPrompt({
+        subject: props.subject,
+        payload: updated,
+        hygiene: mocks.hygiene,
+        loading: false,
+        refreshing: true,
+        error: false,
+      }),
+    )
+  })
+
+  it.each(["reject", "absent"])(
+    "does not show prompt success when the clipboard is %s",
+    async (failure) => {
+      pane("/tmp/synthetic/session.jsonl")
+      if (failure === "reject") writeText.mockRejectedValue(new Error("denied"))
+      else
+        Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined })
+      await act(async () =>
+        fireEvent.click(screen.getByLabelText("Copy path"), { altKey: true }),
+      )
+      expect(screen.queryByTestId("copy-path-tick")).toBeNull()
+    },
+  )
 
   it("hides copy and reveal when the payload has no source path", () => {
     pane(null)

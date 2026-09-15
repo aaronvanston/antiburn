@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Moon,
   Trash2,
+  WandSparkles,
 } from "lucide-react"
 import {
   useCallback,
@@ -49,6 +50,7 @@ import type {
   LocalSessionRelations,
 } from "../../lib/types/session"
 import { useGlobalKeydown } from "../../lib/useGlobalKeydown"
+import { hasDiscussionModifier, useDiscussionModifiers } from "../../lib/useDiscussionModifiers"
 import "../../styles/session-detail.css"
 import { Tooltip } from "../presentation/Tooltip"
 import { TruncatedText } from "../presentation/TruncatedText"
@@ -148,6 +150,8 @@ export interface SessionDetailPresentationProps {
   onRevealSource?: () => void
   /** Copy the session's transcript path to the clipboard. Omitted hides the control. */
   onCopySourcePath?: () => Promise<void>
+  /** Copy a discussion prompt built from the loaded session evidence. */
+  onCopyDiscussionPrompt?: () => Promise<void>
   renderAgentIcon: AgentIconRenderer
   /** Remove the popover surface when a host supplies the surrounding pane. */
   embedded?: boolean
@@ -260,19 +264,26 @@ const COPY_PATH_TICK_MS = 2_000
 function CopySourcePathAction({
   sessionKey,
   onCopy,
+  onCopyPrompt,
+  modified,
 }: {
   sessionKey: string
   onCopy: () => Promise<void>
+  onCopyPrompt: (() => Promise<void>) | undefined
+  modified: boolean
 }) {
-  const [feedback, setFeedback] = useState({ key: sessionKey, copied: false })
+  const [feedback, setFeedback] = useState({ key: sessionKey, copied: false, prompt: false })
   // The callback ref prevents late results from updating an unmounted control.
   const liveKey = useRef("")
   const writing = useRef(false)
+  // One macOS Control gesture can deliver both events, even after the clipboard promise settles.
+  const controlActivation = useRef<"click" | "contextmenu" | null>(null)
   const tickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  if (feedback.key !== sessionKey) setFeedback({ key: sessionKey, copied: false })
+  if (feedback.key !== sessionKey)
+    setFeedback({ key: sessionKey, copied: false, prompt: false })
 
   const bindKey = useCallback(
-    (node: HTMLButtonElement | null) => {
+    (node: HTMLSpanElement | null) => {
       if (node) liveKey.current = sessionKey
       else {
         liveKey.current = ""
@@ -292,15 +303,15 @@ function CopySourcePathAction({
     }
   }
 
-  const copy = async () => {
+  const copy = async (prompt: boolean) => {
     if (writing.current) return
     const startedKey = sessionKey
     writing.current = true
     try {
-      await onCopy()
+      await (prompt && onCopyPrompt ? onCopyPrompt() : onCopy())
       if (liveKey.current !== startedKey) return
       clearTick()
-      setFeedback({ key: startedKey, copied: true })
+      setFeedback({ key: startedKey, copied: true, prompt })
       tickTimeout.current = setTimeout(() => {
         tickTimeout.current = null
         if (liveKey.current !== startedKey) return
@@ -309,37 +320,65 @@ function CopySourcePathAction({
     } catch {
       if (liveKey.current !== startedKey) return
       clearTick()
-      setFeedback({ key: startedKey, copied: false })
+      setFeedback({ key: startedKey, copied: false, prompt: false })
     } finally {
       writing.current = false
     }
   }
 
   const copied = feedback.key === sessionKey && feedback.copied
+  const label = modified ? "Copy prompt to discuss session with agent" : "Copy path"
   return (
-    <Tooltip label={copied ? "Copied" : "Copy path"}>
-      <button
-        ref={bindKey}
-        type="button"
-        onClick={() => void copy()}
-        aria-label="Copy path"
-        className="rounded-control p-1 text-label-tertiary hover:bg-surface-tertiary hover:text-label-secondary"
-      >
-        {copied ? (
-          <Check
-            size={14}
-            className="text-token-in"
-            data-testid="copy-path-tick"
-            aria-hidden="true"
-          />
-        ) : (
-          <Copy size={14} aria-hidden="true" />
-        )}
-        <span role="status" className="sr-only">
-          {copied ? "Path copied" : ""}
-        </span>
-      </button>
-    </Tooltip>
+    <span ref={bindKey} className="inline-flex">
+      <Tooltip label={copied ? "Copied" : label}>
+        <button
+          type="button"
+          onMouseDown={() => {
+            controlActivation.current = null
+          }}
+          onKeyDown={() => {
+            controlActivation.current = null
+          }}
+          onClick={(event) => {
+            if (controlActivation.current === "contextmenu") {
+              controlActivation.current = null
+              return
+            }
+            controlActivation.current =
+              isMacOS() && event.ctrlKey && onCopyPrompt ? "click" : null
+            void copy(!!onCopyPrompt && hasDiscussionModifier(event))
+          }}
+          onContextMenu={(event) => {
+            if (!isMacOS() || !event.ctrlKey || !onCopyPrompt) return
+            event.preventDefault()
+            if (controlActivation.current === "click") {
+              controlActivation.current = null
+              return
+            }
+            controlActivation.current = "contextmenu"
+            void copy(true)
+          }}
+          aria-label={label}
+          className="rounded-control p-1 text-label-tertiary hover:bg-surface-tertiary hover:text-label-secondary"
+        >
+          {copied ? (
+            <Check
+              size={14}
+              className="text-token-in"
+              data-testid="copy-path-tick"
+              aria-hidden="true"
+            />
+          ) : modified ? (
+            <WandSparkles size={14} aria-hidden="true" />
+          ) : (
+            <Copy size={14} aria-hidden="true" />
+          )}
+          <span role="status" className="sr-only">
+            {copied ? (feedback.prompt ? "Prompt copied" : "Path copied") : ""}
+          </span>
+        </button>
+      </Tooltip>
+    </span>
   )
 }
 
@@ -351,7 +390,9 @@ function HostActions({
   onOpenRelatedSession,
   onRevealSource,
   onCopySourcePath,
+  onCopyDiscussionPrompt,
   onDeleteSession,
+  modified,
   className,
 }: {
   sessionKey: string
@@ -360,7 +401,9 @@ function HostActions({
   onOpenRelatedSession: (target: LocalSessionRelation, title: string) => void
   onRevealSource: (() => void) | undefined
   onCopySourcePath: (() => Promise<void>) | undefined
+  onCopyDiscussionPrompt: (() => Promise<void>) | undefined
   onDeleteSession: () => void
+  modified: boolean
   className?: string
 }) {
   const hasRelations = !!relations && (!!relations.parent || relations.children.length > 0)
@@ -397,6 +440,8 @@ function HostActions({
           key={sessionKey}
           sessionKey={sessionKey}
           onCopy={onCopySourcePath}
+          onCopyPrompt={onCopyDiscussionPrompt}
+          modified={modified}
         />
       )}
     </div>
@@ -694,11 +739,16 @@ export function SessionDetailPresentation({
   onDeleteSession,
   onRevealSource,
   onCopySourcePath,
+  onCopyDiscussionPrompt,
   renderAgentIcon,
   embedded = false,
   active = true,
 }: SessionDetailPresentationProps) {
   const subagent = session.subagent
+  const { bindModifiers, modified } = useDiscussionModifiers(
+    active && !!onCopyDiscussionPrompt,
+    localSessionKey(session.agent, session.sessionId, session.wslDistro),
+  )
   const [tab, setTab] = useState<SessionDetailTab>("overview")
   // Which chart layer the key points at. The pointer sets it and the pointer
   // clears it; a click pins a layer, which holds when the pointer leaves.
@@ -806,7 +856,9 @@ export function SessionDetailPresentation({
       onOpenRelatedSession={onOpenRelatedSession}
       onRevealSource={onRevealSource}
       onCopySourcePath={onCopySourcePath}
+      onCopyDiscussionPrompt={onCopyDiscussionPrompt}
       onDeleteSession={onDeleteSession}
+      modified={modified}
       className="session-detail-actions rounded-full bg-surface-card p-1"
     />
   )
@@ -917,6 +969,7 @@ export function SessionDetailPresentation({
       )}
     >
       <div
+        ref={bindModifiers}
         data-tauri-drag-region={embedded && isMacOS() ? "deep" : undefined}
         className="session-detail-toolbar flex shrink-0 flex-wrap items-center gap-4 border-b border-separator bg-surface/80 px-10 py-3"
       >
