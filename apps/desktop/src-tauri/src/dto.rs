@@ -653,6 +653,8 @@ pub struct InsightsReportPayload {
 pub struct ChecksCategoryPayload {
     pub id: BurnCheckDetectorId,
     pub finding: u64,
+    /// Agents with findings, or complete clean results when no finding exists.
+    pub agents: Vec<String>,
     pub clean: u64,
     pub unavailable: u64,
     /// Hundredths of one percent, bounded to `0..=10000`.
@@ -1029,6 +1031,9 @@ pub struct BurnCheckTargetPayload {
     pub finding: BurnCheckFindingPayload,
     pub display: BurnCheckDisplayFactsPayload,
     pub occurrence_count: u64,
+    pub affected_session_count: u64,
+    pub project_name: Option<String>,
+    pub project_location: Option<String>,
     pub auto_fix: AutoFixAvailabilityPayload,
     pub prompt_fix: PromptFixAvailabilityPayload,
     pub watch: Option<BurnCheckWatchPayload>,
@@ -1942,6 +1947,9 @@ impl From<crate::remediation::BurnCheckTarget> for BurnCheckTargetPayload {
             },
             display: value.display.into(),
             occurrence_count: u64::try_from(value.occurrences).unwrap_or(u64::MAX),
+            affected_session_count: u64::try_from(value.affected_sessions).unwrap_or(u64::MAX),
+            project_name: value.project_name,
+            project_location: value.project_location,
             auto_fix: match value.auto_fix {
                 crate::remediation::AutoFixAvailability::Available => {
                     AutoFixAvailabilityPayload::Available
@@ -2254,6 +2262,14 @@ impl ChecksReportPayload {
                 ChecksCategoryPayload {
                     id: id.into(),
                     finding: counts.finding,
+                    agents: if counts.finding > 0 {
+                        &report.finding_agents[id.index()]
+                    } else {
+                        &report.clean_agents[id.index()]
+                    }
+                    .iter()
+                    .cloned()
+                    .collect(),
                     clean: counts.clean,
                     unavailable: counts.unavailable,
                     estimated_token_burn_basis_points: report
@@ -2713,6 +2729,9 @@ mod tests {
         #[test]
         fn checks_report_serializes_only_display_fields() {
             let mut report = report();
+            report.finding_agents[0].extend(["codex".to_owned(), "claude-code".to_owned()]);
+            report.clean_agents[0].insert("cursor".to_owned());
+            report.clean_agents[1].insert("opencode".to_owned());
             report.estimated_token_burn_basis_points = Some(1_625);
             report.detector_estimated_token_burn_basis_points[0] = Some(500);
             report.detector_statuses[0] = DetectorStatus::Findings(DetectorFindings {
@@ -2733,6 +2752,14 @@ mod tests {
 
             let value =
                 serde_json::to_value(ChecksReportPayload::from_report(&report, true, 0)).unwrap();
+            assert_eq!(
+                value["categories"][0]["agents"],
+                serde_json::json!(["claude-code", "codex"])
+            );
+            assert_eq!(
+                value["categories"][1]["agents"],
+                serde_json::json!(["opencode"])
+            );
             assert!(value["categories"][0].get("examples").is_none());
             assert!(value.get("coverage").is_none());
             assert!(value.get("quotaPressure").is_none());
@@ -2770,6 +2797,7 @@ mod tests {
             assert_eq!(
                 category_keys,
                 [
+                    "agents",
                     "clean",
                     "estimatedTokenBurnBasisPoints",
                     "finding",

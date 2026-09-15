@@ -14,6 +14,7 @@ import type * as InsightsIpcModule from "../../lib/insightsIpc"
 import type * as IpcModule from "../../lib/ipc"
 import { BurnChecksSession, type BurnChecksAdapter } from "./BurnChecksSession"
 import { BurnChecksView } from "./BurnChecksView"
+import { BurnCheckDetail, CheckPromptAction } from "./burn-checks/BurnCheckDetail"
 
 const commands = vi.hoisted(() => ({
   prepare: vi.fn(),
@@ -23,8 +24,16 @@ const commands = vi.hoisted(() => ({
   copyBatch: vi.fn(),
   writeClipboardText: vi.fn(),
   openSample: vi.fn(),
+  openSettings: vi.fn(),
   noteInteraction: vi.fn(),
 }))
+
+const innerWidth = Object.getOwnPropertyDescriptor(window, "innerWidth")
+
+function setWindowWidth(value: number): void {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value })
+  fireEvent(window, new Event("resize"))
+}
 
 vi.mock("../../lib/insightsIpc", async (importOriginal) => ({
   ...(await importOriginal<typeof InsightsIpcModule>()),
@@ -38,6 +47,7 @@ vi.mock("../../lib/insightsIpc", async (importOriginal) => ({
 
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof IpcModule>()),
+  openSettingsWindow: commands.openSettings,
   noteInteraction: commands.noteInteraction,
 }))
 
@@ -247,36 +257,268 @@ beforeEach(() => {
     prompt: "Batch backend prompt",
   })
   commands.openSample.mockResolvedValue({ outcome: "opened" })
+  commands.openSettings.mockResolvedValue(undefined)
   commands.writeClipboardText.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  if (innerWidth) Object.defineProperty(window, "innerWidth", innerWidth)
 })
 
 describe("BurnChecksView", () => {
-  it("uses one check detail and one batch prompt for a non-named check", async () => {
-    const pending = deferred<{ outcome: "promptReady"; prompt: string } | null>()
-    commands.copyBatch.mockReturnValueOnce(pending.promise)
-    setup(target, false, aggregate, report)
+  it("keeps anchored selection and sample disclosure state across window resizes", async () => {
+    setWindowWidth(1400)
+    const { view } = setup(target, false, aggregate, {
+      ...report,
+      categories: [
+        report.categories[0]!,
+        {
+          id: "modelOverthinking",
+          finding: 2,
+          clean: 1,
+          unavailable: 0,
+          estimatedTokenBurnBasisPoints: 400,
+        },
+        report.categories[1]!,
+      ],
+    })
 
+    const oldModel = await screen.findByRole("button", { name: /Old model usage/ })
+    const overthinking = screen.getByRole("button", { name: /Model overthinking/ })
+    expect(screen.getByRole("heading", { name: "Failed checks 2" })).toBeVisible()
+    expect(oldModel).toHaveAttribute("aria-pressed", "true")
+
+    fireEvent.keyDown(oldModel, { key: "ArrowDown" })
+    await waitFor(() => expect(overthinking).toHaveAttribute("aria-pressed", "true"))
+    expect(overthinking).toHaveFocus()
+    fireEvent.keyDown(overthinking, { key: "Enter" })
+    await waitFor(() =>
+      expect(document.getElementById("burn-check-modelOverthinking-detail")).toHaveFocus(),
+    )
+
+    const samples = await screen.findByRole("button", { name: "Sample session 1" })
+    fireEvent.click(samples)
+    expect(screen.getByRole("button", { name: "Sample session 1" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+
+    setWindowWidth(1000)
+    const resizedOverthinking = await screen.findByRole("button", {
+      name: /Model overthinking/,
+    })
+    expect(resizedOverthinking).toHaveAttribute("aria-pressed", "true")
+    expect(resizedOverthinking).not.toHaveAttribute("aria-expanded")
     expect(
-      await screen.findByText(
-        "Some sessions used an older model when a newer one was available.",
+      within(document.getElementById("burn-check-modelOverthinking-detail")!).getByRole(
+        "button",
+        { name: "Sample session 1" },
       ),
     ).toBeVisible()
-    expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
-    expect(commands.copyBatch).toHaveBeenCalledWith(["action-fresh"])
-    expect(commands.writeClipboardText).not.toHaveBeenCalled()
-    await act(async () =>
-      pending.resolve({ outcome: "promptReady", prompt: "Batch backend prompt" }),
+    const resizedOldModel = screen.getByRole("button", { name: /Old model usage/ })
+    expect(resizedOldModel).toHaveAttribute("aria-pressed", "false")
+    expect(resizedOldModel).not.toHaveAttribute("aria-expanded")
+    expect(view.container.querySelector(".burn-checks-collection")).toHaveClass(
+      "main-window-collection",
     )
+    expect(view.container.querySelector(".burn-checks-detail-pane")).toHaveClass(
+      "main-window-detail",
+    )
+  })
 
-    await waitFor(() =>
-      expect(commands.writeClipboardText).toHaveBeenCalledWith("Batch backend prompt"),
+  it("keeps the complete collection before the detail at minimum desktop width", async () => {
+    setWindowWidth(1000)
+    setup(target, false, aggregate, {
+      ...report,
+      categories: [
+        report.categories[0]!,
+        {
+          id: "modelOverthinking",
+          finding: 2,
+          clean: 1,
+          unavailable: 0,
+          estimatedTokenBurnBasisPoints: 400,
+        },
+      ],
+    })
+
+    const first = await screen.findByRole("button", { name: /Old model usage/ })
+    const detail = document.getElementById("burn-check-oldModelUsage-detail")!
+    const action = await within(detail).findByRole("button", { name: "Copy fix prompt" })
+    const second = screen.getByRole("button", { name: /Model overthinking/ })
+
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(second.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
     )
-    expect(commands.copy).not.toHaveBeenCalled()
+    expect(first).toHaveAttribute("aria-pressed", "true")
+    expect(first).not.toHaveAttribute("aria-expanded")
+  })
+
+  it("opens passed checks when a live report changes from failed to pass-only", async () => {
+    setWindowWidth(1400)
+    const { adapter, session } = setup(target, false, aggregate, {
+      ...report,
+      categories: [report.categories[0]!],
+    })
+
+    expect(
+      await screen.findByRole("button", { name: /Old model usage.*1 failed/ }),
+    ).toHaveAttribute("aria-pressed", "true")
+    vi.mocked(adapter.getReport).mockResolvedValue({
+      ...report,
+      categories: [{ ...report.categories[0]!, finding: 0, clean: 4 }],
+    })
+    act(() => session.refresh())
+
+    expect(await screen.findByRole("button", { name: /Passed checks/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    )
+    expect(screen.getByRole("button", { name: /Passed checks/ })).toHaveAttribute(
+      "aria-controls",
+      "burn-checks-passed-body",
+    )
+    expect(document.getElementById("burn-checks-passed-body")).toBeVisible()
+    expect(screen.getByRole("button", { name: /Old model usage.*0 failed/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
+  it("selects the first assessed check when unavailable evidence becomes assessed", async () => {
+    setWindowWidth(1400)
+    const { adapter, session } = setup(null, false, aggregate, {
+      ...report,
+      categories: [report.categories[2]!],
+    })
+
+    await screen.findByText("1 check not assessed.")
+    vi.mocked(adapter.getReport).mockResolvedValue({
+      ...report,
+      categories: [{ ...report.categories[1]!, finding: 0, clean: 3 }],
+    })
+    act(() => session.refresh())
+
+    expect(
+      await screen.findByRole("button", { name: /Unused skills.*0 failed/ }),
+    ).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("does not resurrect a removed selection when its category returns", async () => {
+    setWindowWidth(1400)
+    const twoFailures: ChecksReportPayload = {
+      ...report,
+      categories: [
+        report.categories[0]!,
+        {
+          id: "modelOverthinking",
+          finding: 2,
+          clean: 1,
+          unavailable: 0,
+          estimatedTokenBurnBasisPoints: 400,
+        },
+      ],
+    }
+    const { adapter, session } = setup(target, false, aggregate, twoFailures)
+    const overthinking = await screen.findByRole("button", { name: /Model overthinking/ })
+    fireEvent.click(overthinking)
+    expect(overthinking).toHaveAttribute("aria-pressed", "true")
+
+    vi.mocked(adapter.getReport).mockResolvedValue({
+      ...report,
+      categories: [report.categories[0]!],
+    })
+    act(() => session.refresh())
+    const oldModel = await screen.findByRole("button", { name: /Old model usage/ })
+    await waitFor(() => expect(oldModel).toHaveAttribute("aria-pressed", "true"))
+
+    vi.mocked(adapter.getReport).mockResolvedValue(twoFailures)
+    act(() => session.refresh())
+    await screen.findByRole("button", { name: /Model overthinking/ })
+    expect(screen.getByRole("button", { name: /Old model usage/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
+  it("keeps the explanation and disabled finding actions together in the category header", async () => {
+    setup(target, false, aggregate, report)
+    const action = await screen.findByRole("button", { name: "Copy fix prompt" })
+    expect(action).toHaveAttribute("aria-disabled", "true")
+    expect(action.closest("header")).toContainElement(
+      screen.getByRole("heading", { name: "Old model usage", level: 2 }),
+    )
+    expect(action.closest("header")).toHaveTextContent(
+      "Some sessions used an older model when a newer one was available.",
+    )
+    expect(
+      screen.getAllByText("Some sessions used an older model when a newer one was available."),
+    ).toHaveLength(1)
+    expect(action.parentElement).toContainElement(
+      screen.getByRole("button", { name: "Remind me later" }),
+    )
+    fireEvent.click(action)
+    expect(commands.copyBatch).not.toHaveBeenCalled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
+    act(() => action.focus())
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Coming soon")
+    expect(screen.getByRole("region", { name: "Burn check details" })).toHaveTextContent(
+      "1 failed · 2 passed",
+    )
+    expect(
+      screen.queryByRole("heading", { name: "Burn checks", level: 2 }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("shows Snoozed as an empty preview while reminders remain disabled", async () => {
+    setup(target, false, aggregate, report)
+    const snoozed = await screen.findByRole("button", { name: "Snoozed 0" })
+    expect(snoozed).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(snoozed)
+    expect(snoozed).toHaveAttribute("aria-expanded", "true")
+    expect(
+      screen.getByText("Checks you defer will appear here. Reminders are coming soon."),
+    ).toBeVisible()
+    expect(screen.getByRole("button", { name: "Remind me later" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    )
+    fireEvent.click(snoozed)
+    expect(snoozed).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("uses only the category agent inventory for neutral vendor watermarks", async () => {
+    setup(target, false, aggregate, {
+      ...report,
+      categories: report.categories.map((check, index) => ({
+        ...check,
+        agents: index === 0 ? ["codex", "codex", "cursor", "unknown"] : [],
+      })),
+    })
+    const row = await screen.findByRole("button", { name: /Old model usage, 1 failed/ })
+    const watermarks = row.querySelector("[data-check-vendor-watermarks]")
+    expect(watermarks).toHaveAttribute("aria-hidden", "true")
+    expect(watermarks?.querySelectorAll("[data-agent-icon]")).toHaveLength(2)
+    expect(watermarks?.querySelector('[data-agent-icon="codex"]')).toBeInTheDocument()
+    expect(watermarks?.querySelector('[data-agent-icon="cursor"]')).toBeInTheDocument()
+    expect(watermarks?.querySelector('[data-agent-icon="claude"]')).not.toBeInTheDocument()
+  })
+
+  it("normalizes Claude evidence aliases and retains both vendor marks", async () => {
+    setup(target, false, aggregate, {
+      ...report,
+      categories: report.categories.map((check) => ({
+        ...check,
+        agents: ["claude", "claude-code", "codex", "unknown"],
+      })),
+    })
+    const row = await screen.findByRole("button", { name: /Old model usage, 1 failed/ })
+    const watermarks = row.querySelector("[data-check-vendor-watermarks]")
+    expect(watermarks?.querySelectorAll("[data-agent-icon]")).toHaveLength(2)
+    expect(watermarks?.querySelector('[data-agent-icon="claude"]')).toBeInTheDocument()
+    expect(watermarks?.querySelector('[data-agent-icon="codex"]')).toBeInTheDocument()
   })
 
   it("includes all listed targets in a large check prompt", async () => {
@@ -285,7 +527,7 @@ describe("BurnChecksView", () => {
       findingId: `finding-${index}`,
       actionId: `action-${index}`,
     }))
-    setup(targets, false, aggregate, report)
+    render(<CheckPromptAction detector="oldModelUsage" targets={targets} refresh={vi.fn()} />)
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
 
@@ -296,55 +538,90 @@ describe("BurnChecksView", () => {
     )
   })
 
-  it.each([0, 1, 50, 100, 200, 10_000, null])(
-    "keeps exact labels and a visible positive arc for %s basis points",
-    async (basisPoints) => {
-      setup(target, false, aggregate, { ...report, estimatedTokenBurnBasisPoints: basisPoints })
-      const dial = await screen.findByRole("img", {
-        name:
-          basisPoints == null
-            ? "Burn estimate unavailable"
-            : `Estimated burn: ${basisPoints / 100}%`,
-      })
-      const burn = dial.querySelector('[data-segment-id="burn"]')
-      const remainder = dial.querySelector('[data-segment-id="remainder"]')
-      if (remainder) expect(remainder).toHaveClass("text-measure")
-      if (burn) expect(burn).toHaveClass("text-brand-tint")
-      if (basisPoints === null) {
-        expect(dial.querySelector('[data-segment-id="unknown"]')).toBeTruthy()
-        expect(burn).toBeNull()
-      } else if (basisPoints === 0) {
-        expect(burn).toBeNull()
-        expect(dial.querySelector('[data-segment-id="remainder"]')).toHaveAttribute(
-          "data-arc-angle",
-          "360",
-        )
-      } else {
-        const actualAngle = (360 * basisPoints) / 10_000
-        const minimumAngle = (4 / (Math.PI * 80)) * 360
-        expect(Number(burn?.getAttribute("data-arc-angle"))).toBeCloseTo(
-          Math.max(actualAngle, minimumAngle),
-          5,
-        )
-        if (basisPoints < 10_000) expect(burn).toHaveAttribute("stroke-linecap", "butt")
-      }
-    },
-  )
+  it("keeps aggregate burn in dismissible assessment details and counts beside groups", async () => {
+    setup(target, false, aggregate, report)
+    const trigger = await screen.findByRole("button", { name: "Assessment details" })
+    expect(screen.getByRole("heading", { name: "Failed checks 1" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Passed checks 1" })).toBeVisible()
+    expect(screen.getByText("1 check not assessed.")).toBeVisible()
+    expect(screen.queryByText("Estimated token burn")).not.toBeInTheDocument()
+    expect(trigger.closest("header")).toContainElement(
+      screen.getByRole("heading", { name: "Failed checks 1" }),
+    )
+    expect(screen.getByRole("button", { name: "Remind me later" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    )
+    fireEvent.click(trigger)
+    const details = screen.getByRole("region", { name: "Assessment details" })
+    expect(within(details).getByText("8%")).toBeVisible()
+    expect(within(details).getByText(/Estimate includes only checks/)).toBeVisible()
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("region", { name: "Assessment details" })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    fireEvent.click(trigger)
+    fireEvent.pointerDown(document.body)
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("opens Insights coverage details from the assessment summary", async () => {
+    setup(target, false, aggregate, { ...report, evidenceSettled: true })
+
+    fireEvent.click(await screen.findByRole("button", { name: "Assessment details" }))
+    const summary = screen.getByRole("region", { name: "Assessment details" })
+    expect(
+      within(summary).getByText("Assessment complete for available evidence."),
+    ).toBeVisible()
+    fireEvent.click(within(summary).getByRole("button", { name: "Coverage details" }))
+
+    expect(commands.openSettings).toHaveBeenCalledExactlyOnceWith("insights")
+  })
+
+  it("shows processing count in the assessment summary", async () => {
+    setup(target, false, aggregate, { ...report, pendingEvidence: 2 })
+
+    expect(await screen.findByText("2 sessions processing.")).toBeVisible()
+  })
+
+  it("shows a pass-only outcome and opens its counted disclosure", async () => {
+    setup(
+      null,
+      false,
+      { wins: [] },
+      {
+        ...report,
+        estimatedTokenBurnBasisPoints: 0,
+        categories: [
+          {
+            id: "unusedSkills",
+            finding: 0,
+            clean: 4,
+            unavailable: 0,
+            estimatedTokenBurnBasisPoints: 0,
+          },
+        ],
+      },
+    )
+
+    expect(await screen.findByRole("button", { name: "Passed checks 1" })).toBeVisible()
+    expect(screen.queryByRole("heading", { name: /Failed checks/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Passed checks/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    )
+  })
 
   it("renders assessed checks and concise failed details", async () => {
     setup(target, false, aggregate, report)
-    expect(
-      await screen.findByRole("button", { name: /Old model usage.*8% burn/ }),
-    ).toBeVisible()
-    const dial = screen.getByRole("img", { name: "Estimated burn: 8%" })
-    const arcs = Array.from(dial.querySelectorAll("circle"))
-    expect(arcs.map((arc) => arc.dataset.segmentId)).toEqual(["burn", "remainder"])
-    expect(Number(arcs[0]!.dataset.arcAngle)).toBeCloseTo(28.8)
-    expect(Number(arcs[1]!.dataset.arcAngle)).toBeCloseTo(331.2)
-    expect(screen.getByText(/1 check failed/)).toBeVisible()
+    const row = await screen.findByRole("button", { name: /Old model usage.*8% burn/ })
+    expect(row).toBeVisible()
+    expect(within(row).getByText("8% burn")).toBeVisible()
+    expect(row.querySelector(".lucide-flame")).toBeInTheDocument()
+    expect(row.querySelector('[role="meter"]')).not.toBeInTheDocument()
+    expect(within(row).getByText("2 passed")).toHaveClass("text-label-secondary")
+    expect(screen.getByRole("heading", { name: "Failed checks 1" })).toBeVisible()
     expect(screen.queryByText(/More evidence is needed/)).not.toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Failed checks" })).toBeVisible()
-    expect(screen.getByRole("heading", { name: "Passed checks" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: /Passed checks/ })).toBeVisible()
     expect(screen.queryByRole("heading", { name: "Not assessed" })).not.toBeInTheDocument()
     expect(screen.queryByText("Excess cache rehydration")).not.toBeInTheDocument()
     expect(screen.queryByText(/check results are assessed/)).not.toBeInTheDocument()
@@ -368,6 +645,107 @@ describe("BurnChecksView", () => {
     expect(screen.queryByText("Why it matters")).not.toBeInTheDocument()
     expect(screen.queryByText("Suggested change")).not.toBeInTheDocument()
     expect(screen.queryByText(/Verification requires fresh evidence/)).not.toBeInTheDocument()
+  })
+
+  it("groups wide check rows and exposes the selected outcome state", async () => {
+    setWindowWidth(1400)
+    setup()
+
+    const selected = await screen.findByRole("button", { name: /Unused MCP servers/ })
+    expect(selected).toHaveAttribute("aria-pressed", "true")
+    expect(selected).toHaveAttribute("data-outcome", "failed")
+    expect(selected.querySelector(".lucide-chevron-right")).not.toBeInTheDocument()
+    expect(selected.querySelector(".rounded-full")).toHaveClass("bg-surface-card")
+    expect(selected.closest(".burn-checks-group-body")).toBeInTheDocument()
+  })
+
+  it("shows named target counts and truncated result wording", async () => {
+    setWindowWidth(1400)
+    const first = setup(target, true)
+
+    expect(await screen.findByText(/1 affected resource shown$/)).toBeVisible()
+    first.view.unmount()
+
+    setup(target)
+    expect(await screen.findByText(/1 affected resource$/)).toBeVisible()
+  })
+
+  it("uses report session totals when named targets share bounded samples", async () => {
+    setup(
+      [target, { ...target, findingId: "second-target", actionId: "second-action" }],
+      true,
+      aggregate,
+      {
+        ...namedTargetReport,
+        categories: [{ ...namedTargetReport.categories[0]!, finding: 23 }],
+      },
+    )
+
+    const resources = await screen.findByText(/2 affected resources shown$/)
+    expect(resources.parentElement).toHaveTextContent(
+      "23 sessions affected · 2 affected resources shown",
+    )
+    expect(screen.getByRole("region", { name: "Burn check details" })).toHaveTextContent(
+      "23 failed",
+    )
+  })
+
+  it("expands one-sample resources and shows authoritative impact and project identity", async () => {
+    setup([
+      { ...target, projectName: "antiburn", affectedSessionCount: 12 },
+      {
+        ...target,
+        findingId: "second",
+        actionId: "second",
+        projectName: "browser-tests",
+        affectedSessionCount: 3,
+      },
+    ])
+    const disclosures = await screen.findAllByRole("button", {
+      name: "Sample session 1",
+    })
+    expect(disclosures).toHaveLength(2)
+    for (const disclosure of disclosures)
+      expect(disclosure).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("12 sessions affected")).toBeVisible()
+    expect(screen.getByText("3 sessions affected")).toBeVisible()
+    expect(screen.getByText(/· antiburn/)).toBeVisible()
+    expect(screen.getByText(/· browser-tests/)).toBeVisible()
+    expect(
+      screen.getAllByRole("button", { name: "Open sample session Update model" }),
+    ).toHaveLength(2)
+  })
+
+  it("keeps multiple sample sessions collapsed until requested", async () => {
+    setWindowWidth(1400)
+    setup(
+      {
+        ...target,
+        samples: [
+          target.samples[0]!,
+          {
+            ...target.samples[0]!,
+            navigationHandle: "opaque-handle-2",
+            title: "Review model",
+          },
+        ],
+      },
+      false,
+      aggregate,
+      report,
+    )
+
+    expect(await screen.findByRole("button", { name: "Sample sessions 2" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+    expect(
+      screen.queryByRole("button", { name: "Open sample session Update model" }),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Sample sessions 2" }))
+    expect(
+      screen.getByRole("button", { name: "Open sample session Review model" }),
+    ).toBeVisible()
   })
 
   it("renders every shared per-check metric in the main Burn Checks view", async () => {
@@ -459,31 +837,31 @@ describe("BurnChecksView", () => {
     }
   })
 
-  it("shows the accessible agent icon without visible agent or scope metadata", async () => {
+  it("shows the exact agent mark and configuration scope", async () => {
     setup()
 
-    expect(await screen.findByRole("img", { name: "Claude Code" })).toBeVisible()
-    expect(screen.queryByText("Claude Code")).not.toBeInTheDocument()
-    expect(
-      screen.queryByText(/^(Session|Worker|Project|Global) scope$/),
-    ).not.toBeInTheDocument()
+    expect(await screen.findAllByRole("img", { name: "Claude Code" })).toHaveLength(2)
+    expect(screen.getByText("Global configuration")).toBeVisible()
   })
 
-  it("keeps the macOS drag strip outside the report while loading and after load", async () => {
+  it("uses the pane headers as macOS deep drag regions while loading and after load", async () => {
     const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh")
     try {
       const pending = deferred<ChecksReportPayload>()
       const { view } = setup(target, false, aggregate, pending.promise)
-      const strip = view.container.querySelector("[data-tauri-drag-region]")!
-      expect(strip).toHaveAttribute("aria-hidden", "true")
-      expect(strip).toHaveClass("shrink-0")
-      expect(strip.contains(screen.getByRole("region", { name: "Loading Burn checks" }))).toBe(
-        false,
-      )
+      const loading = screen.getByRole("region", { name: "Loading Burn checks" })
+      const loadingSummary = loading.querySelector(".burn-checks-collection-header")!
+      expect(loadingSummary).toHaveAttribute("data-tauri-drag-region", "deep")
+      expect(loadingSummary).not.toHaveAttribute("aria-hidden")
       await act(async () => pending.resolve(report))
       await screen.findByRole("button", { name: /Old model usage.*8% burn/ })
-      expect(view.container.querySelectorAll("[data-tauri-drag-region]")).toHaveLength(1)
-      expect(view.container.querySelector("[data-tauri-drag-region] button")).toBeNull()
+      const header = view.container.querySelector(".burn-checks-collection-header")!
+      expect(header).toHaveAttribute("data-tauri-drag-region", "deep")
+      const detailHeader = view.container.querySelector(".burn-check-detail-heading")!
+      expect(detailHeader).toHaveAttribute("data-tauri-drag-region", "deep")
+      expect(screen.getByRole("button", { name: "Assessment details" })).not.toHaveAttribute(
+        "data-tauri-drag-region",
+      )
     } finally {
       userAgent.mockRestore()
     }
@@ -499,7 +877,20 @@ describe("BurnChecksView", () => {
     }
   })
 
-  it("uses one busy region and one announcement for the shaped loading skeleton", () => {
+  it("keeps an overlay drag region in the macOS empty error state", async () => {
+    const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh")
+    try {
+      const { view } = setup(target, false, aggregate, Promise.reject(new Error("Unavailable")))
+      expect(await screen.findByRole("alert")).toHaveTextContent("Burn checks are unavailable.")
+      const dragRegion = view.container.querySelector("[data-tauri-drag-region]")!
+      expect(dragRegion).toHaveClass("main-window-empty-titlebar")
+      expect(dragRegion).toHaveAttribute("aria-hidden", "true")
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
+  it("uses one busy region and one loading announcement", () => {
     const pending = deferred<ChecksReportPayload>()
     const { view } = setup(target, false, aggregate, pending.promise)
 
@@ -507,21 +898,6 @@ describe("BurnChecksView", () => {
     expect(loading).toHaveAttribute("aria-busy", "true")
     expect(within(loading).getAllByRole("status")).toHaveLength(1)
     expect(view.container.querySelectorAll('[aria-busy="true"]')).toHaveLength(1)
-    expect(loading.querySelectorAll('[data-skeleton="hero"]')).toHaveLength(1)
-    expect(loading.querySelectorAll('[data-skeleton="group-label"]')).toHaveLength(1)
-    const rows = loading.querySelectorAll('[data-skeleton="check-row"]')
-    expect(rows).toHaveLength(3)
-    for (const row of rows) {
-      expect(
-        Array.from(row.querySelectorAll("[data-skeleton-slot]"), (slot) =>
-          slot.getAttribute("data-skeleton-slot"),
-        ),
-      ).toEqual(["icon", "title", "summary", "metric", "disclosure"])
-    }
-    expect(loading.querySelectorAll('[data-skeleton-slot="metric"]')).toHaveLength(3)
-    expect(
-      loading.querySelectorAll('[data-placeholder]:not([aria-hidden="true"])'),
-    ).toHaveLength(0)
     expect(loading).toHaveTextContent("Loading Burn checks.")
   })
 
@@ -559,7 +935,7 @@ describe("BurnChecksView", () => {
     fireEvent.click(fix)
     expect(commands.prepare).toHaveBeenCalledOnce()
     const dialog = await screen.findByRole("dialog", { name: "Review change" })
-    expect(dialog).toHaveTextContent("Claude Code · Model · Global scope")
+    expect(dialog).toHaveTextContent("Claude Code · Model · Global configuration")
     expect(dialog).toHaveTextContent("~/.claude/settings.json · model")
     expect(dialog).toHaveTextContent("claude-opus-4-6 → claude-sonnet-5")
     expect(dialog).toHaveTextContent("Responses can change")
@@ -648,7 +1024,7 @@ describe("BurnChecksView", () => {
     const fix = await screen.findByRole("button", { name: "Fix" })
     const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
     expect(fix.parentElement).not.toHaveClass("mt-3")
-    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(fix.parentElement?.parentElement).toBe(prompt.parentElement)
     fireEvent.click(fix)
     let dialog = await screen.findByRole("dialog", { name: "Choose changes" })
     expect(within(dialog).getByRole("button", { name: "Review 0 changes" })).toBeDisabled()
@@ -717,7 +1093,7 @@ describe("BurnChecksView", () => {
     expect(
       within(chooser).getByText("Select optional built-in tools to disable."),
     ).toBeVisible()
-    expect(within(chooser).getByText("Claude Code · Project scope")).toBeVisible()
+    expect(within(chooser).getByText("Claude Code · Project configuration")).toBeVisible()
     expect(within(chooser).getByRole("checkbox", { name: "ReportFindings" })).toBeVisible()
     expect(within(chooser).getByRole("checkbox", { name: "Workflow" })).toBeVisible()
     expect(within(chooser).getAllByText(/built-in tools to disable/i)).toHaveLength(1)
@@ -726,26 +1102,27 @@ describe("BurnChecksView", () => {
   it("restores named target actions after their brief success state", async () => {
     setup()
 
-    fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
-    await screen.findByRole("button", { name: "Copied" })
+    const copy = await screen.findByRole("button", { name: "Copy fix prompt" })
+    vi.useFakeTimers()
+    fireEvent.click(copy)
+    await act(async () => undefined)
+    expect(screen.getByRole("button", { name: "Copied" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Review change" })
+    await act(async () => undefined)
+    const dialog = screen.getByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
-    await screen.findByRole("button", { name: "Change applied" })
+    await act(async () => undefined)
+    expect(screen.getByRole("button", { name: "Change applied" })).toBeDisabled()
 
-    await waitFor(
-      () => {
-        expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
-        expect(screen.getByRole("button", { name: "Fix" })).toBeEnabled()
-      },
-      { timeout: 4_000 },
-    )
+    await act(async () => vi.advanceTimersByTime(3_000))
+    expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Fix" })).toBeEnabled()
     expect(commands.copy).toHaveBeenCalledOnce()
     expect(commands.apply).toHaveBeenCalledOnce()
   })
 
   it("restores a check-level prompt action after its brief success state", async () => {
-    setup(target, false, aggregate, report)
+    render(<CheckPromptAction detector="oldModelUsage" targets={[target]} refresh={vi.fn()} />)
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
     await screen.findByRole("button", { name: "Copied" })
@@ -1071,7 +1448,7 @@ describe("BurnChecksView", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
 
       const dialog = await screen.findByRole("dialog")
-      expect(dialog).toHaveTextContent(`Claude Code · ${settingLabel} · Project scope`)
+      expect(dialog).toHaveTextContent(`Claude Code · ${settingLabel} · Project configuration`)
       expect(dialog).toHaveTextContent(`${setting}.reviewed`)
       expect(dialog).toHaveTextContent(sideEffectText)
     },
@@ -1108,7 +1485,7 @@ describe("BurnChecksView", () => {
     commands.writeClipboardText
       .mockRejectedValueOnce(new Error("Denied"))
       .mockResolvedValueOnce(undefined)
-    setup(target, false, aggregate, report)
+    render(<CheckPromptAction detector="oldModelUsage" targets={[target]} refresh={vi.fn()} />)
     const copy = await screen.findByRole("button", { name: "Copy fix prompt" })
     fireEvent.click(copy)
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not copy")
@@ -1157,9 +1534,9 @@ describe("BurnChecksView", () => {
   it("routes samples by opaque handle and shows typed unavailable states", async () => {
     commands.openSample.mockResolvedValueOnce({ outcome: "deleted" })
     setup()
-    const samples = await screen.findByRole("button", { name: /Sample sessions/ })
-    fireEvent.click(samples)
-    fireEvent.click(screen.getByRole("button", { name: "Open sample session Update model" }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open sample session Update model" }),
+    )
     expect(await screen.findByText("This sample session was deleted.")).toHaveAttribute(
       "role",
       "status",
@@ -1171,8 +1548,9 @@ describe("BurnChecksView", () => {
     const opening = deferred<{ outcome: "opened" }>()
     commands.openSample.mockReturnValueOnce(opening.promise)
     setup()
-    fireEvent.click(await screen.findByRole("button", { name: /Sample sessions/ }))
-    const sample = screen.getByRole("button", { name: "Open sample session Update model" })
+    const sample = await screen.findByRole("button", {
+      name: "Open sample session Update model",
+    })
 
     fireEvent.click(sample)
 
@@ -1246,9 +1624,17 @@ describe("BurnChecksView", () => {
   })
 
   it("copies a fallback prompt for an empty failed check without showing Auto Fix", async () => {
-    setup(null)
+    render(
+      <BurnCheckDetail detector="unusedMcpServers" targets={[]} refresh={vi.fn()} contained />,
+    )
 
-    expect(await screen.findByText("Some MCP servers were loaded but not used.")).toBeVisible()
+    const emptyState = await screen.findByText("Some MCP servers were loaded but not used.")
+    expect(emptyState).toBeVisible()
+    expect(emptyState.closest("article")).toHaveClass(
+      "rounded-control",
+      "bg-surface-card/75",
+      "p-4",
+    )
     expect(
       screen.queryByText(/bounded view|exact target|nothing safe/i),
     ).not.toBeInTheDocument()
@@ -1288,7 +1674,9 @@ describe("BurnChecksView", () => {
 
   it("shows a retryable fallback prompt error", async () => {
     commands.copyFallback.mockRejectedValueOnce(new Error("Private backend error"))
-    setup(null)
+    render(
+      <BurnCheckDetail detector="unusedMcpServers" targets={[]} refresh={vi.fn()} contained />,
+    )
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
 
@@ -1303,12 +1691,23 @@ describe("BurnChecksView", () => {
   it("ignores a fallback prompt that completes after an exact target appears", async () => {
     const pending = deferred<{ outcome: "promptReady"; prompt: string } | null>()
     commands.copyFallback.mockReturnValueOnce(pending.promise)
-    const { adapter, session } = setup(null)
+    const view = render(
+      <CheckPromptAction
+        key="fallback"
+        detector="unusedMcpServers"
+        targets={[]}
+        refresh={vi.fn()}
+      />,
+    )
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
-    vi.mocked(adapter.getTargets).mockResolvedValueOnce({ targets: [target], truncated: false })
-
-    session.loadTargets("unusedMcpServers", true)
-    await screen.findByRole("heading", { name: "claude-opus-4-6" })
+    view.rerender(
+      <CheckPromptAction
+        key="exact"
+        detector="unusedMcpServers"
+        targets={[target]}
+        refresh={vi.fn()}
+      />,
+    )
     await act(async () => pending.resolve({ outcome: "promptReady", prompt: "Stale prompt" }))
 
     expect(commands.writeClipboardText).not.toHaveBeenCalled()
@@ -1445,27 +1844,13 @@ describe("BurnChecksView", () => {
     const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
 
     expect(finding.compareDocumentPosition(fix) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(finding.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    )
+    expect(fix.parentElement?.parentElement).toBe(prompt.parentElement)
     expect(fix.parentElement?.parentElement).toHaveClass("items-start")
     expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
     expect(screen.queryByText(target.finding.observation)).not.toBeInTheDocument()
-  })
-
-  it("keeps expanded check content visually light", async () => {
-    setup(target, false, aggregate, report)
-    const finding = await screen.findByText(
-      "Some sessions used an older model when a newer one was available.",
-    )
-    const detail = finding.closest("article")!
-
-    expect(detail).not.toHaveClass("border-t", "border-separator")
-    expect(within(detail).getByRole("button", { name: /Sample sessions/ })).toHaveClass(
-      "type-callout",
-      "text-label-secondary",
-    )
-    expect(
-      within(detail).queryByText(/API-equivalent cost opportunity/),
-    ).not.toBeInTheDocument()
   })
 
   it("does not repeat target opportunities in a check-level detail", async () => {

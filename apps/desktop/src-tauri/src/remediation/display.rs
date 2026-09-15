@@ -392,3 +392,39 @@ pub(super) fn prompt_with_evidence_paths(
     prompt.push_str(&suffix);
     Ok(prompt)
 }
+
+pub(super) fn project_name(path: &Path) -> Option<String> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(safe_display_value)
+        .filter(|name| name != "[private value]")
+}
+
+pub(super) fn project_location(path: &Path) -> Option<String> {
+    let name = project_name(path)?;
+    let parent = path.parent().and_then(project_name)?;
+    Some(format!("…/{parent}/{name}"))
+}
+
+#[cfg(test)]
+mod project_name_tests {
+    use super::*;
+
+    #[test]
+    fn shows_only_a_sanitized_project_name() {
+        assert_eq!(
+            project_name(Path::new("/Users/person/work/antiburn")),
+            Some("antiburn".into())
+        );
+        assert_eq!(project_name(Path::new("/Users/person/token=secret")), None);
+        assert_eq!(project_name(Path::new("/")), None);
+        assert_eq!(
+            project_location(Path::new("/Users/person/work/antiburn")),
+            Some("…/work/antiburn".into())
+        );
+        assert_eq!(
+            project_location(Path::new("/Users/person/token=secret/antiburn")),
+            None
+        );
+    }
+}

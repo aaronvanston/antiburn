@@ -424,6 +424,10 @@ pub struct EfficiencyReport {
     pub context: ReportContext,
     pub assessed_sessions: u64,
     pub detectors: [DetectorCounts; DetectorId::COUNT],
+    /// Distinct agents with findings, collected from the complete report cohort.
+    pub finding_agents: [BTreeSet<String>; DetectorId::COUNT],
+    /// Distinct agents with complete clean results in the report cohort.
+    pub clean_agents: [BTreeSet<String>; DetectorId::COUNT],
     pub detector_statuses: [DetectorStatus; DetectorId::COUNT],
     pub quota_pressure: QuotaPressureSection,
     pub provider_incidents: ProviderIncidentsSection,
@@ -1182,6 +1186,8 @@ impl TokenBurnAccumulator {
 pub struct EfficiencyReportAccumulator {
     assessed_sessions: u64,
     detectors: [DetectorCounts; DetectorId::COUNT],
+    finding_agents: [BTreeSet<String>; DetectorId::COUNT],
+    clean_agents: [BTreeSet<String>; DetectorId::COUNT],
     folds: [DetectorFold; DetectorId::COUNT],
     quota: QuotaPressureAccumulator,
     provider: ProviderIncidentsAccumulator,
@@ -1211,6 +1217,8 @@ impl EfficiencyReportAccumulator {
         Self {
             assessed_sessions: 0,
             detectors: [DetectorCounts::default(); DetectorId::COUNT],
+            finding_agents: core::array::from_fn(|_| BTreeSet::new()),
+            clean_agents: core::array::from_fn(|_| BTreeSet::new()),
             folds: core::array::from_fn(|_| DetectorFold::default()),
             quota: QuotaPressureAccumulator::default(),
             provider: ProviderIncidentsAccumulator::default(),
@@ -1328,11 +1336,13 @@ impl EfficiencyReportAccumulator {
             .observation;
             match observation {
                 detectors::Observation::Finding => {
+                    self.finding_agents[detector.index()].insert(evidence.identity.agent.clone());
                     counts.finding += 1;
                     counts.assessed += 1;
                     findings[detector.index()] = true;
                 }
                 detectors::Observation::NoFinding if clean_facts_complete(detector, &evidence) => {
+                    self.clean_agents[detector.index()].insert(evidence.identity.agent.clone());
                     counts.clean += 1;
                     counts.assessed += 1;
                 }
@@ -1397,6 +1407,8 @@ impl EfficiencyReportAccumulator {
             context,
             assessed_sessions: self.assessed_sessions,
             detectors: self.detectors,
+            finding_agents: self.finding_agents,
+            clean_agents: self.clean_agents,
             detector_statuses,
             quota_pressure: self.quota.finish(),
             provider_incidents: self.provider.finish(),
@@ -1548,6 +1560,52 @@ mod tests {
             evidence_schema_revision: EVIDENCE_SCHEMA_REVISION,
             coverage,
         }
+    }
+
+    #[test]
+    fn agent_inventory_covers_all_assessed_sessions_and_excludes_unavailable() {
+        let mut accumulator = EfficiencyReportAccumulator::new();
+        for (index, agent) in ["codex", "claude-code", "cursor", "opencode", "codex"]
+            .iter()
+            .enumerate()
+        {
+            let mut row = evidence_with_work(&format!("finding-{index}"));
+            row.identity.agent = (*agent).to_owned();
+            row.context = EvidenceValue::Complete(ContextEvidence {
+                max_request_context_tokens: 400_001,
+                top_depth_examples: Vec::new(),
+            });
+            accumulator.observe_session(row);
+        }
+        let mut clean = evidence_with_work("clean");
+        clean.identity.agent = "clean-agent".to_owned();
+        clean.context = EvidenceValue::Complete(ContextEvidence {
+            max_request_context_tokens: 10,
+            top_depth_examples: Vec::new(),
+        });
+        accumulator.observe_session(clean);
+        let mut unavailable = evidence_with_work("unavailable");
+        unavailable.identity.agent = "unavailable-agent".to_owned();
+        unavailable.context = EvidenceValue::Unsupported;
+        accumulator.observe_session(unavailable);
+        let report = accumulator.finish(context(CoverageCounts::default()));
+        let index = DetectorId::SessionsOverDepth.index();
+        assert_eq!(report.detectors[index].finding, 5);
+        assert_eq!(report.detectors[index].clean, 1);
+        assert_eq!(
+            report.finding_agents[index]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["claude-code", "codex", "cursor", "opencode"]
+        );
+        assert_eq!(
+            report.clean_agents[index]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["clean-agent"]
+        );
     }
 
     #[test]
