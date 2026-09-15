@@ -1030,6 +1030,7 @@ fn utilization_payload(
         peak_percent: utilization.peak_percent,
         period_count: u32::try_from(utilization.period_count).unwrap_or(u32::MAX),
         maxed_period_count: u32::try_from(utilization.maxed_period_count).unwrap_or(u32::MAX),
+        window_kind: utilization.window_kind,
         first_period_at: crate::store::iso_from_epoch(Some(utilization.first_period_at_epoch)),
         last_period_at: crate::store::iso_from_epoch(Some(utilization.last_period_at_epoch)),
     }

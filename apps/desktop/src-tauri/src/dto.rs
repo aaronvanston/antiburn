@@ -458,6 +458,10 @@ pub struct AllowanceUtilization {
     /// How many of those periods reached 100%. A refusal happens there and
     /// at nothing less, so there is no lower threshold to report.
     pub maxed_period_count: u32,
+    /// The window the periods measure: `weekly`, `rolling`, or the
+    /// provider's own word. The weekly window measures plan fit and the
+    /// rolling window measures burstiness, so the reader must know which.
+    pub window_kind: String,
     /// ISO-8601 stamp of the oldest period counted.
     pub first_period_at: String,
     /// ISO-8601 stamp of the newest period counted.

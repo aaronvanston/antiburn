@@ -218,6 +218,10 @@ export interface AllowanceUtilizationPayload {
   /** How many of those periods reached 100%. A refusal happens there and at
    * nothing less, so there is no lower threshold to report. */
   maxedPeriodCount: number
+  /** The window the periods measure: `weekly`, `rolling`, or the provider's
+   * own word. The weekly window measures plan fit and the rolling window
+   * measures burstiness, so the reader must know which. */
+  windowKind: string
   /** ISO-8601 stamp of the oldest period counted. */
   firstPeriodAt: string
   /** ISO-8601 stamp of the newest period counted. */

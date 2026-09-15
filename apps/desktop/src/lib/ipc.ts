@@ -16,6 +16,7 @@ import type {
   SessionEfficiency,
 } from "./types/session"
 import type {
+  AllowanceUsageSummaryPayload,
   LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
   SessionLimitAllocationSummaryPayload,
@@ -974,6 +975,24 @@ export async function getProviderUsage(): Promise<ProviderUsageSummaryPayload> {
   return invoke<ProviderUsageSummaryPayload>("get_provider_usage", {
     utcOffsetMinutes: -new Date().getTimezoneOffset(),
   })
+}
+
+/**
+ * The two allowance numbers for each provider account.
+ *
+ * Utilization is supply consumed and overage is demand refused. Without a
+ * shell the answer is an empty snapshot: no account, rather than an account
+ * with zeroed figures.
+ */
+export async function getAllowanceUsage(): Promise<AllowanceUsageSummaryPayload> {
+  if (!hasShell()) return EMPTY_ALLOWANCE_USAGE
+  return invoke<AllowanceUsageSummaryPayload>("get_allowance_usage")
+}
+
+export const EMPTY_ALLOWANCE_USAGE: AllowanceUsageSummaryPayload = {
+  accounts: [],
+  overageSpanDays: 30,
+  generatedAt: "",
 }
 
 export async function getSessionLimitAllocations(): Promise<SessionLimitAllocationSummaryPayload> {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ChecksReportPayload } from "../../lib/insightsIpc"
 import type { ActivityEntryPayload } from "../../lib/ipc"
 import type {
+  AllowanceUsageSummaryPayload,
   LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
 } from "../../lib/providerUsageIpc"
@@ -19,6 +20,12 @@ const liveUsage = (generatedAt: string): LiveUsageSummaryPayload => ({
   providers: [],
   errors: [],
   meters: [],
+  generatedAt,
+})
+
+const allowance = (generatedAt: string): AllowanceUsageSummaryPayload => ({
+  accounts: [],
+  overageSpanDays: 30,
   generatedAt,
 })
 
@@ -65,6 +72,7 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
   const adapter: MainOverviewAdapter = {
     getUsage: vi.fn().mockResolvedValue(usage("first")),
     getLiveUsage: vi.fn().mockResolvedValue(liveUsage("live-first")),
+    getAllowanceUsage: vi.fn().mockResolvedValue(allowance("allowance-first")),
     getChecksReport: vi.fn().mockResolvedValue(report(0)),
     cancelChecksReport: vi.fn().mockResolvedValue(undefined),
     listRecentSessions: vi
@@ -166,6 +174,22 @@ describe("MainOverviewSession", () => {
     expect(session.getSnapshot().usage?.generatedAt).toBe("first")
     session.refresh()
     await vi.waitFor(() => expect(session.getSnapshot().usageError).toBe(false))
+    stop()
+  })
+
+  it("keeps the last allowance figures after a failed read", async () => {
+    // The cost totals and the allowance totals are separate reads. A failed
+    // allowance read must not blank the page the reader is looking at.
+    const { adapter, session, scanFinished } = setup()
+    sessions.push(session)
+    const stop = session.subscribe(() => undefined)
+    await vi.waitFor(() => expect(session.getSnapshot().allowance).not.toBeNull())
+    expect(session.getSnapshot().allowance?.generatedAt).toBe("allowance-first")
+    vi.mocked(adapter.getAllowanceUsage).mockRejectedValueOnce(new Error("Unavailable"))
+    scanFinished()
+    await vi.waitFor(() => expect(adapter.getAllowanceUsage).toHaveBeenCalledTimes(2))
+    expect(session.getSnapshot().allowance?.generatedAt).toBe("allowance-first")
+    expect(session.getSnapshot().usageError).toBe(false)
     stop()
   })
 

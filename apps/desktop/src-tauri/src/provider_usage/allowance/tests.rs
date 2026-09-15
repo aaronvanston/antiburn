@@ -131,11 +131,19 @@ fn the_overage_counts_blocks_inside_the_span_and_sums_their_waits() {
 }
 
 fn rollup(last_observed_epoch: i64, peak_used_percent: Option<f64>) -> ProviderUsagePeriodRollup {
+    kinded_rollup(last_observed_epoch, peak_used_percent, "rolling")
+}
+
+fn kinded_rollup(
+    last_observed_epoch: i64,
+    peak_used_percent: Option<f64>,
+    window_kind: &str,
+) -> ProviderUsagePeriodRollup {
     ProviderUsagePeriodRollup {
         period_id: last_observed_epoch,
         provider: "anthropic".to_string(),
         account_key: "account".to_string(),
-        window_kind: "rolling".to_string(),
+        window_kind: window_kind.to_string(),
         window_role: "primaryLong".to_string(),
         scope_key: "account".to_string(),
         starts_at_epoch: Some(last_observed_epoch - 604_800),
@@ -212,4 +220,22 @@ fn a_period_with_no_reported_figure_is_left_out_and_never_read_as_zero() {
 #[test]
 fn periods_with_no_reported_figure_reduce_to_nothing() {
     assert_eq!(utilization(&weeks(&[None, None])), None);
+}
+
+/// The window a figure covers must follow the provider's newest word for it.
+///
+/// A weekly window and a rolling window answer different questions. A reader
+/// who sees the older name against the newer figures reads the wrong
+/// question.
+#[test]
+fn the_newest_period_names_the_window() {
+    let rollups = vec![
+        kinded_rollup(1_000, Some(40.0), "other:fortnightly"),
+        kinded_rollup(2_000, Some(62.0), "weekly"),
+    ];
+
+    let reduced = utilization(&rollups).expect("two periods report a figure");
+
+    assert_eq!(reduced.window_kind, "weekly");
+    assert_eq!(reduced.peak_percent, 62.0);
 }

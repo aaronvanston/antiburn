@@ -7,6 +7,7 @@ import {
   type ChecksReportPayload,
 } from "../../lib/insightsIpc"
 import {
+  getAllowanceUsage,
   getLiveUsage,
   getMainWindowVisible,
   getProviderUsage,
@@ -19,6 +20,7 @@ import {
   type ActivityEntryPayload,
 } from "../../lib/ipc"
 import type {
+  AllowanceUsageSummaryPayload,
   LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
 } from "../../lib/providerUsageIpc"
@@ -26,6 +28,7 @@ import type {
 export interface MainOverviewAdapter {
   getUsage(): Promise<ProviderUsageSummaryPayload>
   getLiveUsage(): Promise<LiveUsageSummaryPayload>
+  getAllowanceUsage(): Promise<AllowanceUsageSummaryPayload>
   getChecksReport(consumerId: string): Promise<ChecksReportPayload | null>
   cancelChecksReport(consumerId: string): Promise<void>
   listRecentSessions(): Promise<ActivityEntryPayload[]>
@@ -41,6 +44,7 @@ export interface MainOverviewAdapter {
 const productionAdapter: MainOverviewAdapter = {
   getUsage: () => getProviderUsage(),
   getLiveUsage: () => getLiveUsage(),
+  getAllowanceUsage: () => getAllowanceUsage(),
   getChecksReport: (consumerId) => getChecksReport(consumerId),
   cancelChecksReport: (consumerId) => cancelChecksReport(consumerId),
   listRecentSessions: () => listRecentSessions(),
@@ -69,6 +73,9 @@ export interface MainOverviewSnapshot {
   usageError: boolean
   /** The provider limit snapshot, or null before the first successful read. */
   liveUsage: LiveUsageSummaryPayload | null
+  /** Utilization and overage for each account, or null before the first
+   *  successful read. */
+  allowance: AllowanceUsageSummaryPayload | null
   /** The Burn checks report, or null before the first successful read. */
   report: ChecksReportPayload | null
   /** The newest local sessions, or null before the first successful read. */
@@ -104,6 +111,7 @@ export class MainOverviewSession {
     usage: null,
     usageError: false,
     liveUsage: null,
+    allowance: null,
     report: null,
     recentSessions: null,
     loading: false,
@@ -115,6 +123,7 @@ export class MainOverviewSession {
   private generation = 0
   private workVersion = 0
   private refreshVersion = 0
+  private allowanceVersion = 0
   private reportVersion = 0
   private recentVersion = 0
   private visible = false
@@ -233,6 +242,7 @@ export class MainOverviewSession {
       const version = this.refreshVersion
       this.update({ loading: !this.snapshot.usage, refreshing: !!this.snapshot.usage })
       void this.loadLiveUsage(work, version)
+      void this.loadAllowance(work, ++this.allowanceVersion)
       this.refreshReport()
       this.refreshRecentSessions()
       try {
@@ -260,6 +270,18 @@ export class MainOverviewSession {
     } catch {
       // The limits panel shows its own empty state. A failed read must not
       // hide the local totals.
+    }
+  }
+
+  private async loadAllowance(work: number, version: number): Promise<void> {
+    try {
+      const allowance = await this.adapter.getAllowanceUsage()
+      if (work === this.workVersion && version === this.allowanceVersion) {
+        this.update({ allowance })
+      }
+    } catch {
+      // The allowance totals show their own empty state. A failed read must
+      // not hide the cost totals beside them.
     }
   }
 

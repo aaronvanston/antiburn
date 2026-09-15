@@ -188,7 +188,7 @@ pub const TYPICAL_MIN_PERIODS: usize = 6;
 pub const MAXED_PERCENT: f64 = 100.0;
 
 /// How much of the allowance the reader consumed, across whole periods.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Utilization {
     /// The median peak across the periods, or `None` while the sample is
     /// too small for a median to mean anything.
@@ -198,6 +198,11 @@ pub struct Utilization {
     pub period_count: usize,
     /// How many periods reached [`MAXED_PERCENT`].
     pub maxed_period_count: usize,
+    /// The window the periods measure, as the store names it: `weekly`,
+    /// `rolling`, or the provider's own word. The reader must know which
+    /// window a figure covers, because the windows answer different
+    /// questions.
+    pub window_kind: String,
     pub first_period_at_epoch: i64,
     pub last_period_at_epoch: i64,
 }
@@ -207,18 +212,33 @@ pub struct Utilization {
 /// A period the provider never reported a figure for is left out. It is not
 /// a zero: an unknown period reads as unknown, never as idle.
 pub fn utilization(rollups: &[ProviderUsagePeriodRollup]) -> Option<Utilization> {
-    let mut peaks: Vec<(i64, f64)> = rollups
+    let mut peaks: Vec<(i64, f64, &str)> = rollups
         .iter()
-        .filter_map(|rollup| Some((rollup.last_observed_epoch, rollup.peak_used_percent?)))
+        .filter_map(|rollup| {
+            Some((
+                rollup.last_observed_epoch,
+                rollup.peak_used_percent?,
+                rollup.window_kind.as_str(),
+            ))
+        })
         .collect();
     if peaks.is_empty() {
         return None;
     }
+    // The newest period names the window. A provider that renames a window
+    // must not make the older name outlive it.
+    let window_kind = peaks
+        .iter()
+        .max_by_key(|entry| entry.0)
+        .expect("the list is not empty")
+        .2
+        .to_owned();
     peaks.sort_by(|left, right| left.1.total_cmp(&right.1));
     let period_count = peaks.len();
     let typical_percent =
         (period_count >= TYPICAL_MIN_PERIODS).then(|| median(&peaks[..], |entry| entry.1));
     Some(Utilization {
+        window_kind,
         typical_percent,
         peak_percent: peaks[period_count - 1].1,
         period_count,

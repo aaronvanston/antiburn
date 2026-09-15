@@ -255,3 +255,42 @@
     padding-block-start: var(--space-md);
   }
 }
+
+/* ==========================================================================
+   Overview allowance totals.
+
+   One cell for each provider account. Inside a cell the utilization figure
+   and the block count sit side by side, because the two answer different
+   questions about the same account. The cells stack at the same width the
+   spend totals stack at.
+   ========================================================================== */
+
+.overview-allowance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-lg);
+}
+
+.overview-allowance-account + .overview-allowance-account {
+  border-left-width: 1px;
+  padding-inline-start: var(--space-lg);
+}
+
+.overview-allowance-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+@container (max-width: 540px) {
+  .overview-allowance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .overview-allowance-account + .overview-allowance-account {
+    border-left-width: 0;
+    border-top-width: 1px;
+    padding-inline-start: 0;
+    padding-block-start: var(--space-md);
+  }
+}

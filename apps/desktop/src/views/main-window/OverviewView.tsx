@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react"
+import { useState, useSyncExternalStore } from "react"
 
 import { isMacOS } from "../../lib/platform"
 
@@ -9,16 +9,19 @@ import { OverviewBurnChecks } from "./overview/OverviewBurnChecks"
 import { OverviewProviderLimits } from "./overview/OverviewProviderLimits"
 import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
 import { OverviewSpendChart } from "./overview/OverviewSpendChart"
-import { OverviewSpendTotals } from "./overview/OverviewSpendTotals"
+import { OverviewUsageTotals, type OverviewMetric } from "./overview/OverviewUsageTotals"
 
 import "./overview/overview.css"
 
 /**
- * The main window's landing section: local spend totals, then one card
- * with Burn checks over recent sessions beside the provider limits card,
- * and the daily spend chart along the bottom, where it takes any height
- * the window has to spare. The Burn checks and Sessions panels are
- * summaries; their controls leave for the full sections.
+ * The main window's landing section: the usage totals in the unit the page
+ * reads in, then one card with Burn checks over recent sessions beside the
+ * provider limits card, and the daily chart along the bottom, where it takes
+ * any height the window has to spare. The Burn checks and Sessions panels
+ * are summaries; their controls leave for the full sections.
+ *
+ * The page holds the unit. The totals and the chart both read it, so the
+ * page can never show dollars in one place and allowance in another.
  */
 export function OverviewView({
   active,
@@ -38,6 +41,7 @@ export function OverviewView({
     session.getSnapshot,
     session.getSnapshot,
   )
+  const [metric, setMetric] = useState<OverviewMetric>("cost")
   const usage = state.usage
   const loading = !usage && !state.usageError
   return (
@@ -77,7 +81,13 @@ export function OverviewView({
                 Loading Overview.
               </p>
             )}
-            <OverviewSpendTotals totals={usage?.totals ?? null} loading={loading} />
+            <OverviewUsageTotals
+              metric={metric}
+              onMetricChange={setMetric}
+              totals={usage?.totals ?? null}
+              allowance={state.allowance}
+              loading={loading}
+            />
             <div className="overview-panels">
               <div className="overview-stack p-[var(--space-lg)]">
                 <OverviewBurnChecks
