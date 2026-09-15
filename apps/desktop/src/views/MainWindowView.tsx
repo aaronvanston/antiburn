@@ -1,4 +1,4 @@
-import { Flame, MessagesSquare, Settings } from "lucide-react"
+import { Flame, House, MessagesSquare, Settings } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import type { SessionListEntry } from "../components/session/SessionList"
@@ -26,6 +26,8 @@ import { BurnChecksView } from "./main-window/BurnChecksView"
 import { BurnChecksSession } from "./main-window/BurnChecksSession"
 import { MainWindowLayout } from "./main-window/MainWindowLayout"
 import { MainWindowNavigationSession } from "./main-window/MainWindowNavigationSession"
+import { MainOverviewSession } from "./main-window/MainOverviewSession"
+import { OverviewView } from "./main-window/OverviewView"
 
 export interface MainWindowSection extends SidebarNavItem {
   render: (context: { active: boolean }) => ReactNode
@@ -110,6 +112,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   const [activitySession] = useState(() => new MainActivitySession())
   const [burnChecksSession] = useState(() => new BurnChecksSession())
   const [navigationSession] = useState(() => new MainWindowNavigationSession())
+  const [overviewSession] = useState(() => new MainOverviewSession())
   const navigation = useSyncExternalStore(
     navigationSession.subscribe,
     navigationSession.getSnapshot,
@@ -128,6 +131,25 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   // even while another section is on screen.
   const hygieneBySession = useSessionHygiene(sessionHygieneIdentities(activity.entries ?? []))
   const availableSections: readonly MainWindowSection[] = sections ?? [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: House,
+      render: ({ active }) => (
+        <OverviewView
+          active={active}
+          session={overviewSession}
+          onOpenBurnChecks={() => selectSection("burnChecks")}
+          onOpenSessions={() => selectSection("activity")}
+          onSelectSession={(entry) => {
+            // Select first, so Sessions mounts with the subject already set
+            // and loads its analysis on activation.
+            selectSection("activity")
+            activitySession.selectEntry(entry)
+          }}
+        />
+      ),
+    },
     {
       id: "burnChecks",
       label: "Burn checks",
@@ -161,7 +183,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       setCustomVisited((previous) => new Set(previous).add(id))
       return
     }
-    if (id === "burnChecks") {
+    if (id === "overview" || id === "burnChecks") {
       navigationSession.select(id)
       return
     }

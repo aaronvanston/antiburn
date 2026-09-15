@@ -58,6 +58,9 @@ buckets; the Claude diagnostic had nine additional optional fields.
 | `antiburn.error_occurred`                | Full scan failure, with `scan_failed`; repeated identical outcomes suppressed.                                                                                     | Shows some discovery failures. Misses scoped failures and other feature failures; cannot supply an operation failure rate.              |
 | `antiburn.unrecognized_records_observed` | Nonempty unknown-record summary returned to Settings Insights; changed category/count bucket within the process. Clean results reset suppression without an event. | Diagnoses reader-selected cohorts. Does not count all Insights visits or population parser failure rates.                               |
 | `antiburn.claude_limit_reset_observed`   | Changed Claude reset diagnostic after normal usage refresh, with a separate five-minute cooldown and additional enablement gates.                                  | Answers a narrow provider experiment question. Does not establish that anyone viewed usage or used a reset.                             |
+| `antiburn.quota_incidents_observed`      | Settings → Insights report with an assessed quota-pressure section; fires per limit kind, only when that kind's bucketed hit count changes within the process.     | Diagnoses reader-selected cohorts read afterward. Does not count incidents at ingest time; see `antiburn.provider_incidents_ingested` below for that. |
+| `antiburn.provider_incidents_observed`   | Settings → Insights report with an assessed provider-incidents section; fires per incident kind, only when that kind's bucketed hit count changes within the process. | Diagnoses reader-selected cohorts read afterward. Does not count incidents at ingest time; see `antiburn.provider_incidents_ingested` below for that. |
+| `antiburn.provider_incidents_ingested`   | The durable evidence worker publishes a session whose evidence gained an incident within the last two hours that its previously published evidence did not carry; fires per incident kind present, content-deduplicated against the previous evidence blob. | Counts incidents at ingest time, independent of whether a reader ever opens Insights. Counts installations that ingested a failure, not requests; a closed laptop reports nothing. |
 
 Evidence: [event schema](../apps/desktop/src-tauri/src/analytics/event.rs),
 [recording and delivery](../apps/desktop/src-tauri/src/analytics/mod.rs),
@@ -337,6 +340,49 @@ unobserved. A distribution shift supports regression investigation, not a claim
 about all users or a causal conclusion. Resource bands can reveal coarse app
 work intensity and data volume, so the public catalog, privacy policy, and
 in-product disclosure name that consequence.
+
+The second background exception is `antiburn.provider_incidents_ingested`. It
+answers: "When a provider degrades, is a given user's failure part
+of a wider outage?" The metric is distinct reporting installations per
+`(agent, incident kind)` per hour, compared against installations that sent
+any event that hour; the decision it supports is telling a reader in-app and
+telling support, during a live incident, whether a capacity or server failure
+is fleet-wide or local to them — something the report-time
+`quota_incidents_observed` and `provider_incidents_observed` events cannot do,
+because they fire only when a reader happens to open Settings → Insights,
+possibly days later. The trigger and owning boundary is a background
+completed outcome: the durable evidence worker publishes a session's evidence
+(`insights_worker::apply_outcome`, the `PassOutcome::Published` arm) — never a
+per-record, per-poll, per-scan, or UI-driven trigger. Its properties are
+`label` (the agent that recorded the session, the same fixed list
+`session_opened` uses), `detail` (the incident kind — `capacity`,
+`server_error`, `connection`, `rate_limit`, or `usage_limit`), and `bucket`
+(the bucketed count of newly reported incidents for that pair in this
+publish); it carries no model name, session id, timestamp, path, or message
+text. Two mandatory filters bound its dedup and volume: an incident is new
+only when its `(ts_ms, kind)` pair is absent from the session's previously
+published evidence (so a revision-bump re-ingest of unchanged evidence
+reports nothing, and file growth reports only the appended incidents), and it
+must fall within `INGESTED_INCIDENT_FRESHNESS_MS` (two hours) of the worker's
+publish clock (bounding first-install backfill, a parser reclassification of
+old records, and an unreadable previous evidence blob). There is no
+in-memory suppression map — dedup is entirely by content — and the maximum
+volume is five events per publish, one per kind present. The owner is Dave
+Slutzkin; review date 2026-12-14, to confirm whether the signal is used in a
+fleet status view or a support workflow, or should be removed. Validation
+drives the real `apply_outcome` path against a store and asserts its computed
+result, the same boundary `insights_worker::process_next_work` hands to
+`analytics::record_provider_incidents_ingested` — this codebase has no
+`tauri::AppHandle` test harness, so, like `record_quota_incidents` and
+`record_provider_incidents` before it, the `allowed(app)` gate itself is
+exercised by inspection rather than by an app-driven test.
+
+This event counts installations that ingested a failure, not requests: a
+closed laptop, or an installation that never re-scans the affected session,
+reports nothing even during a real outage. The two-hour freshness window
+means a late ingest can report up to two hours after the actual incident, and
+opted-out installations are unobserved. Segment reports at the app version
+this event ships in.
 
 Phase 1 adds bounded queue-depth-triggered draining, protected retry backoff, and
 a request budget. Before expanding volume further, simulate normal repeated

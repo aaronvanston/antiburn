@@ -385,7 +385,6 @@ pub fn run() {
             if let Some(manager) = app.try_state::<popover_peek::PopoverPeekManager>() {
                 manager.shutdown();
             }
-            main_window::flush_placement(app);
             // Ask a running report reduction to stop at its next probe.
             // The reduction is read-only, so even a task that never sees
             // the flag cannot corrupt durable evidence state.
@@ -579,7 +578,7 @@ fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
                 && window
                     .app_handle()
                     .try_state::<store::Store>()
-                    .and_then(|store| store.settings().ok())
+                    .map(|store| store.settings_snapshot())
                     .is_some_and(|settings| !settings.tray_icon_visible);
             match close_policy(
                 window.label(),
@@ -596,8 +595,7 @@ fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
                 }
                 ClosePolicy::QuitApp => {
                     api.prevent_close();
-                    main_window::flush_placement(window.app_handle());
-                    window.app_handle().exit(0);
+                    main_window::exit_after_placement_flush(window.app_handle());
                 }
                 ClosePolicy::HidePopover => {
                     api.prevent_close();
@@ -836,6 +834,7 @@ mod tests {
                 &runner,
                 &|entry| task_announced.lock().unwrap().push(entry),
                 &|| {},
+                &|_, _| {},
             )
             .await;
         });

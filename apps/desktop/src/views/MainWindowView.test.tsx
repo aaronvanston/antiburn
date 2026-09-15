@@ -16,6 +16,36 @@ vi.mock("./main-window/MainActivityView", () => ({ MainActivityView: () => <p>Se
 vi.mock("./main-window/BurnChecksView", () => ({
   BurnChecksView: () => <p>Burn checks workspace</p>,
 }))
+vi.mock("./main-window/OverviewView", () => ({
+  OverviewView: ({
+    onOpenBurnChecks,
+    onSelectSession,
+  }: {
+    onOpenBurnChecks: () => void
+    onSelectSession: (entry: SessionListEntry) => void
+  }) => (
+    <div>
+      <p>Overview workspace</p>
+      <button type="button" onClick={onOpenBurnChecks}>
+        Open Burn checks
+      </button>
+      <button type="button" onClick={() => onSelectSession(overviewMocks.recentEntry)}>
+        Recent session
+      </button>
+    </div>
+  ),
+}))
+
+const overviewMocks = vi.hoisted(() => ({
+  recentEntry: {
+    agent: "claude",
+    sessionId: "recent-1",
+    repo: "antiburn",
+    timestamp: "2026-09-14T08:00:00Z",
+    isActive: false,
+    title: "Recent session",
+  } satisfies SessionListEntry,
+}))
 
 /**
  * A minimal stand-in for `MainActivitySession`. `MainWindowView` only reads
@@ -34,6 +64,7 @@ const activityMocks = vi.hoisted(() => {
       this.snapshot = { ...this.snapshot, filter }
       this.notify()
     })
+    selectEntry = vi.fn()
     constructor() {
       activityMocks.instances.push(this)
     }
@@ -142,16 +173,20 @@ describe("MainWindowView", () => {
     expect(container.querySelector("[data-tauri-drag-region]")).toBeNull()
   })
 
-  it("opens Burn checks by default and keeps Sessions in the sidebar", () => {
+  it("opens Overview by default and keeps Burn checks and Sessions in the sidebar", () => {
     setWindowWidth(1000)
     render(<MainWindowView />)
-    // Burn checks, Sessions, and Sessions' five fixed filter children (no
-    // harness rows yet, since no entries have loaded).
-    expect(screen.getAllByRole("tab")).toHaveLength(7)
-    expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
+    // Overview, Burn checks, Sessions, and Sessions' five fixed filter
+    // children (no harness rows yet, since no entries have loaded).
+    expect(screen.getAllByRole("tab")).toHaveLength(8)
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
       "aria-selected",
       "true",
     )
+    expect(screen.getByRole("tabpanel", { name: "Overview" })).toBeVisible()
+    expect(screen.getByText("Overview workspace")).toBeVisible()
+    expect(screen.queryByText("Burn checks workspace")).toBeNull()
+    fireEvent.click(screen.getByRole("tab", { name: "Burn checks" }))
     expect(screen.getByRole("tabpanel", { name: "Burn checks" })).toBeVisible()
     expect(screen.getByText("Burn checks workspace")).toBeVisible()
     fireEvent.click(screen.getByRole("tab", { name: "Sessions" }))
@@ -162,11 +197,30 @@ describe("MainWindowView", () => {
     expect(screen.getByRole("tablist", { name: "Main sections" })).toBeVisible()
     expect(screen.queryByRole("button", { name: "Open navigation" })).toBeNull()
   })
+  it("lands in Sessions with the clicked recent session selected", () => {
+    render(<MainWindowView />)
+    fireEvent.click(screen.getByRole("button", { name: "Recent session" }))
+    // The "all" filter's own child row reads as selected inside Sessions.
+    expect(screen.getByRole("tab", { name: "All Sessions" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    expect(screen.getByRole("tabpanel", { name: "Sessions" })).toBeVisible()
+    expect(activitySession().selectEntry).toHaveBeenCalledWith(overviewMocks.recentEntry)
+    expect(activitySession().setFilter).toHaveBeenCalledWith({ kind: "all" })
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }))
+    fireEvent.click(screen.getByRole("button", { name: "Open Burn checks" }))
+    expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+  })
+
   it("opens the existing Settings window without changing the selected section", () => {
     render(<MainWindowView />)
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
     expect(openSettingsWindow).toHaveBeenCalledExactlyOnceWith()
-    expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
       "aria-selected",
       "true",
     )
@@ -187,7 +241,7 @@ describe("MainWindowView", () => {
     "opens Settings with %s+comma from the detail pane",
     (modifier) => {
       render(<MainWindowView />)
-      fireEvent.keyDown(screen.getByRole("tabpanel", { name: "Burn checks" }), {
+      fireEvent.keyDown(screen.getByRole("tabpanel", { name: "Overview" }), {
         key: ",",
         [modifier]: true,
       })
@@ -290,6 +344,20 @@ describe("MainWindowView", () => {
       fireEvent.click(tab("Failing Sessions"))
       expect(tab("Failing Sessions")).toHaveAttribute("aria-selected", "true")
       expect(tab("Sessions")).toHaveAttribute("aria-selected", "false")
+    })
+
+    it("lands on Burn checks when the popover requests that section", async () => {
+      render(<MainWindowView />)
+      await vi.waitFor(() => expect(ipcMocks.sectionTarget).not.toBeNull())
+      expect(screen.getByRole("tabpanel", { name: "Overview" })).toBeVisible()
+      act(() => {
+        ipcMocks.sectionTarget!({ revision: 1, section: "burnChecks" })
+      })
+      expect(screen.getByRole("tab", { name: "Burn checks" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      )
+      expect(screen.getByRole("tabpanel", { name: "Burn checks" })).toBeVisible()
     })
 
     it("keeps the current filter when a cross-window request selects Sessions", async () => {

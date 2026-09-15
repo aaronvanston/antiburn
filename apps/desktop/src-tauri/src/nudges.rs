@@ -95,7 +95,7 @@ pub fn dismiss(app: &AppHandle) {
 pub fn deliver(app: &AppHandle, mut nudge: Nudge) {
     let settings = app
         .try_state::<Store>()
-        .and_then(|store| store.settings().ok());
+        .map(|store| store.settings_snapshot());
 
     if let Some(settings) = &settings {
         nudge.timeout_ms = Some(settings.nudge_auto_dismiss_secs.saturating_mul(1000));
@@ -136,7 +136,7 @@ fn placement(app: &AppHandle) -> NudgePlacement {
         .is_some_and(|override_| override_.take());
     let pref = app
         .try_state::<Store>()
-        .and_then(|store| store.settings().ok())
+        .map(|store| store.settings_snapshot())
         .map(|settings| settings.nudge_placement)
         .unwrap_or_default();
     if (forced || pref == PlacementPref::MenuBar)
@@ -183,7 +183,7 @@ fn on_action(app: &AppHandle, event: NudgeActionEvent) {
     if event.kind == NudgeKind::MenuBarLocation {
         let tray_visible = app
             .try_state::<Store>()
-            .and_then(|store| store.settings().ok())
+            .map(|store| store.settings_snapshot())
             .is_none_or(|settings| settings.tray_icon_visible);
         if menu_bar_location_target(tray_visible) == MenuBarLocationTarget::LaunchSurface {
             let _ = crate::open_launch_surface(app, crate::main_window::OpenTrigger::Interaction);

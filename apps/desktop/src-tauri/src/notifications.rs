@@ -211,7 +211,7 @@ enum Delivery {
 fn os_gate_allows(app: &AppHandle) -> bool {
     let respect = app
         .try_state::<Store>()
-        .and_then(|store| store.settings().ok())
+        .map(|store| store.settings_snapshot())
         .is_some_and(|settings| settings.nudges_respect_dnd);
     if !respect {
         return true;
@@ -538,7 +538,7 @@ pub fn note_usage_milestone(
 pub fn note_menu_bar_home(app: &AppHandle) {
     let tray_visible = app
         .try_state::<Store>()
-        .and_then(|store| store.settings().ok())
+        .map(|store| store.settings_snapshot())
         .is_none_or(|settings| settings.tray_icon_visible);
     if tray_visible {
         crate::nudges::anchor_next_to_the_tray(app);
@@ -610,7 +610,7 @@ pub fn note_sample(app: &AppHandle, kind: Kind) {
         Kind::MenuBarHome => {
             let tray_visible = app
                 .try_state::<Store>()
-                .and_then(|store| store.settings().ok())
+                .map(|store| store.settings_snapshot())
                 .is_none_or(|settings| settings.tray_icon_visible);
             if tray_visible {
                 crate::nudges::anchor_next_to_the_tray(app);
@@ -643,7 +643,7 @@ pub fn maybe_initialize_authorization(app: &AppHandle) {
     {
         let ready = app
             .try_state::<Store>()
-            .and_then(|store| store.settings().ok())
+            .map(|store| store.settings_snapshot())
             .is_some_and(|settings| {
                 settings.onboarding_completed
                     && settings.notifications_enabled
@@ -663,11 +663,11 @@ pub fn maybe_initialize_authorization(app: &AppHandle) {
     }
 }
 
-/// The reader's preferences, read fresh, defaulting to *silence* when the store
-/// cannot be read: an unreadable preference is not permission.
+/// The reader's last committed preferences, defaulting to silence before the
+/// store is managed. Missing state is not permission.
 fn enabled(app: &AppHandle, kind: Kind) -> bool {
     app.try_state::<Store>()
-        .and_then(|store| store.settings().ok())
+        .map(|store| store.settings_snapshot())
         .is_some_and(|settings| allowed(&settings, kind))
 }
 

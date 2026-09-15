@@ -13,12 +13,14 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::AppHandle;
+#[cfg(debug_assertions)]
+use tauri::Emitter;
 use tauri::image::Image;
 #[cfg(debug_assertions)]
 use tauri::menu::CheckMenuItem;
 use tauri::menu::{IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager, Wry};
+use tauri::{Manager, Wry};
 
 #[cfg(debug_assertions)]
 use crate::commands;
@@ -298,7 +300,7 @@ fn toggle_random_usage(app: &AppHandle) -> bool {
 
     let active = app
         .try_state::<crate::store::Store>()
-        .and_then(|store| store.settings().ok())
+        .map(|store| store.settings_snapshot())
         .is_some_and(|settings| settings.live_usage_active());
     let summary = app
         .try_state::<crate::usage_alerts::LiveUsage>()
@@ -732,9 +734,12 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
         }
         #[cfg(debug_assertions)]
         MENU_RESET_ONBOARDING => {
-            if let Err(error) = commands::restart_onboarding(app.clone()) {
-                ::tracing::error!(event = "onboarding_restart_failed", trigger = "tray", error);
-            }
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = commands::restart_onboarding(app).await {
+                    ::tracing::error!(event = "onboarding_restart_failed", trigger = "tray", error);
+                }
+            });
         }
         #[cfg(debug_assertions)]
         MENU_RANDOM_USAGE => {
@@ -758,8 +763,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
         MENU_QUIT => {
             // Exit code 0 distinguishes a deliberate quit from the window
             // closes the shell suppresses (see `on_window_event`).
-            crate::main_window::flush_placement(app);
-            app.exit(0);
+            crate::main_window::exit_after_placement_flush(app);
         }
         _ => {}
     }

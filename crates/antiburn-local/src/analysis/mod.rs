@@ -60,12 +60,13 @@ pub use evidence::{
     ContextSourceEvidence, CoverageReason, DepthExample, EVIDENCE_STRING_CAP, EligibilityEvidence,
     EvidenceCoverage, EvidenceSource, EvidenceValue, FAST_SPEED_KEY, LoadedSource,
     ModelControlObservation, ModelEvidence, ModelTokens, ModelTransition, OrderingObservation,
-    ParseDiagnostics, QuotaConfidence, QuotaHitSeverity, QuotaIncident, QuotaLimitKind,
-    RelationConfidence, RepeatedContext, RepeatedContextAccounting, SessionCoverageRecord,
-    SessionEvidence, SessionEvidenceIdentity, SessionProvenance, SessionQuotaEvidence,
-    SessionTimeRange, SignalCoverage, SourceAcceptance, SourceCapabilities, SourceFormat,
-    SourceKind, SubagentChild, SubagentEvidence, SubagentExample, ToolClass, ToolDefinition,
-    ToolEvidence, ToolUse, TurnCounts,
+    ParseDiagnostics, ProviderIncident, ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity,
+    QuotaIncident, QuotaLimitKind, RelationConfidence, RepeatedContext, RepeatedContextAccounting,
+    SessionCoverageRecord, SessionEvidence, SessionEvidenceIdentity, SessionProvenance,
+    SessionProviderEvidence, SessionQuotaEvidence, SessionTimeRange, SignalCoverage,
+    SourceAcceptance, SourceCapabilities, SourceFormat, SourceKind, SubagentChild,
+    SubagentEvidence, SubagentExample, ToolClass, ToolDefinition, ToolEvidence, ToolUse,
+    TurnCounts,
 };
 pub use evidence_query::{
     FenceScope, PublishedScope, TurnFacts, query_model_breakdown, query_model_runs,
@@ -182,7 +183,17 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // +1 for Codex's `spawn_agent` launch tool: `is_subagent_launch_tool`
 // (`analysis::model`) now also matches `spawn_agent`, so every stored
 // Codex session must reparse to count launches in `subagent_launches`.
-pub const PARSER_REVISION: i64 = 36;
+// +1 for Codex quota incidents: a `task_complete` event with a non-null
+// `error` object now maps to a `QuotaIncident` for the three reviewed
+// `codex_error_info` codes, so a stored Codex session must reparse to
+// collect them (`vendors::codex::task_complete_incident`).
+// +1 for provider incident parity: Codex's remaining transport/server
+// `codex_error_info` codes now map to `ServerError`/`Connection`
+// (`vendors::codex::task_complete_observation`), and a Claude
+// `isApiErrorMessage` assistant record now maps to a quota or provider
+// incident (`vendors::claude::api_error_observation`), so a stored Claude
+// or Codex session must reparse to collect them.
+pub const PARSER_REVISION: i64 = 38;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to
@@ -258,7 +269,8 @@ pub const METRICS_SCHEMA_REVISION: i64 = 8;
 // harness version, and model-associated speed and effort evidence.
 // +1 for source-surface formats and fail-closed skill alias attribution.
 // +1 for nested resource evidence and paired parent-call and child-model observations.
-pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
+// +1 for the provider_incidents evidence group.
+pub const EVIDENCE_SCHEMA_REVISION: i64 = 19;
 /// Versions [`evidence::SessionCoverageRecord`]'s own shape, separately
 /// from [`EVIDENCE_SCHEMA_REVISION`]: the record is an internal input to
 /// evidence replay, not the published `SessionEvidence` shape itself.
@@ -267,7 +279,8 @@ pub const EVIDENCE_SCHEMA_REVISION: i64 = 18;
 // +1 for source format and repeated-context accounting capabilities.
 // +1 for dedicated source-surface capability contracts.
 // +1 for nested resources, paired subagent models, and incomplete linkage state.
-pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
+// +1 for Codex quota and provider incidents and their bounded-collection cap flags.
+pub const COVERAGE_SCHEMA_REVISION: i64 = 5;
 /// Versions [`resume::StreamSnapshot`]'s own shape. [`resume::StreamSnapshot::is_current`]
 /// rejects a persisted snapshot stamped with an older revision.
 ///
@@ -285,7 +298,8 @@ pub const COVERAGE_SCHEMA_REVISION: i64 = 4;
 // This batch also changes retained nested resource and paired subagent state.
 // +1 for the bounded Codex cross-format usage matcher in adapter snapshots.
 // Reject snapshots that can retain duplicate usage totals.
-pub const RESUME_SNAPSHOT_REVISION: i64 = 8;
+// +1 because the evidence sink now carries Codex quota and provider incidents.
+pub const RESUME_SNAPSHOT_REVISION: i64 = 9;
 
 /// Normalize and analyze a batch of live sessions into one averaged summary.
 ///

@@ -100,3 +100,11 @@
   font-weight: 400;
   letter-spacing: 0.36px;
 }
+
+/* The hero figure is a headline number the page is built around: heavy,
+   tight, and paired with `font-mono` so the digits read as an instrument. */
+.type-hero-figure {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.96px;
+}

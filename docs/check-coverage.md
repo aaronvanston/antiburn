@@ -161,6 +161,74 @@ Skills mean full documents injected into model context. Listings, installed
 skills, and names in tool calls do not prove unused document overhead. Resource
 identity is retained without copying private document bodies into evidence.
 
+Quota pressure and provider incidents sit outside the nine-code check
+contract (FR-15): neither has a row in the Checks table above, and each
+reports only when transcripts carry its own evidence. `CodexRolloutJsonl`
+and `ClaudeJsonl` both supply quota and provider incidents.
+
+`CodexRolloutJsonl`: an `event_msg`/`task_complete` record with a non-null
+`error` object maps to one of the two groups, against the pinned
+`openai/codex` protocol commit
+[`e7637306bc9246a3e42e407cb94f96b7ed345e3e`][codex-source] and a synthetic
+fixture (`task_complete_errors.jsonl`):
+
+- `quota_incidents`, a `QuotaIncident`, from `rate_limit_exceeded`
+  (`RateLimit`) and `usage_limit_exceeded` (`UsageLimit`) — both name a
+  user-allocation limit the reader's own usage caused.
+- `provider_incidents`, a `ProviderIncident`, from `server_overloaded`
+  (`Capacity`), `internal_server_error` (`ServerError`), and the four
+  transport struct-variant codes `http_connection_failed`,
+  `response_stream_connection_failed`, `response_stream_disconnected`, and
+  `response_too_many_failed_attempts` by their `http_status_code`: `5xx`
+  maps to `ServerError`, an absent or `null` status maps to `Connection`,
+  and any other status is ignored because the retry wrapper hides which
+  layer produced it.
+
+Every other Codex code (`context_window_exceeded`, `session_budget_exceeded`,
+`cyber_policy`, `misalignment_policy_violation`, `unauthorized`,
+`bad_request`, `sandbox_error`, `active_turn_not_steerable`,
+`thread_rollback_failed`, `other`) is ignored.
+
+`ClaudeJsonl`: a `type: "assistant"` record with `isApiErrorMessage: true`
+maps to one of the two groups from its `apiErrorStatus` (an HTTP status,
+present only for a response the provider returned) and `error` (Claude
+Code's own coarser classification), reviewed against harness version
+`2.1.270` and a synthetic fixture (`api_error_records.jsonl`):
+
+- `quota_incidents`, a `QuotaIncident` (`RateLimit`, `HardHit`), from status
+  `429` or, when no status is present, `error: "rate_limit"`.
+- `provider_incidents`, a `ProviderIncident`, from status `529` (`Capacity`),
+  another `5xx` status (`ServerError`), or, when no status is present,
+  `error: "server_error"` (`ServerError`).
+
+Every other status or `error` value is ignored, including `error: "unknown"`
+with no status (Claude's connection-refused case) and every 4xx other than
+429. `ProviderIncidentKind::Connection` is Codex-only: no Claude field
+reviewed so far identifies a connection failure without reading message
+text.
+
+Clean or absence is never claimed from either group for any source: each
+section is not assessed without at least one observed incident of its own
+kind, per FR-15's one condition.
+
+Maintainer confirmation (2026-09-14): extend provider incidents with
+`ServerError` and `Connection`, map Codex's remaining transport/server
+`codex_error_info` codes, and add Claude `isApiErrorMessage` records as a
+new quota/provider incident source. Reviewed passive alternatives:
+
+- Classifying Claude errors from `content[].text` — rejected: free text,
+  unpinned, and the project never reads or stores error message text.
+- Mapping Claude `error: "unknown"` to `Connection` — rejected: the label
+  covers more than connection failures.
+- Mapping non-5xx `http_status_code` values inside Codex transport
+  variants — rejected: the retry wrapper hides which layer produced the
+  status.
+- Mapping `context_window_exceeded` / `session_budget_exceeded` — rejected:
+  these name the user's own context or budget, a different failure class.
+- Splitting Claude 429s into `UsageLimit` vs `RateLimit` from
+  `quotaLimits` — deferred: no synthetic fixture has been characterised for
+  that field yet.
+
 | Source                      | Checks              | Implemented contract and remaining limit                                                                                                                                                                                                                                                                                                |
 | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude and Codex            | D, O                | Direct request depth and timed model use reach checks independently of token-accounting policy. Clean needs all required session facts and reviewed model state. Unknown models are not automatically current.                                                                                                                          |

@@ -848,6 +848,57 @@ fn settings_restore_the_dock_when_both_presence_icons_are_hidden() {
 }
 
 #[test]
+fn settings_snapshot_does_not_wait_for_the_database_connection() {
+    let store = store();
+    let connection = store.lock();
+    let snapshot_store = store.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        sender.send(snapshot_store.settings_snapshot()).unwrap();
+    });
+
+    let snapshot = receiver
+        .recv_timeout(std::time::Duration::from_secs(1))
+        .expect("the settings snapshot stays independent from the database connection");
+    drop(connection);
+    reader.join().unwrap();
+
+    assert_eq!(snapshot, AppSettings::default());
+}
+
+#[test]
+fn settings_snapshot_tracks_commits_across_store_clones() {
+    let store = store();
+    let snapshot_store = store.clone();
+    let saved = store
+        .save_settings(&AppSettings {
+            theme: ThemePreference::Dark,
+            onboarding_completed: true,
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+    assert_eq!(snapshot_store.settings_snapshot(), saved);
+}
+
+#[test]
+fn settings_snapshot_ignores_a_rolled_back_transition() {
+    let store = store();
+    let before = store.settings_snapshot();
+    let result: anyhow::Result<(AppSettings, AppSettings, ())> = store
+        .replace_settings_with_transition(
+            &AppSettings {
+                theme: ThemePreference::Dark,
+                ..AppSettings::default()
+            },
+            |_, _, _| anyhow::bail!("rollback"),
+        );
+
+    assert!(result.is_err());
+    assert_eq!(store.settings_snapshot(), before);
+}
+
+#[test]
 fn settings_repair_malformed_stored_presence_values() {
     let store = store();
     {
@@ -2809,7 +2860,7 @@ async fn analysis_from_rows_serves_a_published_pass_without_reading_a_transcript
         Box::pin(async move { pass }) as crate::insights_worker::PassFuture
     };
     assert!(
-        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {},)
+        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {}, &|_, _| {})
             .await
             .unwrap()
     );
@@ -2883,7 +2934,7 @@ async fn analysis_from_rows_still_serves_a_published_pass_after_a_requeue() {
         Box::pin(async move { pass }) as crate::insights_worker::PassFuture
     };
     assert!(
-        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {},)
+        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {}, &|_, _| {})
             .await
             .unwrap()
     );
@@ -3022,14 +3073,14 @@ async fn reprocessing_a_revision_one_row_leaves_no_placeholder_in_stored_evidenc
         Box::pin(async move { pass }) as crate::insights_worker::PassFuture
     };
     assert!(
-        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {},)
+        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {}, &|_, _| {})
             .await
             .unwrap()
     );
 
     let ready = store.evidence(&record.key).unwrap().unwrap();
     assert_eq!(ready.status, EvidenceStatus::Ready);
-    assert_eq!(ready.evidence_schema_revision, Some(18));
+    assert_eq!(ready.evidence_schema_revision, Some(19));
     assert!(!ready.evidence_json.unwrap().contains("unimplemented"));
 }
 
@@ -3058,14 +3109,14 @@ async fn a_terminal_failure_clears_an_outdated_placeholder_payload() {
         }) as crate::insights_worker::PassFuture
     };
     assert!(
-        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {},)
+        crate::insights_worker::process_next(&store, &|| 1_100, &runner, &|_| {}, &|_, _| {})
             .await
             .unwrap()
     );
 
     let failed = store.evidence(&record.key).unwrap().unwrap();
     assert_eq!(failed.status, EvidenceStatus::Failed);
-    assert_eq!(failed.evidence_schema_revision, Some(18));
+    assert_eq!(failed.evidence_schema_revision, Some(19));
     assert!(failed.evidence_json.is_none());
 }
 
