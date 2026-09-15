@@ -203,7 +203,7 @@ fn publication_attribution_covers_supported_vendor_sources_and_settings() {
             case.source
         );
         assert!(attribution.records.iter().all(|record| {
-            record.path.ends_with(case.config_path)
+            std::path::Path::new(&record.path).ends_with(case.config_path)
                 && !record.selector.is_empty()
                 && record.expected_value_json.starts_with('"')
                 && record.precedence_hash.len() == 64
