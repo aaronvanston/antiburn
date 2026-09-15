@@ -444,6 +444,76 @@ pub struct ProviderUsageSummary {
     pub generated_at: String,
 }
 
+/// How much of one allowance window the reader consumed, across periods.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceUtilization {
+    /// The median peak across the periods, or `null` while too few periods
+    /// exist for a median to describe a typical one. The peak stands alone
+    /// until then; it is honest at any sample size.
+    pub typical_percent: Option<f64>,
+    /// The highest figure any one period reached.
+    pub peak_percent: f64,
+    pub period_count: u32,
+    /// How many of those periods reached 100%. A refusal happens there and
+    /// at nothing less, so there is no lower threshold to report.
+    pub maxed_period_count: u32,
+    /// ISO-8601 stamp of the oldest period counted.
+    pub first_period_at: String,
+    /// ISO-8601 stamp of the newest period counted.
+    pub last_period_at: String,
+}
+
+/// The demand the provider refused over the reported span.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceOverage {
+    /// How many times the provider blocked the reader. A retry storm is one
+    /// block, not one for each refused attempt.
+    pub block_count: u32,
+    /// The total wait across the blocks that state a reset.
+    pub waited_seconds: i64,
+    /// Blocks that state no usable reset. They are counted and contribute
+    /// no waiting time, rather than being dropped or guessed at.
+    pub blocks_without_wait: u32,
+    /// ISO-8601 stamp of the newest block, or `null` when there is none.
+    pub last_block_at: Option<String>,
+}
+
+/// One provider account's two allowance numbers.
+///
+/// Utilization is supply consumed and overage is demand refused. Neither
+/// follows from the other: a period can close well under its limit and
+/// still contain a block from a shorter window.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceUsageAccount {
+    pub provider: String,
+    pub display_name: String,
+    pub account_key: String,
+    /// The long window: how well the plan fits. Absent when no period in it
+    /// has a reported figure.
+    pub utilization: Option<AllowanceUtilization>,
+    /// The short rolling window: the cause of the blocks, not a second
+    /// plan-fit figure. The two windows answer different questions.
+    pub burst: Option<AllowanceUtilization>,
+    pub overage: AllowanceOverage,
+}
+
+/// The allowance numbers for every account, as one snapshot.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceUsageSummary {
+    /// One entry for each provider account with either number. An account
+    /// with no allowance evidence is absent rather than zeroed.
+    pub accounts: Vec<AllowanceUsageAccount>,
+    /// How many trailing days `overage` covers. The utilization figures
+    /// cover every period still held, which is a longer span.
+    pub overage_span_days: u32,
+    /// ISO-8601 stamp of the moment this snapshot was computed.
+    pub generated_at: String,
+}
+
 /// The provider allowance represented by one session estimate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -33,15 +33,15 @@ use crate::agents::kind_from_slug;
 use crate::analysis;
 use crate::consent;
 use crate::dto::{
-    ActivityEntry, AgentScanState, AggregateWinsPayload, AppInfo,
-    ApplyPreparedBurnCheckOperationOutcome, AutoFixUnavailableReason, BurnCheckDetectorId,
-    BurnCheckTargetListPayload, ChecksReportPayload, CopyPromptFixBurnCheckOutcome,
-    CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir, HygieneSummaryPayload,
-    InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary, OrchestrationStatus,
-    PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason, ProviderUsageSummary,
-    RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload, SessionHygieneRequest,
-    SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary, SessionRelation,
-    SessionRelations, SubagentMember,
+    ActivityEntry, AgentScanState, AggregateWinsPayload, AllowanceOverage, AllowanceUsageAccount,
+    AllowanceUsageSummary, AllowanceUtilization, AppInfo, ApplyPreparedBurnCheckOperationOutcome,
+    AutoFixUnavailableReason, BurnCheckDetectorId, BurnCheckTargetListPayload, ChecksReportPayload,
+    CopyPromptFixBurnCheckOutcome, CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir,
+    HygieneSummaryPayload, InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary,
+    OrchestrationStatus, PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason,
+    ProviderUsageSummary, RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload,
+    SessionHygieneRequest, SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary,
+    SessionRelation, SessionRelations, SubagentMember,
 };
 use crate::insights_ipc::InsightsController;
 use crate::insights_report::ReportRequest;
@@ -761,6 +761,13 @@ pub async fn list_recent_sessions(
 /// popover's first paint unbounded.
 const MAX_ACTIVITY_ROWS: usize = 500;
 
+/// The most period rollups one allowance snapshot reads.
+///
+/// One row for each period. A weekly window over three years is about 160
+/// rows, and a five-hour window over the same span is about 5,000. The cap
+/// keeps the newest of them, which is what the figures describe.
+const MAX_ALLOWANCE_PERIODS: usize = 5_000;
+
 pub(crate) fn activity_entry(
     store: &Store,
     repositories: &[RepositoryRecord],
@@ -951,6 +958,81 @@ pub async fn get_session_limit_allocations(
     })
     .await
     .map_err(fail)?
+}
+
+/// How many trailing days the overage figure covers.
+///
+/// The utilization figures cover every period the rollups still hold. A
+/// block is a thing that happened on a day, so it takes the same trailing
+/// month the rest of the Overview uses.
+const OVERAGE_SPAN_DAYS: i64 = 30;
+
+/// The two allowance numbers for each provider account.
+///
+/// Utilization is supply consumed, from the provider's own meter. Overage is
+/// demand refused, from the refusals the provider stated. Neither follows
+/// from the other, so the surface reports both.
+#[tauri::command]
+pub async fn get_allowance_usage(app: tauri::AppHandle) -> CommandResult<AllowanceUsageSummary> {
+    let now = scan::unix_now();
+    let store = app.state::<Store>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let since_epoch = now.saturating_sub(OVERAGE_SPAN_DAYS * 86_400);
+        let rollups = store
+            .provider_usage_period_rollups(0, MAX_ALLOWANCE_PERIODS)
+            .map_err(fail)?;
+        let incidents = store.quota_incidents(since_epoch).map_err(fail)?;
+        let allowances = provider_usage::allowance::account_allowances(
+            &rollups,
+            &incidents,
+            since_epoch.saturating_mul(1_000),
+        );
+        Ok(AllowanceUsageSummary {
+            accounts: allowances
+                .into_iter()
+                .map(
+                    |((provider, account_key), allowance)| AllowanceUsageAccount {
+                        display_name: provider_usage::providers::display_name(&provider)
+                            .to_string(),
+                        provider,
+                        account_key,
+                        utilization: allowance.utilization.map(utilization_payload),
+                        burst: allowance.burst.map(utilization_payload),
+                        overage: AllowanceOverage {
+                            block_count: u32::try_from(allowance.overage.block_count)
+                                .unwrap_or(u32::MAX),
+                            waited_seconds: allowance.overage.waited_ms / 1_000,
+                            blocks_without_wait: u32::try_from(
+                                allowance.overage.blocks_without_wait,
+                            )
+                            .unwrap_or(u32::MAX),
+                            last_block_at: allowance
+                                .overage
+                                .last_block_at_ms
+                                .map(|at_ms| crate::store::iso_from_epoch(Some(at_ms / 1_000))),
+                        },
+                    },
+                )
+                .collect(),
+            overage_span_days: u32::try_from(OVERAGE_SPAN_DAYS).unwrap_or(u32::MAX),
+            generated_at: crate::store::iso_from_epoch(Some(now)),
+        })
+    })
+    .await
+    .map_err(fail)?
+}
+
+fn utilization_payload(
+    utilization: provider_usage::allowance::Utilization,
+) -> AllowanceUtilization {
+    AllowanceUtilization {
+        typical_percent: utilization.typical_percent,
+        peak_percent: utilization.peak_percent,
+        period_count: u32::try_from(utilization.period_count).unwrap_or(u32::MAX),
+        maxed_period_count: u32::try_from(utilization.maxed_period_count).unwrap_or(u32::MAX),
+        first_period_at: crate::store::iso_from_epoch(Some(utilization.first_period_at_epoch)),
+        last_period_at: crate::store::iso_from_epoch(Some(utilization.last_period_at_epoch)),
+    }
 }
 
 /// Per-provider token maps ready for [`price_breakdown`], keyed the same way

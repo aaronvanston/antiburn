@@ -25,6 +25,7 @@
 //!    session that ran across midnight counts entirely in the day it last
 //!    touched. The views say so.
 
+pub mod allowance;
 pub(crate) mod codex_rollout_history;
 pub(crate) mod factor;
 pub mod live;

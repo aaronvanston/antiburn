@@ -98,6 +98,7 @@ dependencies = [
  "block2",
  "getrandom 0.4.3",
  "hmac",
+ "jiff",
  "libc",
  "notify",
  "objc2",

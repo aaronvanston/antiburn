@@ -20,6 +20,7 @@
     "allow-get-live-usage",
     "allow-get-provider-usage",
     "allow-get-checks-report",
+    "allow-get-allowance-usage",
     "allow-get-burn-check-aggregate-wins",
     "allow-get-main-window-visible",
     "allow-get-session-analysis",
