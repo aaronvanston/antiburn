@@ -130,7 +130,7 @@ describe("OverviewUsage", () => {
     expect(onMetricChange).toHaveBeenCalledWith("cost")
   })
 
-  it("states the average utilization and the blocks beside it with their cause", () => {
+  it("states the average utilization and the limit hits beside it with their cause", () => {
     renderTotals()
     const cell = screen.getByRole("region", { name: "Allowance" })
 
@@ -138,13 +138,13 @@ describe("OverviewUsage", () => {
     expect(within(cell).getByText("41%")).toBeInTheDocument()
     expect(within(cell).getByText("average subscription utilization")).toBeInTheDocument()
     expect(within(cell).getByText("11h")).toBeInTheDocument()
-    expect(within(cell).getByText(/8 blocks in 30 days/)).toBeInTheDocument()
+    expect(within(cell).getByText(/8 limit hits in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()
   })
 
-  it("counts the blocks when no block states a reset", () => {
-    // Codex refuses without naming a reset. The blocks still happened, so the
-    // figure falls back to counting them.
+  it("counts the limit hits when none states a reset", () => {
+    // Codex refuses without naming a reset. The limit hits still happened,
+    // so the figure falls back to counting them.
     renderTotals({
       allowance: summary([
         account({
@@ -160,7 +160,7 @@ describe("OverviewUsage", () => {
     const cell = screen.getByRole("region", { name: "Allowance" })
 
     expect(within(cell).getByText("1")).toBeInTheDocument()
-    expect(within(cell).getByText(/block in 30 days/)).toBeInTheDocument()
+    expect(within(cell).getByText(/limit hit in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText(/no stated reset/)).toBeInTheDocument()
   })
 

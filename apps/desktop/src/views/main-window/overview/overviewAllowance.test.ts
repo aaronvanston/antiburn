@@ -8,9 +8,9 @@ import type {
 } from "../../../lib/providerUsageIpc"
 import {
   allowanceAccounts,
-  blockedCaption,
-  blockedFigure,
-  blockedNote,
+  limitHitsCaption,
+  limitHitsFigure,
+  limitHitsNote,
   causeLine,
   hasAllowanceFigures,
   utilizationFigure,
@@ -79,44 +79,46 @@ function overage(overrides: Partial<AllowanceOveragePayload> = {}): AllowanceOve
   }
 }
 
-describe("blockedFigure", () => {
+describe("limitHitsFigure", () => {
   it("reads a long wait in hours and a short one in minutes", () => {
-    expect(blockedFigure(overage())).toBe("2.3h")
-    expect(blockedFigure(overage({ waitedSeconds: 2700 }))).toBe("45m")
-    expect(blockedFigure(overage({ blockCount: 12, waitedSeconds: 39_960 }))).toBe("11h")
+    expect(limitHitsFigure(overage())).toBe("2.3h")
+    expect(limitHitsFigure(overage({ waitedSeconds: 2700 }))).toBe("45m")
+    expect(limitHitsFigure(overage({ blockCount: 12, waitedSeconds: 39_960 }))).toBe("11h")
   })
 
-  it("counts the blocks when no block states a reset", () => {
-    // A block that reports no usable reset is counted and adds no time.
+  it("counts the limit hits when none states a reset", () => {
+    // A limit hit that reports no usable reset is counted and adds no time.
     // "0h" would claim the reader waited no time, which is false.
     expect(
-      blockedFigure(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
+      limitHitsFigure(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
     ).toBe("1")
-    expect(blockedFigure(overage({ blockCount: 0, waitedSeconds: 0 }))).toBe("0")
+    expect(limitHitsFigure(overage({ blockCount: 0, waitedSeconds: 0 }))).toBe("0")
   })
 })
 
-describe("blockedCaption and blockedNote", () => {
-  it("names the wait, and the blocks it covers, over the span", () => {
-    expect(blockedCaption(overage(), 30)).toBe("waiting on 2 blocks in 30 days")
-    expect(blockedCaption(overage({ blockCount: 1 }), 30)).toBe("waiting on 1 block in 30 days")
+describe("limitHitsCaption and limitHitsNote", () => {
+  it("names the wait, and the limit hits it covers, over the span", () => {
+    expect(limitHitsCaption(overage(), 30)).toBe("waiting on 2 limit hits in 30 days")
+    expect(limitHitsCaption(overage({ blockCount: 1 }), 30)).toBe(
+      "waiting on 1 limit hit in 30 days",
+    )
   })
 
   it("leaves the count to the figure when the figure is the count", () => {
     const counted = overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })
-    expect(blockedCaption(counted, 30)).toBe("block in 30 days")
+    expect(limitHitsCaption(counted, 30)).toBe("limit hit in 30 days")
   })
 
-  it("says nothing when every block states a reset", () => {
-    expect(blockedNote(overage())).toBeNull()
+  it("says nothing when every limit hit states a reset", () => {
+    expect(limitHitsNote(overage())).toBeNull()
   })
 
-  it("names the blocks the wait leaves out", () => {
-    expect(blockedNote(overage({ blockCount: 3, blocksWithoutWait: 1 }))).toBe(
+  it("names the limit hits the wait leaves out", () => {
+    expect(limitHitsNote(overage({ blockCount: 3, blocksWithoutWait: 1 }))).toBe(
       "1 with no stated reset",
     )
     expect(
-      blockedNote(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
+      limitHitsNote(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
     ).toBe("no stated reset")
   })
 })
@@ -170,7 +172,7 @@ describe("allowanceAccounts", () => {
     expect(allowanceAccounts(null)).toEqual([])
   })
 
-  it("counts an account with a meter but no block", () => {
+  it("counts an account with a meter but no limit hit", () => {
     expect(hasAllowanceFigures(account())).toBe(true)
   })
 })

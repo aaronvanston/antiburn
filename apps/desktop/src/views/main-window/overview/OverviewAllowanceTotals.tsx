@@ -1,9 +1,9 @@
 import type { AllowanceUsageAccountPayload } from "../../../lib/providerUsageIpc"
 import {
-  blockedCaption,
-  blockedFigure,
-  blockedNote,
   causeLine,
+  limitHitsCaption,
+  limitHitsFigure,
+  limitHitsNote,
   UTILIZATION_LABEL,
   utilizationFigure,
 } from "./overviewAllowance"
@@ -15,12 +15,13 @@ import "./overview.css"
 
 /**
  * The Overview's allowance headline: one cell for each provider account,
- * with utilization on the left and the blocks that account met on the right.
+ * with utilization on the left and the limit hits that account met on the
+ * right.
  *
  * Utilization is supply consumed and overage is demand refused. The meter
- * stops at 100%, so a reader who is blocked at noon and a reader who
- * finished their day both read the same meter. Only the blocks tell them
- * apart, which is why the two figures sit side by side.
+ * stops at 100%, so a reader who meets the limit at noon and a reader who
+ * finished their day both read the same meter. Only the limit hits tell
+ * them apart, which is why the two figures sit side by side.
  *
  * An account with no meter history shows no utilization figure. A gap is
  * never drawn as a zero.
@@ -84,7 +85,7 @@ function AllowanceAccount({
   spanDays: number
 }) {
   const utilization = account.utilization
-  const note = blockedNote(account.overage)
+  const note = limitHitsNote(account.overage)
   const cause = causeLine(account.burst)
   return (
     <div className="overview-allowance-account min-w-0 border-separator">
@@ -105,12 +106,12 @@ function AllowanceAccount({
           </div>
         )}
         <div className="min-w-0">
-          <dt className="sr-only">Blocked</dt>
+          <dt className="sr-only">Limit hits</dt>
           <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
-            <SegmentFigure>{blockedFigure(account.overage)}</SegmentFigure>
+            <SegmentFigure>{limitHitsFigure(account.overage)}</SegmentFigure>
           </dd>
           <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
-            {blockedCaption(account.overage, spanDays)}
+            {limitHitsCaption(account.overage, spanDays)}
             {note && (
               <>
                 <span aria-hidden="true"> · </span>

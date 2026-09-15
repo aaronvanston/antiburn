@@ -54,9 +54,12 @@ describe("OverviewAllowanceChart", () => {
     expect(dayButtons()[3]).toHaveAttribute("aria-label", expect.stringContaining("no reading"))
   })
 
-  it("marks a day that carried a block", () => {
+  it("marks a day that carried a limit hit", () => {
     const { container } = render(<OverviewAllowanceChart accounts={[account()]} />)
-    expect(dayButtons()[10]).toHaveAttribute("aria-label", expect.stringContaining("2 blocks"))
+    expect(dayButtons()[10]).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("2 limit hits"),
+    )
     expect(container.querySelectorAll(".overview-block-mark")).toHaveLength(1)
   })
 

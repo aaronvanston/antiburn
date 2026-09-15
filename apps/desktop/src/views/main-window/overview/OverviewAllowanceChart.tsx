@@ -7,7 +7,7 @@ import type {
 import {
   allowancePointsLabel,
   allowanceSeriesMax,
-  blockDayLabel,
+  limitHitDayLabel,
   dayLabel,
   percentCeiling,
 } from "../../../lib/presentation/overviewChart"
@@ -94,8 +94,8 @@ function dayDetail(
   accounts.forEach((account, index) => {
     const day = series[index]?.get(localDate)
     const reading = allowancePointsLabel(day?.usedPercent ?? null)
-    const blocks = day ? blockDayLabel(day.blockCount) : null
-    parts.push(`${account.displayName} ${reading}${blocks ? `, ${blocks}` : ""}`)
+    const hits = day ? limitHitDayLabel(day.blockCount) : null
+    parts.push(`${account.displayName} ${reading}${hits ? `, ${hits}` : ""}`)
   })
   return parts.join(" · ")
 }
@@ -271,7 +271,7 @@ function AccountLegend({
       ))}
       <span className="inline-flex items-center gap-[var(--space-xs)]">
         <span aria-hidden="true" className="h-2 w-2 rounded-full bg-system-red-tint" />
-        Blocked
+        Limit hit
       </span>
     </p>
   )

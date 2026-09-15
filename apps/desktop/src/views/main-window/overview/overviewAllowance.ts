@@ -63,9 +63,9 @@ function periodNoun(windowKind: string, count: number): string {
 export const UTILIZATION_LABEL = "Average subscription utilization"
 
 /**
- * True when the blocks state enough resets to give a wait.
+ * True when the limit hits state enough resets to give a wait.
  *
- * A block that states no usable reset adds no time. The figure and the
+ * A limit hit that states no usable reset adds no time. The figure and the
  * caption both change with this answer, so they read it from one place.
  */
 function statesWait(overage: AllowanceOveragePayload): boolean {
@@ -75,11 +75,11 @@ function statesWait(overage: AllowanceOveragePayload): boolean {
 /**
  * The overage hero figure: the time the reader waited on the provider.
  *
- * The figure falls back to the count of blocks when no block states a
- * reset. A zero there would say the reader waited no time, which is a
+ * The figure falls back to the count of limit hits when no limit hit states
+ * a reset. A zero there would say the reader waited no time, which is a
  * different and false claim.
  */
-export function blockedFigure(overage: AllowanceOveragePayload): string {
+export function limitHitsFigure(overage: AllowanceOveragePayload): string {
   if (!statesWait(overage)) return `${overage.blockCount}`
   const hours = overage.waitedSeconds / SECONDS_PER_HOUR
   if (hours < 1) return `${Math.max(1, Math.round(overage.waitedSeconds / 60))}m`
@@ -93,26 +93,26 @@ export function blockedFigure(overage: AllowanceOveragePayload): string {
  * figure. It names the wait when the figure states one, and gives the
  * figure its noun when the figure is already the count.
  */
-export function blockedCaption(overage: AllowanceOveragePayload, spanDays: number): string {
-  const blocks = overage.blockCount === 1 ? "block" : "blocks"
-  const span = `${blocks} in ${spanDays} days`
+export function limitHitsCaption(overage: AllowanceOveragePayload, spanDays: number): string {
+  const hits = overage.blockCount === 1 ? "limit hit" : "limit hits"
+  const span = `${hits} in ${spanDays} days`
   return statesWait(overage) ? `waiting on ${overage.blockCount} ${span}` : span
 }
 
 /**
- * The blocks that state no reset, or null when every block states one.
+ * The limit hits that state no reset, or null when every one states a reset.
  *
- * The wait above covers only the blocks that state a reset. This note tells
- * the reader how many blocks the figure leaves out.
+ * The wait above covers only the limit hits that state a reset. This note
+ * tells the reader how many the figure leaves out.
  */
-export function blockedNote(overage: AllowanceOveragePayload): string | null {
+export function limitHitsNote(overage: AllowanceOveragePayload): string | null {
   if (overage.blocksWithoutWait === 0) return null
   if (overage.blocksWithoutWait === overage.blockCount) return "no stated reset"
   return `${overage.blocksWithoutWait} with no stated reset`
 }
 
 /**
- * Why the blocks happened, from the short rolling window.
+ * Why the limit hits happened, from the short rolling window.
  *
  * A refusal happens at 100% and at nothing less. Across the five-hour
  * windows antiburn has recorded, windows peaking at 96% and 99% refused

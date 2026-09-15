@@ -5,7 +5,7 @@ import {
   allowancePointsLabel,
   allowanceSeriesMax,
   axisDayLabel,
-  blockDayLabel,
+  limitHitDayLabel,
   dayLabel,
   niceCeiling,
   percentCeiling,
@@ -83,9 +83,9 @@ describe("allowance scale", () => {
     expect(allowancePointsLabel(31.4)).toBe("31 points")
   })
 
-  it("states a day's blocks and stays silent when there are none", () => {
-    expect(blockDayLabel(0)).toBeNull()
-    expect(blockDayLabel(1)).toBe("1 block")
-    expect(blockDayLabel(3)).toBe("3 blocks")
+  it("states a day's limit hits and stays silent when there are none", () => {
+    expect(limitHitDayLabel(0)).toBeNull()
+    expect(limitHitDayLabel(1)).toBe("1 limit hit")
+    expect(limitHitDayLabel(3)).toBe("3 limit hits")
   })
 })

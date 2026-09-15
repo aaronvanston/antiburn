@@ -104,8 +104,13 @@ export function allowancePointsLabel(usedPercent: number | null): string {
   return `${pointsFigure(usedPercent)} points`
 }
 
-/** How many blocks a day carried, in the reader's words. */
-export function blockDayLabel(blockCount: number): string | null {
-  if (blockCount <= 0) return null
-  return blockCount === 1 ? "1 block" : `${blockCount} blocks`
+/**
+ * How many limit hits a day carried, in the reader's words.
+ *
+ * A limit hit is a request the provider refused. The word names what the
+ * reader met, where "block" named what the provider did.
+ */
+export function limitHitDayLabel(limitHitCount: number): string | null {
+  if (limitHitCount <= 0) return null
+  return limitHitCount === 1 ? "1 limit hit" : `${limitHitCount} limit hits`
 }
