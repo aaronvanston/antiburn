@@ -26,6 +26,9 @@ import {
 } from "../../lib/presentation/liveUsage"
 import type { AppSettingsController } from "./useAppSettings"
 
+/** How often the pane re-asks while on screen. Matches the popover. */
+const USAGE_VISIBLE_POLL_MS = 60_000
+
 /**
  * Usage: where the plan limits come from, and the one switch that turns it
  * off.
@@ -63,8 +66,18 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
       load: () => getLiveUsage().catch(() => EMPTY_LIVE_USAGE),
       subscribe: async (set) => {
         const unlisten = await onLiveUsageChanged(set)
-        void refreshLiveUsage().catch(() => undefined)
-        return unlisten
+        // Ask now, then keep asking while this pane is on screen — the same
+        // cadence as the open popover — so a reader who signs in inside a
+        // tool sees the row change without leaving Settings. The backend's
+        // cooldown decides whether a poll reaches the network; detection
+        // runs on every one.
+        const refresh = () => void refreshLiveUsage().catch(() => undefined)
+        refresh()
+        const timer = setInterval(refresh, USAGE_VISIBLE_POLL_MS)
+        return () => {
+          clearInterval(timer)
+          unlisten()
+        }
       },
     }),
   )

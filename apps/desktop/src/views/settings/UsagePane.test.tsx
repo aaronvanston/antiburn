@@ -109,6 +109,31 @@ describe("UsagePane", () => {
     )
   })
 
+  it("keeps asking while on screen and stops when it leaves", async () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(
+        <UsagePane settings={SETTINGS as AppSettings} update={vi.fn()} loaded />,
+      )
+      // The subscribe path awaits the event listener before its first ask.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(refreshLiveUsage).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000)
+      })
+      expect(refreshLiveUsage).toHaveBeenCalledTimes(2)
+      unmount()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000)
+      })
+      expect(refreshLiveUsage).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("writes the preference through when the switch moves", async () => {
     const update = pane()
     fireEvent.click(screen.getByRole("switch", { name: /keep my plan limits current/i }))
