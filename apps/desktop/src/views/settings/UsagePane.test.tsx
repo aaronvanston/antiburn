@@ -501,37 +501,54 @@ describe("UsagePane — the grace period", () => {
     refreshLiveUsage.mockResolvedValue(summary())
   })
 
-  it("replaces the failure note with a grace note while the reading is within its window", async () => {
-    // 4 minutes before `GENERATED_AT`.
-    getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:56:00Z"))
-    pane()
-    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(
-      screen.getByText(
-        "Signed in · 0 limits tracked · checked just now Claude rate limited the last check; reading from 4 min ago.",
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
+  it("keeps the last reading beside a failed check, however old", async () => {
+    // A rate limit is a provider answering: the sign-in worked. The row keeps
+    // the figure from the earlier check, that check's own time, and the reason.
+    for (const observedAt of ["2027-01-15T11:56:00Z", "2027-01-15T11:49:00Z"]) {
+      getLiveUsage.mockResolvedValue(withGracedReading(observedAt))
+      const { unmount } = render(
+        <UsagePane
+          settings={{ ...SETTINGS, liveUsageEnabled: true }}
+          update={vi.fn()}
+          loaded
+        />,
+      )
+      await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
+      expect(
+        screen.getByText(/^Signed in · 0 limits tracked · checked .* · rate limited$/),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
+      unmount()
+    }
   })
 
-  it("drops the reading and falls back to the plain failure note once past the grace", async () => {
-    // 11 minutes before `GENERATED_AT`.
-    getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:49:00Z"))
-    pane()
-    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(
-      screen.getByText(/rate limited usage checks\. Wait, then retry\./),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/Asked Claude directly/)).not.toBeInTheDocument()
+  it("says signed in for a rate limit with no reading yet", async () => {
+    getLiveUsage.mockResolvedValue(
+      summary({
+        generatedAt: GENERATED_AT,
+        providers: [],
+        errors: [
+          {
+            source: "claude-usage-fetch",
+            provider: "anthropic",
+            displayName: "Claude",
+            category: "rateLimited",
+          },
+        ],
+        meters: [{ provider: "anthropic", displayName: "Claude", shown: true }],
+      }),
+    )
+    pane({ liveUsageEnabled: true })
+    await waitFor(() => expect(screen.getByText("Claude")).toBeInTheDocument())
+    expect(screen.getByText("Signed in · rate limited · retrying")).toBeInTheDocument()
   })
 
-  it("reads exactly the grace boundary as still shown", async () => {
+  it("keeps the reading at the grace boundary too", async () => {
     // Exactly 10 minutes before `GENERATED_AT` — LIVE_USAGE_GRACE_MS itself.
     getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:50:00Z"))
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
     expect(screen.getByText(/^Signed in · 0 limits tracked · checked/)).toBeInTheDocument()
-    expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
   })
 })
 

@@ -19,11 +19,9 @@ import { HudVisibilitySession } from "../../lib/overlayWindow"
 import { isMacOS } from "../../lib/platform"
 import {
   liveDetectionNote,
-  liveDisplayableProviders,
   liveErrorNote,
-  liveGraceNote,
-  liveProviderStatus,
   liveSourceAge,
+  liveUnavailableReason,
   liveWindows,
 } from "../../lib/presentation/liveUsage"
 import type { AppSettingsController } from "./useAppSettings"
@@ -133,7 +131,10 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
         </p>
         <Card>
           {meters.map((meter) => {
-            const reading = liveDisplayableProviders(live).find(
+            // The last reading, however old: this row reports what antiburn
+            // knows, and a failed check is a reason beside it, not a reason
+            // to hide it. The popover and HUD apply the grace window.
+            const reading = live.providers.find(
               (provider) => provider.provider === meter.provider,
             )
             const failure = live.errors.find((error) => error.provider === meter.provider)
@@ -148,7 +149,6 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
                   reading,
                   failure,
                   meter,
-                  generatedAt: live.generatedAt,
                 })}
                 dimmed={!on}
                 trailing={
@@ -215,43 +215,32 @@ function meterNote({
   reading,
   failure,
   meter,
-  generatedAt,
 }: {
   shown: boolean
   on: boolean
   reading: LiveUsageSummaryPayload["providers"][number] | undefined
   failure: LiveUsageSummaryPayload["errors"][number] | undefined
   meter: LiveUsageMeterPayload
-  /** The snapshot's own moment, for measuring a grace-period reading's age. */
-  generatedAt: string
 }): string {
   const { provider, displayName: name } = meter
   if (!shown) {
     return `antiburn does not ask ${name} for usage, and ${name} milestone notifications do not fire.`
   }
-  // Report what the snapshot holds before reporting a switch. A reading and a
-  // failure can both be true — a stale figure that a fresh attempt could not
-  // replace — and the reader needs the second sentence to read the first one
-  // correctly.
-  const parts: string[] = []
+  // A reading and a failure can both be true — a figure from an earlier
+  // check that the latest one could not replace — so the row keeps the
+  // figure and its own check time, and adds why the latest check failed.
   if (reading) {
     const count = liveWindows(reading).length
-    parts.push(
-      `Signed in · ${count} limit${count === 1 ? "" : "s"} tracked · checked ${liveSourceAge(reading)}`,
-    )
+    const line = `Signed in · ${count} limit${count === 1 ? "" : "s"} tracked · checked ${liveSourceAge(reading)}`
+    return failure
+      ? `${line} · ${liveUnavailableReason(failure.category, failure.detail)}`
+      : line
   }
   if (failure) {
-    // `reading` here has already dropped a `failed` status — see
-    // `liveDisplayableProviders` above — so only `grace` is left to detect.
-    const status = reading
-      ? liveProviderStatus({ errors: [failure], generatedAt }, reading)
-      : null
-    parts.push(
-      status?.kind === "grace"
-        ? liveGraceNote(status.category, failure.provider, status.ageMs, status.detail)
-        : liveErrorNote(failure.category, provider, failure.detail),
-    )
+    // A rate limit is a provider answering — the sign-in worked.
+    return failure.category === "rateLimited"
+      ? "Signed in · rate limited · retrying"
+      : liveErrorNote(failure.category, provider, failure.detail)
   }
-  if (parts.length > 0) return parts.join(" ")
   return liveDetectionNote(provider, meter.detection ?? "unknown", on, meter.carrierLabel)
 }
