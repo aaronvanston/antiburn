@@ -166,6 +166,7 @@ impl VendorConfig for Claude {
         )
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,

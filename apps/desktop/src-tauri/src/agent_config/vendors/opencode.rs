@@ -195,6 +195,7 @@ impl VendorConfig for OpenCode {
         })
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,
@@ -780,6 +781,7 @@ fn merge_directory_config(
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn collect_directory_targets(
     root: &Path,
     safety_root: &Path,

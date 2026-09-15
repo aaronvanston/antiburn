@@ -264,7 +264,7 @@ impl fmt::Debug for PreparedOperation {
 }
 
 impl PreparedOperation {
-    #[cfg(test)]
+    #[cfg(all(test, not(windows)))]
     pub(crate) fn primary(&self) -> &PreparedChange {
         // Existing-file operations keep the first change as their primary target.
         &self.changes[0]

@@ -114,6 +114,7 @@ pub(super) trait VendorConfig: Sync {
         self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root)
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,
@@ -139,6 +140,7 @@ pub(super) trait VendorConfig: Sync {
         Err(ConfigUnavailableReason::MissingConfig)
     }
 
+    #[cfg(not(windows))]
     fn standalone_selector(&self, _setting: ConfigSetting) -> &'static str {
         "standalone"
     }

@@ -159,6 +159,7 @@ impl VendorConfig for Codex {
         })
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,

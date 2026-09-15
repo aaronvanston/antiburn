@@ -544,6 +544,7 @@ const fn current_platform() -> &'static str {
     return "unsupported";
 }
 
+#[cfg(not(windows))]
 fn validate_value(setting: ConfigSetting, value: &str) -> Result<(), ConfigUnavailableReason> {
     let max = match setting {
         ConfigSetting::Model | ConfigSetting::SubagentModel => 256,

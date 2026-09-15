@@ -172,6 +172,7 @@ impl VendorConfig for Pi {
         Err(ConfigUnavailableReason::MissingTarget)
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,

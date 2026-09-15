@@ -73,6 +73,7 @@ impl VendorConfig for Cursor {
         })
     }
 
+    #[cfg(not(windows))]
     fn resolve_targets(
         &self,
         setting: ConfigSetting,
