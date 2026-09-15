@@ -91,7 +91,9 @@ pnpm --filter @antiburn/desktop tauri build \
 ```
 
 The bundle is **Antiburn Remote.app**, with a separate application identifier and
-storage directory. This configuration disables upstream updates so an upstream
+storage directory. Local bundles receive an ad-hoc app signature; distribution
+to other users would need separate signing and notarisation. This configuration
+disables upstream updates so an upstream
 release cannot replace the fork. Default builds exclude product analytics;
 remote host names, titles and metrics have no new analytics events. This is an
 intentional measurement gap for the prototype.
