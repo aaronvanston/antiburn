@@ -4,6 +4,7 @@ import { useCallback } from "react"
 import { SessionDetailPresentation } from "../../components/session/SessionDetailPresentation"
 import type { TokensCostSplit } from "../../components/session/tokensCard"
 import { renderAgentIcon } from "../../lib/agentIcon"
+import { writeClipboardText } from "../../lib/clipboard"
 import {
   deleteSessionData,
   revealSource,
@@ -225,8 +226,7 @@ export function SessionPane({
 
   const handleCopyPath = useCallback(async () => {
     if (!sourcePath) throw new Error("No source path")
-    if (!navigator.clipboard) throw new Error("Clipboard unavailable")
-    await navigator.clipboard.writeText(sourcePath)
+    await writeClipboardText(sourcePath)
   }, [sourcePath])
 
   const hygieneIdentity = {
@@ -238,7 +238,6 @@ export function SessionPane({
   const hygiene = sessionHygieneFor(hygieneBySession, hygieneIdentity)
   const handleCopyDiscussionPrompt = useCallback(async () => {
     if (!sourcePath) throw new Error("No source path")
-    if (!navigator.clipboard) throw new Error("Clipboard unavailable")
     const prompt = sessionDiscussionPrompt({
       subject,
       payload,
@@ -247,7 +246,7 @@ export function SessionPane({
       refreshing,
       error,
     })
-    await navigator.clipboard.writeText(prompt)
+    await writeClipboardText(prompt)
   }, [sourcePath, subject, payload, hygiene, loading, refreshing, error])
   const { cost, costSplit } = payload
     ? toLocalCost(subject, payload)

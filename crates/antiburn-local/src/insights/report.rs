@@ -314,10 +314,12 @@ fn source_supports_clean(format: crate::analysis::SourceFormat) -> bool {
         | SourceFormat::CodexRolloutJsonl
         | SourceFormat::OpenCodeJsonl
         | SourceFormat::OpenCodeSqliteV2
-        | SourceFormat::PiV3Jsonl => true,
+        | SourceFormat::PiV3Jsonl
+        | SourceFormat::CopilotCliJsonl => true,
         SourceFormat::CursorJsonl
         | SourceFormat::CursorCliAgentJsonl
         | SourceFormat::CursorCliStoreDb
+        | SourceFormat::CursorChatStoreDb
         | SourceFormat::CursorIdeComposer
         | SourceFormat::CursorLegacyChatJson
         | SourceFormat::AntigravityJson
@@ -325,11 +327,14 @@ fn source_supports_clean(format: crate::analysis::SourceFormat) -> bool {
         | SourceFormat::AntigravityCascadeJson
         | SourceFormat::AntigravityWorkspaceChatJson
         | SourceFormat::AntigravitySqlite
-        | SourceFormat::CopilotCliJsonl
         | SourceFormat::CopilotIdeChatJson
         | SourceFormat::ClineSessionJson
+        | SourceFormat::ClineMessagesContractV1
         | SourceFormat::KiroSessionJson
         | SourceFormat::KiroChat
+        | SourceFormat::KiroCliV2Bundle
+        | SourceFormat::KiroCliV3Bundle
+        | SourceFormat::KiroChatSaveExport
         | SourceFormat::AmpThreadJson
         | SourceFormat::AmpFileChanges
         | SourceFormat::WindsurfWorkspaceJson
@@ -1432,6 +1437,7 @@ mod tests {
             (SourceFormat::CursorJsonl, "cursor_jsonl"),
             (SourceFormat::CursorCliAgentJsonl, "cursor_cli_agent_jsonl"),
             (SourceFormat::CursorCliStoreDb, "cursor_cli_store_db"),
+            (SourceFormat::CursorChatStoreDb, "cursor_chat_store_db"),
             (SourceFormat::CursorIdeComposer, "cursor_ide_composer"),
             (
                 SourceFormat::CursorLegacyChatJson,
@@ -1454,8 +1460,15 @@ mod tests {
             (SourceFormat::CopilotCliJsonl, "copilot_cli_jsonl"),
             (SourceFormat::CopilotIdeChatJson, "copilot_ide_chat_json"),
             (SourceFormat::ClineSessionJson, "cline_session_json"),
+            (
+                SourceFormat::ClineMessagesContractV1,
+                "cline_messages_contract_v1",
+            ),
             (SourceFormat::KiroSessionJson, "kiro_session_json"),
             (SourceFormat::KiroChat, "kiro_chat"),
+            (SourceFormat::KiroCliV2Bundle, "kiro_cli_v2_bundle"),
+            (SourceFormat::KiroCliV3Bundle, "kiro_cli_v3_bundle"),
+            (SourceFormat::KiroChatSaveExport, "kiro_chat_save_export"),
             (SourceFormat::AmpThreadJson, "amp_thread_json"),
             (SourceFormat::AmpFileChanges, "amp_file_changes"),
             (

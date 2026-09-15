@@ -53,7 +53,8 @@ pub(super) fn burn_check_display_facts(target: &CachedTarget) -> BurnCheckDispla
                 .config
                 .as_ref()
                 .filter(|config| config.operation.setting == ConfigSetting::Reasoning)
-                .and_then(|config| safe_display_value(&config.operation.proposed_value)),
+                .and_then(|config| config.operation.proposed_value.scalar())
+                .and_then(safe_display_value),
         ),
         FindingCause::OverpoweredSubagents { worker_model, .. } => (
             BurnCheckResourceKind::Worker,
@@ -91,7 +92,11 @@ pub(super) fn burn_check_display_facts(target: &CachedTarget) -> BurnCheckDispla
             BurnCheckResourceKind::Speed,
             safe_display_value(model),
             Some("fast".to_owned()),
-            None,
+            target
+                .config
+                .as_ref()
+                .filter(|config| config.operation.setting == ConfigSetting::FastMode)
+                .map(|config| config.operation.proposed_value.display_value()),
         ),
         FindingCause::CacheChurn { model, .. } => (
             BurnCheckResourceKind::Cache,

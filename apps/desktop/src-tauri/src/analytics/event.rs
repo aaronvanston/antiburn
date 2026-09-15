@@ -1586,6 +1586,65 @@ mod tests {
         assert_eq!(facts.detail, None);
     }
 
+    #[test]
+    fn burn_check_interactions_only_resolve_closed_safe_facts() {
+        fn assert_safe(facts: Facts, detail: Option<&'static str>, origin: Option<&'static str>) {
+            assert_eq!(facts.detail, detail);
+            assert_eq!(facts.origin, origin);
+            assert_eq!(facts.bucket, None);
+            assert_eq!(facts.label, None);
+            assert_eq!(facts.usage_band, None);
+            assert_eq!(facts.response_shape, None);
+            assert_eq!(facts.eligibility, None);
+            assert_eq!(facts.ineligible_reason, None);
+            assert_eq!(facts.experiment, None);
+            assert_eq!(facts.reset_arm, None);
+            assert_eq!(facts.reset_availability, None);
+            assert_eq!(facts.resets_per_week, None);
+            assert_eq!(facts.next_reset_available, None);
+            assert_eq!(facts.plan, None);
+            assert_eq!(facts.factor_band, None);
+            assert_eq!(facts.residual_band, None);
+            assert_eq!(facts.resource_usage, None);
+            assert_eq!(facts.unrecognized_types, None);
+        }
+
+        for outcome in [
+            AutoFixReviewOutcome::Ready,
+            AutoFixReviewOutcome::Stale,
+            AutoFixReviewOutcome::Expired,
+            AutoFixReviewOutcome::Conflict,
+            AutoFixReviewOutcome::Unavailable,
+            AutoFixReviewOutcome::Failed,
+        ] {
+            let (_, facts) = Interaction::BurnCheckAutoFixReviewed { outcome }.resolve();
+            assert_safe(facts, Some(outcome.as_str()), None);
+        }
+        let (_, facts) = Interaction::BurnCheckAutoFixConfirmed.resolve();
+        assert_safe(facts, None, None);
+        for outcome in [
+            AutoFixOutcome::AppliedAwaitingVerification,
+            AutoFixOutcome::RecoveryNeeded,
+            AutoFixOutcome::Stale,
+            AutoFixOutcome::Expired,
+            AutoFixOutcome::Conflict,
+            AutoFixOutcome::Unavailable,
+            AutoFixOutcome::Failed,
+        ] {
+            let (_, facts) = Interaction::BurnCheckAutoFixCompleted { outcome }.resolve();
+            assert_safe(facts, Some(outcome.as_str()), None);
+        }
+        for (outcome, origin) in [
+            (BurnCheckOutcome::Verified, BurnCheckOrigin::Passive),
+            (BurnCheckOutcome::Verified, BurnCheckOrigin::Action),
+            (BurnCheckOutcome::Recurred, BurnCheckOrigin::Passive),
+            (BurnCheckOutcome::Recurred, BurnCheckOrigin::Action),
+        ] {
+            let (_, facts) = Interaction::BurnCheckOutcomeObserved { outcome, origin }.resolve();
+            assert_safe(facts, Some(outcome.as_str()), Some(origin.as_str()));
+        }
+    }
+
     /// An agent filter with no recognized harness reports the filter kind
     /// alone. The renderer never sends a slug this enum rejects; `None` is
     /// what a genuinely unrecognized harness (or a non-agent filter) looks

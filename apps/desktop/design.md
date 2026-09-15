@@ -744,9 +744,12 @@ finding sentence, followed by the available actions. Do not show internal target
 repeated observations, repeated guidance, or detail refresh and bounded-list notices. Only unused MCP servers and unused skills show
 named resource rows. A separate nested disclosure lists bounded sample sessions. Opening a sample selects it in the
 standard Sessions collection and detail layout. Returning to Burn checks preserves the check and
-sample disclosure state. `Fix` opens a small modal that shows the effect, scope, and one
-current-to-new value. The modal traps focus, focuses Cancel first, and closes from Cancel, Escape,
-or the backdrop. At narrow widths, summaries, details, and actions stack without horizontal
+sample disclosure state. A single-target `Fix` opens a small modal that shows the effect, scope, and one
+current-to-new value. Multiple targets open a chooser grouped by agent and scope. State a shared
+disable action once above the list, not in every row, and identify built-in tool choices as optional. Use the standard `PushButton` and the same
+custom checkbox treatment as notification milestones. Selection starts empty, and the primary
+review action stays visibly disabled until the reader selects a target. The modal traps focus,
+focuses Cancel first, and closes from Cancel, Escape, or the backdrop. At narrow widths, summaries, details, and actions stack without horizontal
 scrolling. The cold loading state uses one busy region, one screen-reader status, an uncontained summary,
 a group label, and three shaped row skeletons. An expanded check uses the same one-region,
 one-status rule with a compact body, action, and sample skeleton. It must not announce each skeleton. The quiet

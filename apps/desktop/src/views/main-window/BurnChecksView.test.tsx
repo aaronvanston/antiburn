@@ -9,6 +9,7 @@ import type {
   CopyPromptFixBurnCheckTargetOutcome,
   PrepareAutoFixBurnCheckTargetOutcome,
 } from "../../lib/insightsIpc"
+import type * as ClipboardModule from "../../lib/clipboard"
 import type * as InsightsIpcModule from "../../lib/insightsIpc"
 import type * as IpcModule from "../../lib/ipc"
 import { BurnChecksSession, type BurnChecksAdapter } from "./BurnChecksSession"
@@ -20,6 +21,7 @@ const commands = vi.hoisted(() => ({
   copy: vi.fn(),
   copyFallback: vi.fn(),
   copyBatch: vi.fn(),
+  writeClipboardText: vi.fn(),
   openSample: vi.fn(),
   noteInteraction: vi.fn(),
 }))
@@ -37,6 +39,11 @@ vi.mock("../../lib/insightsIpc", async (importOriginal) => ({
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof IpcModule>()),
   noteInteraction: commands.noteInteraction,
+}))
+
+vi.mock("../../lib/clipboard", async (importOriginal) => ({
+  ...(await importOriginal<typeof ClipboardModule>()),
+  writeClipboardText: commands.writeClipboardText,
 }))
 
 const report: ChecksReportPayload = {
@@ -209,9 +216,10 @@ beforeEach(() => {
       scope: "global",
       setting: "model",
       configFile: "~/.claude/settings.json",
+      selectorLabel: "model",
       currentValue: "claude-opus-4-6",
       proposedValue: "claude-sonnet-5",
-      effect: "futureModelSelection",
+      effect: "modelSelection",
       sideEffect: "modelBehaviorMayChange",
     },
   })
@@ -239,10 +247,7 @@ beforeEach(() => {
     prompt: "Batch backend prompt",
   })
   commands.openSample.mockResolvedValue({ outcome: "opened" })
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-  })
+  commands.writeClipboardText.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -251,6 +256,8 @@ afterEach(() => {
 
 describe("BurnChecksView", () => {
   it("uses one check detail and one batch prompt for a non-named check", async () => {
+    const pending = deferred<{ outcome: "promptReady"; prompt: string } | null>()
+    commands.copyBatch.mockReturnValueOnce(pending.promise)
     setup(target, false, aggregate, report)
 
     expect(
@@ -260,11 +267,15 @@ describe("BurnChecksView", () => {
     ).toBeVisible()
     expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
+    expect(commands.copyBatch).toHaveBeenCalledWith(["action-fresh"])
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
+    await act(async () =>
+      pending.resolve({ outcome: "promptReady", prompt: "Batch backend prompt" }),
+    )
 
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Batch backend prompt"),
+      expect(commands.writeClipboardText).toHaveBeenCalledWith("Batch backend prompt"),
     )
-    expect(commands.copyBatch).toHaveBeenCalledWith(["action-fresh"])
     expect(commands.copy).not.toHaveBeenCalled()
   })
 
@@ -547,12 +558,11 @@ describe("BurnChecksView", () => {
     fireEvent.click(fix)
     fireEvent.click(fix)
     expect(commands.prepare).toHaveBeenCalledOnce()
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
-    expect(dialog).toHaveTextContent("AgentClaude Code")
-    expect(dialog).toHaveTextContent("SettingModel")
-    expect(dialog).toHaveTextContent("Config file~/.claude/settings.json")
-    expect(dialog).toHaveTextContent("Config changeclaude-opus-4-6 → claude-sonnet-5")
-    expect(dialog).toHaveTextContent("This plan changes future model selection")
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
+    expect(dialog).toHaveTextContent("Claude Code · Model · Global scope")
+    expect(dialog).toHaveTextContent("~/.claude/settings.json · model")
+    expect(dialog).toHaveTextContent("claude-opus-4-6 → claude-sonnet-5")
+    expect(dialog).toHaveTextContent("Responses can change")
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Change applied" })).toBeDisabled(),
@@ -562,7 +572,7 @@ describe("BurnChecksView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Backend prompt"),
+      expect(commands.writeClipboardText).toHaveBeenCalledWith("Backend prompt"),
     )
     expect(commands.copy).toHaveBeenCalledWith("action-fresh")
     const copied = screen.getByRole("button", { name: "Copied" })
@@ -622,7 +632,7 @@ describe("BurnChecksView", () => {
     expect(screen.getByRole("button", { name: "Fix" })).toBeEnabled()
   })
 
-  it("returns to the chooser after the selected automatic fix changes", async () => {
+  it("reviews and applies all selected automatic fixes", async () => {
     const targets = Array.from({ length: 3 }, (_, index) => ({
       ...target,
       findingId: `finding-${index}`,
@@ -633,25 +643,30 @@ describe("BurnChecksView", () => {
         currentValue: `model-${index}`,
       },
     }))
-    const { adapter } = setup(targets, false, aggregate, report)
+    setup(targets, false, aggregate, report)
 
-    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    fireEvent.click(screen.getByRole("button", { name: "model-0" }))
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix model-0" })
-    vi.mocked(adapter.getTargets).mockResolvedValueOnce({
-      targets: targets.slice(1),
-      truncated: false,
-    })
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
+    const fix = await screen.findByRole("button", { name: "Fix" })
+    const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
+    expect(fix.parentElement).not.toHaveClass("mt-3")
+    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    fireEvent.click(fix)
+    let dialog = await screen.findByRole("dialog", { name: "Choose changes" })
+    expect(within(dialog).getByRole("button", { name: "Review 0 changes" })).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select all" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review 3 changes" }))
 
-    await screen.findByRole("button", { name: "Fix" })
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    expect(screen.getByRole("button", { name: "model-1" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "model-2" })).toBeVisible()
+    dialog = await screen.findByRole("dialog", { name: "Review 3 changes" })
+    expect(within(dialog).getByText("model-0")).toBeVisible()
+    expect(within(dialog).getByText("model-1")).toBeVisible()
+    expect(within(dialog).getByText("model-2")).toBeVisible()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 3 changes" }))
+
+    dialog = await screen.findByRole("dialog", { name: "Changes applied" })
+    expect(within(dialog).getByRole("status")).toHaveTextContent("3 changes applied")
+    expect(commands.apply).toHaveBeenCalledTimes(3)
   })
 
-  it("lets the user choose a different automatic fix before applying", async () => {
+  it("applies only the selected automatic fixes", async () => {
     const targets = Array.from({ length: 2 }, (_, index) => ({
       ...target,
       findingId: `finding-${index}`,
@@ -665,12 +680,47 @@ describe("BurnChecksView", () => {
     setup(targets, false, aggregate, report)
 
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    fireEvent.click(screen.getByRole("button", { name: "model-0" }))
-    fireEvent.click(screen.getByRole("button", { name: "Choose another change" }))
-    fireEvent.click(screen.getByRole("button", { name: "model-1" }))
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
+    let dialog = await screen.findByRole("dialog", { name: "Choose changes" })
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /model-1/ }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review 1 change" }))
+    dialog = await screen.findByRole("dialog", { name: "Review 1 change" })
+    expect(within(dialog).getByText("model-1")).toBeVisible()
+    expect(within(dialog).queryByText("model-0")).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 1 change" }))
 
-    await waitFor(() => expect(commands.prepare).toHaveBeenCalledWith("action-1"))
+    await screen.findByRole("dialog", { name: "Changes applied" })
+    expect(commands.prepare).toHaveBeenCalledTimes(2)
+    expect(commands.prepare).toHaveBeenNthCalledWith(1, "action-1")
+    expect(commands.prepare).toHaveBeenNthCalledWith(2, "action-1")
+    expect(commands.apply).toHaveBeenCalledOnce()
+  })
+
+  it("names resource targets in the automatic fix chooser", async () => {
+    const targets = ["ReportFindings", "Workflow"].map((name, index) => ({
+      ...target,
+      findingId: `finding-${index}`,
+      actionId: `action-${index}`,
+      display: {
+        ...target.display,
+        resourceKind: "builtInTool" as const,
+        resourceIdentity: name,
+        currentValue: null,
+        replacementValue: null,
+        scopeKind: "project" as const,
+      },
+    }))
+    setup(targets, false, aggregate, report)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+    const chooser = await screen.findByRole("dialog", { name: "Choose changes" })
+
+    expect(
+      within(chooser).getByText("Select optional built-in tools to disable."),
+    ).toBeVisible()
+    expect(within(chooser).getByText("Claude Code · Project scope")).toBeVisible()
+    expect(within(chooser).getByRole("checkbox", { name: "ReportFindings" })).toBeVisible()
+    expect(within(chooser).getByRole("checkbox", { name: "Workflow" })).toBeVisible()
+    expect(within(chooser).getAllByText(/built-in tools to disable/i)).toHaveLength(1)
   })
 
   it("restores named target actions after their brief success state", async () => {
@@ -679,7 +729,7 @@ describe("BurnChecksView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
     await screen.findByRole("button", { name: "Copied" })
     fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     await screen.findByRole("button", { name: "Change applied" })
 
@@ -709,7 +759,7 @@ describe("BurnChecksView", () => {
   it("keeps an open review when the expiring action handle rotates", async () => {
     const { adapter, session } = setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     vi.mocked(adapter.getTargets).mockResolvedValueOnce({
       targets: [{ ...target, actionId: "action-rotated" }],
       truncated: false,
@@ -745,15 +795,17 @@ describe("BurnChecksView", () => {
           scope: "global",
           setting: "model",
           configFile: "~/.claude/settings.json",
+          selectorLabel: "model",
           currentValue: "claude-opus-4-6",
           proposedValue: "claude-sonnet-5",
-          effect: "futureModelSelection",
+          effect: "modelSelection",
           sideEffect: "modelBehaviorMayChange",
+          behaviorOverrideWarning: false,
         },
       })
     })
 
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toBeVisible()
+    expect(screen.getByRole("dialog", { name: "Review change" })).toBeVisible()
   })
 
   it("ignores a deferred prepare from an attempt that recurred", async () => {
@@ -778,10 +830,12 @@ describe("BurnChecksView", () => {
           scope: "global",
           setting: "model",
           configFile: "~/.claude/settings.json",
+          selectorLabel: "model",
           currentValue: "claude-opus-4-6",
           proposedValue: "claude-sonnet-5",
-          effect: "futureModelSelection",
+          effect: "modelSelection",
           sideEffect: "modelBehaviorMayChange",
+          behaviorOverrideWarning: false,
         },
       })
     })
@@ -826,7 +880,7 @@ describe("BurnChecksView", () => {
       })
     })
 
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckPromptPrepared",
@@ -844,7 +898,7 @@ describe("BurnChecksView", () => {
     commands.apply.mockReturnValueOnce(pending.promise)
     const { adapter, session } = setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     vi.mocked(adapter.getTargets).mockResolvedValueOnce({
       targets: [recurredTarget("action-after-recurrence")],
@@ -931,18 +985,127 @@ describe("BurnChecksView", () => {
         configFile: "~/.claude/settings.json",
         currentValue: "max",
         proposedValue: "medium",
-        effect: "futureReasoningEffort",
+        effect: "reasoningEffort",
         sideEffect: "responsesMayUseLessReasoning",
       },
     })
     setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
     const dialog = await screen.findByRole("dialog")
-    expect(dialog).toHaveTextContent("This plan lowers reasoning effort for future requests")
+    expect(dialog).toHaveTextContent("Future responses can use less reasoning")
+  })
+
+  it.each([
+    ["model", "modelSelection", "modelBehaviorMayChange", "Model", "Responses can change"],
+    [
+      "reasoning",
+      "reasoningEffort",
+      "responsesMayUseLessReasoning",
+      "Reasoning effort",
+      "Future responses can use less reasoning",
+    ],
+    [
+      "compaction",
+      "sessionCompaction",
+      "earlierSessionSummarization",
+      "Compaction",
+      "Future sessions can summarize earlier",
+    ],
+    [
+      "subagentModel",
+      "workerModelSelection",
+      "workerBehaviorMayChange",
+      "Subagent model",
+      "Future worker responses can change",
+    ],
+    [
+      "mcpServer",
+      "mcpAvailability",
+      "serverWillNotBeAvailable",
+      "MCP server",
+      "This server will not be available",
+    ],
+    [
+      "builtInTool",
+      "toolAvailability",
+      "toolWillNotBeAvailable",
+      "Built-in tool",
+      "This built-in tool will not be available",
+    ],
+    [
+      "skill",
+      "skillAvailability",
+      "skillWillNotBeAvailable",
+      "Skill",
+      "This skill will not be available",
+    ],
+    [
+      "fastMode",
+      "serviceTierSelection",
+      "responsesMayTakeLonger",
+      "Fast mode",
+      "Future responses can take longer",
+    ],
+  ] as const)(
+    "renders the typed %s review without a presentation fallback",
+    async (setting, effect, sideEffect, settingLabel, sideEffectText) => {
+      commands.prepare.mockResolvedValueOnce({
+        outcome: "reviewReady",
+        review: {
+          preparedOperationId: `prepared-${setting}`,
+          expiresAtEpoch: 100,
+          agent: "claude-code",
+          scope: "project",
+          setting,
+          configFile: "~/.agent/config",
+          selectorLabel: `${setting}.reviewed`,
+          currentValue: "reviewed=true",
+          proposedValue: "reviewed=false",
+          behaviorOverrideWarning: false,
+          effect,
+          sideEffect,
+        },
+      })
+      setup()
+
+      fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toHaveTextContent(`Claude Code · ${settingLabel} · Project scope`)
+      expect(dialog).toHaveTextContent(`${setting}.reviewed`)
+      expect(dialog).toHaveTextContent(sideEffectText)
+    },
+  )
+
+  it("shows a named resource only when the backend supplies one", async () => {
+    commands.prepare.mockResolvedValueOnce({
+      outcome: "reviewReady",
+      review: {
+        preparedOperationId: "prepared-mcp",
+        expiresAtEpoch: 100,
+        agent: "claude-code",
+        scope: "global",
+        setting: "mcpServer",
+        configFile: "~/.claude/settings.json",
+        selectorLabel: "mcp_servers.reviewed.enabled",
+        currentValue: "reviewed=true",
+        proposedValue: "reviewed=false",
+        behaviorOverrideWarning: false,
+        effect: "mcpAvailability",
+        sideEffect: "serverWillNotBeAvailable",
+      },
+    })
+    setup({ ...target, display: { ...target.display, resourceIdentity: null } })
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+
+    expect(await screen.findByRole("dialog", { name: "Review change" })).toHaveTextContent(
+      "mcp_servers.reviewed.enabled",
+    )
   })
 
   it("retries clipboard failure without creating a second backend action", async () => {
-    vi.mocked(navigator.clipboard.writeText)
+    commands.writeClipboardText
       .mockRejectedValueOnce(new Error("Denied"))
       .mockResolvedValueOnce(undefined)
     setup(target, false, aggregate, report)
@@ -952,7 +1115,8 @@ describe("BurnChecksView", () => {
     fireEvent.click(copy)
     await screen.findByRole("button", { name: "Copied" })
     expect(commands.copyBatch).toHaveBeenCalledOnce()
-    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2)
+    expect(commands.writeClipboardText).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/clipboard access/i)).not.toBeInTheDocument()
     expect(commands.noteInteraction.mock.calls).toEqual(
       expect.arrayContaining([
         [{ kind: "burnCheckPromptPrepared", outcome: "ready" }],
@@ -970,13 +1134,13 @@ describe("BurnChecksView", () => {
     commands.apply.mockRejectedValueOnce(new Error("Private backend error"))
     setup(target, false, aggregate, report)
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not confirm the result. Check the setting before you try again.",
     )
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toBeVisible()
+    expect(screen.getByRole("dialog", { name: "Review change" })).toBeVisible()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckAutoFixCompleted",
       outcome: "failed",
@@ -1094,7 +1258,7 @@ describe("BurnChecksView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
 
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect(commands.writeClipboardText).toHaveBeenCalledWith(
         "Inspect representative evidence.",
       ),
     )
@@ -1128,8 +1292,9 @@ describe("BurnChecksView", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not copy the prompt")
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not prepare the prompt")
     expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(JSON.stringify(commands.noteInteraction.mock.calls)).not.toContain(
       "Private backend error",
     )
@@ -1146,7 +1311,7 @@ describe("BurnChecksView", () => {
     await screen.findByRole("heading", { name: "claude-opus-4-6" })
     await act(async () => pending.resolve({ outcome: "promptReady", prompt: "Stale prompt" }))
 
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckPromptPrepared",
@@ -1163,13 +1328,13 @@ describe("BurnChecksView", () => {
     )
     setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled()
     fireEvent.keyDown(dialog, { key: "Escape" })
     fireEvent.mouseDown(dialog.parentElement!)
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toHaveAttribute(
+    expect(screen.getByRole("dialog", { name: "Review change" })).toHaveAttribute(
       "aria-busy",
       "true",
     )
@@ -1177,6 +1342,45 @@ describe("BurnChecksView", () => {
 
     resolveApply({ outcome: "appliedAwaitingVerification", watchId: "watch-1" })
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("traps keyboard focus in the review and restores it after Escape", async () => {
+    setup()
+    const fix = await screen.findByRole("button", { name: "Fix" })
+    fireEvent.click(fix)
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" })
+    const apply = within(dialog).getByRole("button", { name: "Apply change" })
+
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(cancel).toHaveFocus()
+    apply.focus()
+    fireEvent.keyDown(dialog, { key: "Tab" })
+    expect(cancel).toHaveFocus()
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(fix).toHaveFocus())
+  })
+
+  it("keeps review semantics usable with reduced motion, narrow width, and both themes", async () => {
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme
+      setup()
+      fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+      const dialog = await screen.findByRole("dialog", { name: "Review change" })
+
+      expect(dialog).toHaveClass("bg-surface-card", "text-label")
+      expect(dialog.querySelector("dl")).toBeNull()
+      expect(dialog).toHaveTextContent("~/.claude/settings.json · model")
+      expect(within(dialog).getByRole("button", { name: "Cancel" }).parentElement).toHaveClass(
+        "flex-col-reverse",
+        "sm:flex-row",
+      )
+      expect(dialog.querySelector("[class*='animate-']")).toBeNull()
+
+      fireEvent.keyDown(dialog, { key: "Escape" })
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    }
+    delete document.documentElement.dataset.theme
   })
 
   it("hides the implied auto-fix reason when a prompt action is available", async () => {
@@ -1223,7 +1427,7 @@ describe("BurnChecksView", () => {
       commands.apply.mockResolvedValueOnce(outcome)
       setup()
       fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-      const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+      const dialog = await screen.findByRole("dialog", { name: "Review change" })
       fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
       expect(await within(dialog).findByRole("alert")).toHaveTextContent(text)
@@ -1238,8 +1442,11 @@ describe("BurnChecksView", () => {
       "Some sessions used an older model when a newer one was available.",
     )
     const fix = screen.getByRole("button", { name: "Fix" })
+    const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
 
     expect(finding.compareDocumentPosition(fix) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(fix.parentElement?.parentElement).toHaveClass("items-start")
     expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
     expect(screen.queryByText(target.finding.observation)).not.toBeInTheDocument()
   })

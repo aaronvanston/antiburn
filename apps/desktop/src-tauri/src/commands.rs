@@ -1838,6 +1838,9 @@ fn prompt_fix_outcome(
                 RemediationUnavailableReason::EssentialIdentityUnavailable => {
                     PromptFixUnavailableReason::EssentialIdentityUnavailable
                 }
+                RemediationUnavailableReason::ProtectedBuiltInTool => {
+                    PromptFixUnavailableReason::ProtectedBuiltInTool
+                }
                 RemediationUnavailableReason::DeferredAgent => {
                     PromptFixUnavailableReason::DeferredAgent
                 }
@@ -2795,6 +2798,15 @@ mod tests {
             .unwrap(),
             CopyPromptFixBurnCheckTargetOutcome::Unavailable {
                 reason: PromptFixUnavailableReason::PromptSizeLimit
+            }
+        ));
+        assert!(matches!(
+            prompt_fix_outcome(Err(ControllerError::PromptUnavailable(
+                antiburn_local::remediation::RemediationUnavailableReason::ProtectedBuiltInTool
+            )))
+            .unwrap(),
+            CopyPromptFixBurnCheckTargetOutcome::Unavailable {
+                reason: PromptFixUnavailableReason::ProtectedBuiltInTool
             }
         ));
         assert!(prompt_fix_outcome(Err(ControllerError::PersistenceFailed)).is_err());
