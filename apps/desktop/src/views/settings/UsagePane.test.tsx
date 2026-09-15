@@ -7,6 +7,7 @@ import type {
   LiveUsageMeterPayload,
   LiveUsageSourceErrorPayload,
   LiveUsageSummaryPayload,
+  LiveUsageWindowPayload,
 } from "../../lib/ipc"
 import { UsagePane } from "./UsagePane"
 
@@ -119,7 +120,7 @@ describe("UsagePane", () => {
     pane()
     expect(screen.getByRole("heading", { name: "Track Limits for" })).toBeInTheDocument()
     expect(
-      screen.getByText("Sign in inside each tool to track its limits."),
+      screen.getByText("You need to sign in inside each tool to track its limits."),
     ).toBeInTheDocument()
   })
 
@@ -304,8 +305,78 @@ describe("UsagePane", () => {
     )
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(screen.getByText("Signed in · 0 limits · checked 5m ago")).toBeInTheDocument()
+    expect(
+      screen.getByText("Signed in · 0 limits tracked · checked 5m ago"),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/Asked Claude directly/)).not.toBeInTheDocument()
+  })
+
+  it("counts only the limits the reader can see", async () => {
+    // Codex on a Pro plan: one weekly primary window plus supplemental
+    // per-feature windows the HUD hides until they show usage. The count
+    // must match the bars, not the payload.
+    const window = (overrides: Partial<LiveUsageWindowPayload>): LiveUsageWindowPayload => ({
+      id: "weekly",
+      role: "primaryLong",
+      kind: "weekly",
+      scopeModel: null,
+      usedPercent: 17,
+      startsAt: null,
+      resetsAt: "2027-01-15T14:30:00Z",
+      hasNonzeroUsageInCurrentPeriod: true,
+      forecast: {
+        unavailableReason: "sparseHistory",
+        confidence: null,
+        consumptionRate: null,
+        paceRatio: null,
+        paceTrend: null,
+        runwayAt: null,
+        usedToday: null,
+      },
+      ...overrides,
+    })
+    getLiveUsage.mockResolvedValue(
+      summary({
+        providers: [
+          {
+            provider: "openai",
+            accountKey: null,
+            displayName: "Codex",
+            support: "live",
+            freshness: "fresh",
+            sourceLabel: "Asked Codex directly",
+            observedAt: new Date(Date.now() - 21_000).toISOString(),
+            windows: [
+              window({}),
+              window({
+                id: "weekly-code-review",
+                role: "supplemental",
+                scopeModel: "code-review",
+                usedPercent: 0,
+                hasNonzeroUsageInCurrentPeriod: false,
+              }),
+              window({
+                id: "weekly-something",
+                role: "supplemental",
+                scopeModel: "something",
+                usedPercent: 0,
+                hasNonzeroUsageInCurrentPeriod: false,
+              }),
+            ],
+            extraUsage: null,
+            resetCredits: null,
+            plan: null,
+            accountUuid: null,
+            accountEmail: null,
+          },
+        ],
+      }),
+    )
+    pane()
+    await waitFor(() => expect(screen.getByText("Codex")).toBeInTheDocument())
+    expect(
+      screen.getByText("Signed in · 1 limit tracked · checked 21s ago"),
+    ).toBeInTheDocument()
   })
 
   it("lists every provider it can meter, with nothing to report yet", async () => {
@@ -437,7 +508,7 @@ describe("UsagePane — the grace period", () => {
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
     expect(
       screen.getByText(
-        "Signed in · 0 limits · checked just now Claude rate limited the last check; reading from 4 min ago.",
+        "Signed in · 0 limits tracked · checked just now Claude rate limited the last check; reading from 4 min ago.",
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
@@ -459,7 +530,7 @@ describe("UsagePane — the grace period", () => {
     getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:50:00Z"))
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(screen.getByText(/^Signed in · 0 limits · checked/)).toBeInTheDocument()
+    expect(screen.getByText(/^Signed in · 0 limits tracked · checked/)).toBeInTheDocument()
     expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
   })
 })

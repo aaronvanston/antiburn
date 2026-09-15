@@ -24,6 +24,7 @@ import {
   liveGraceNote,
   liveProviderStatus,
   liveSourceAge,
+  liveWindows,
 } from "../../lib/presentation/liveUsage"
 import type { AppSettingsController } from "./useAppSettings"
 
@@ -128,7 +129,7 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
 
       <SectionGroup title="Track Limits for">
         <p className="px-1 type-footnote text-label-secondary">
-          Sign in inside each tool to track its limits.
+          You need to sign in inside each tool to track its limits.
         </p>
         <Card>
           {meters.map((meter) => {
@@ -234,9 +235,9 @@ function meterNote({
   // correctly.
   const parts: string[] = []
   if (reading) {
-    const count = reading.windows.length
+    const count = liveWindows(reading).length
     parts.push(
-      `Signed in · ${count} limit${count === 1 ? "" : "s"} · checked ${liveSourceAge(reading)}`,
+      `Signed in · ${count} limit${count === 1 ? "" : "s"} tracked · checked ${liveSourceAge(reading)}`,
     )
   }
   if (failure) {
