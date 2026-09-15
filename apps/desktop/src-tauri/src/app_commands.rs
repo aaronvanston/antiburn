@@ -3,6 +3,11 @@ macro_rules! with_app_commands {
         $callback! {
             commands::add_scan_root => "add_scan_root",
             commands::app_info => "app_info",
+            remote_sessions::get_remote_hosts => "get_remote_hosts",
+            remote_sessions::set_remote_hosts => "set_remote_hosts",
+            remote_sessions::get_remote_sessions => "get_remote_sessions",
+            remote_sessions::analyze_remote_session => "analyze_remote_session",
+
             commands::apply_prepared_burn_check_operation => "apply_prepared_burn_check_operation",
             commands::begin_popover_hold => "begin_popover_hold",
             commands::cancel_checks_report => "cancel_checks_report",

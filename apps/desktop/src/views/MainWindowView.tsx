@@ -1,4 +1,4 @@
-import { Flame, House, MessagesSquare, Settings } from "lucide-react"
+import { Flame, House, MessagesSquare, Settings, Server } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import type { SessionListEntry } from "../components/session/SessionList"
@@ -28,6 +28,8 @@ import { MainWindowLayout } from "./main-window/MainWindowLayout"
 import { MainWindowNavigationSession } from "./main-window/MainWindowNavigationSession"
 import { MainOverviewSession } from "./main-window/MainOverviewSession"
 import { OverviewView } from "./main-window/OverviewView"
+
+import { RemoteSessionsView } from "./remote/RemoteSessionsView"
 
 export interface MainWindowSection extends SidebarNavItem {
   render: (context: { active: boolean }) => ReactNode
@@ -169,6 +171,12 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
         />
       ),
     },
+    {
+      id: "remote",
+      label: "Remote sessions",
+      icon: Server,
+      render: () => <RemoteSessionsView />,
+    },
   ]
   const [customSelectedId, setCustomSelectedId] = useState(() => availableSections[0]?.id ?? "")
   const [customVisited, setCustomVisited] = useState(
@@ -183,7 +191,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       setCustomVisited((previous) => new Set(previous).add(id))
       return
     }
-    if (id === "overview" || id === "burnChecks") {
+    if (id === "overview" || id === "burnChecks" || id === "remote") {
       navigationSession.select(id)
       return
     }

@@ -78,6 +78,7 @@ mod popover_peek;
 mod provider_accounts;
 mod provider_usage;
 pub mod remediation;
+mod remote_sessions;
 mod repositories;
 mod retention;
 mod runtime_pricing;

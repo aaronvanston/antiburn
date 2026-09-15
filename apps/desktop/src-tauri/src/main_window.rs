@@ -40,6 +40,7 @@ pub enum MainWindowSection {
     Overview,
     Activity,
     BurnChecks,
+    Remote,
 }
 
 /// Revisioned section request shared by event and cold-renderer paths.
@@ -2188,6 +2189,7 @@ mod tests {
             (MainWindowSection::Overview, "\"overview\""),
             (MainWindowSection::Activity, "\"activity\""),
             (MainWindowSection::BurnChecks, "\"burnChecks\""),
+            (MainWindowSection::Remote, "\"remote\""),
         ] {
             assert_eq!(serde_json::to_string(&section).unwrap(), id);
             assert_eq!(

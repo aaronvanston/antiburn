@@ -340,3 +340,13 @@ Agent characterization, resume, replay, and desktop companion tests check
 behavior separately. The
 [dated confirmation ledger](check-coverage.md#confirmation-ledger) contains the
 pinned upstream research and approved source-scoped limits.
+
+## Remote collection in this fork
+
+The optional SSH helper discovers the existing Claude Code and Codex file-backed
+sources on a user-owned Linux host. It reuses their existing format contracts
+and reports parent-transcript metrics in a separate Remote sessions pane.
+Discovery is capped at 200 recent transcripts per host over seven days; analysis
+does not combine child sessions or add archived-source discovery. Session titles
+and paths cross the SSH connection; transcript bodies do not. See
+[remote sessions](remote-sessions.md) for transport, cache and resource limits.

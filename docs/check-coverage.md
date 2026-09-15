@@ -598,3 +598,10 @@ do not assert a completed audit of all their native sources.
 The matrix is manually reviewed; the inventory test does not generate or prove
 every cell. Unknown changed evidence-bearing shapes must make affected evidence
 partial or unavailable, not pass through a generic reader as clean.
+
+## Remote collection in this fork
+
+The Remote sessions pane displays metrics from the existing engine but does not
+publish Burn Checks, clean results, provider allowances or remediation targets.
+Remote sources do not enter the local report population. Existing finding and
+clean-result eligibility remain unchanged. See [remote sessions](remote-sessions.md).

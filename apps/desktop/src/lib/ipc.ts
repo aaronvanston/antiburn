@@ -224,7 +224,7 @@ export interface MainWindowSessionRequest {
   target: SessionIdentityPayload
 }
 
-export type MainWindowSectionId = "overview" | "activity" | "burnChecks"
+export type MainWindowSectionId = "overview" | "activity" | "burnChecks" | "remote"
 
 /** One revisioned request to select a retained main-window section. */
 export interface MainWindowSectionRequest {
