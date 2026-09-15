@@ -419,7 +419,10 @@ mod tests {
         std::fs::write(&messages_path, ROOT_MESSAGES).unwrap();
         std::fs::write(
             &manifest_path,
-            MANIFEST.replace("PLACEHOLDER", &messages_path.to_string_lossy()),
+            MANIFEST.replace(
+                "\"PLACEHOLDER\"",
+                &serde_json::to_string(&messages_path.to_string_lossy()).unwrap(),
+            ),
         )
         .unwrap();
         if include_child {

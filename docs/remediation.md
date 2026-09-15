@@ -240,10 +240,12 @@ MCP server for Claude Code or Codex. Claude appends only
 editor, but its accepted sources do not yet provide M evidence. Antigravity
 remains unavailable until public source and precedence evidence identify one
 winning persisted field. Cursor never edits its private store or invokes its CLI.
-B can disable one exact Claude Code built-in tool from a standard settings file.
+B can disable one exact optional Claude Code built-in tool from a standard settings file.
 It can add a missing deny list or create a missing global settings file. It adds
 the canonical tool name only, never a wildcard or a
-general permission rule. OpenCode has an exact V2 action deny editor and Pi can
+general permission rule. `Bash`, `Edit`, `Read`, and `Write` remain measured but
+never receive an Auto Fix or a targeted disable prompt because general coding
+tasks require them. OpenCode has an exact V2 action deny editor and Pi can
 remove one unique `defaultTools` member from the winning settings file, but both
 remain source-gated until their accepted sources prove a complete tool inventory.
 Codex B Auto Fix is unavailable because its documented app-tool controls do not

@@ -27,9 +27,9 @@ use antiburn_local::remediation::{
     REMEDIATION_POLICY_REVISION, RemediationUnavailableReason, SAVINGS_METHOD_REVISION,
     SavingsEstimateInput, SavingsEstimateMethod, SavingsInterval, SavingsValue, TargetAssessment,
     VERIFICATION_METHOD_REVISION, VerificationOutcome, VerificationStage,
-    VerificationUnknownReason, estimate_old_model_savings, estimate_savings,
-    fallback_remediation_prompt, remediation_prompt, verification_evidence_supported,
-    verify_old_model, verify_prompt_watch,
+    VerificationUnknownReason, built_in_tool_remediation_supported, estimate_old_model_savings,
+    estimate_savings, fallback_remediation_prompt, remediation_prompt,
+    verification_evidence_supported, verify_old_model, verify_prompt_watch,
 };
 use anyhow::{Context, Result};
 use hmac::{Hmac, KeyInit, Mac};

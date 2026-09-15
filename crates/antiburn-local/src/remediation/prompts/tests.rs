@@ -128,6 +128,30 @@ fn every_detector_has_an_actionable_bounded_fallback_prompt() {
 }
 
 #[test]
+fn core_built_in_tools_are_not_remediation_targets() {
+    for tool in ["Bash", "Edit", "Read", "Write", "bash"] {
+        assert!(!built_in_tool_remediation_supported(tool), "{tool}");
+        assert_eq!(
+            build_prompt(
+                AgentKind::Claude,
+                SourceFormat::ClaudeJsonl,
+                &FindingCause::UnusedBuiltInTool {
+                    tool: tool.to_owned(),
+                    tokens: BuiltInToolTokens::Definition(100),
+                    cost_usd: None,
+                    pricing_revision: None,
+                },
+            ),
+            Err(RemediationUnavailableReason::ProtectedBuiltInTool),
+            "{tool}"
+        );
+    }
+    for tool in ["ReportFindings", "ScheduleWakeup", "Workflow"] {
+        assert!(built_in_tool_remediation_supported(tool), "{tool}");
+    }
+}
+
+#[test]
 fn finding_prompts_have_clear_human_readable_sections() {
     for cause in causes() {
         let prompt = build_prompt(AgentKind::Claude, SourceFormat::ClaudeJsonl, &cause).unwrap();

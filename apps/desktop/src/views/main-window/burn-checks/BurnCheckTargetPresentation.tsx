@@ -36,21 +36,6 @@ export function targetTitle(target: BurnCheckTargetPayload): string {
   )
 }
 
-export function targetChangeDescription(target: BurnCheckTargetPayload): string {
-  const { currentValue, replacementValue, resourceKind } = target.display
-  if (currentValue && replacementValue) return `${currentValue} → ${replacementValue}`
-  switch (resourceKind) {
-    case "builtInTool":
-      return "Disable this built-in tool"
-    case "mcpServer":
-      return "Disable this MCP server"
-    case "skill":
-      return "Disable this skill"
-    default:
-      return "Review this config change"
-  }
-}
-
 export function watchStatus(target: BurnCheckTargetPayload): string | null {
   const verification = target.watch?.verification
   if (!verification) return null

@@ -1,4 +1,5 @@
 use crate::analysis::SourceFormat;
+use crate::analysis::tool_catalog::comparable_tool_name;
 use crate::insights::DetectorId;
 use crate::model::AgentKind;
 
@@ -33,6 +34,7 @@ impl RemediationPrompt {
 pub enum RemediationUnavailableReason {
     PromptSizeLimit,
     EssentialIdentityUnavailable,
+    ProtectedBuiltInTool,
     DeferredAgent,
     UnsupportedSourceFormat,
     CheckUnsupportedForAgent,
@@ -44,6 +46,14 @@ pub fn remediation_prompt(
 ) -> Result<RemediationPrompt, RemediationUnavailableReason> {
     let agent = recommendation_support(finding.agent(), finding.source_format, finding.detector)?;
     build_prompt(agent, finding.source_format, finding.cause())
+}
+
+/// Returns false for core tools that general coding tasks require.
+pub fn built_in_tool_remediation_supported(tool: &str) -> bool {
+    !matches!(
+        comparable_tool_name(tool).as_str(),
+        "bash" | "edit" | "read" | "write"
+    )
 }
 
 /// Builds a bounded check-level prompt when current evidence has no exact target.
@@ -102,6 +112,11 @@ fn build_prompt(
     source: SourceFormat,
     cause: &FindingCause,
 ) -> Result<RemediationPrompt, RemediationUnavailableReason> {
+    if let FindingCause::UnusedBuiltInTool { tool, .. } = cause
+        && !built_in_tool_remediation_supported(tool)
+    {
+        return Err(RemediationUnavailableReason::ProtectedBuiltInTool);
+    }
     let facts = prompt_facts(agent, cause)?;
     let rendered_facts = facts
         .values

@@ -696,7 +696,7 @@ describe("BurnChecksView", () => {
   })
 
   it("names resource targets in the automatic fix chooser", async () => {
-    const targets = ["Bash", "Read"].map((name, index) => ({
+    const targets = ["ReportFindings", "Workflow"].map((name, index) => ({
       ...target,
       findingId: `finding-${index}`,
       actionId: `action-${index}`,
@@ -715,11 +715,12 @@ describe("BurnChecksView", () => {
     const chooser = await screen.findByRole("dialog", { name: "Choose changes" })
 
     expect(
-      within(chooser).getByRole("checkbox", { name: /Bash.*Disable this built-in tool/ }),
+      within(chooser).getByText("Select optional built-in tools to disable."),
     ).toBeVisible()
-    expect(
-      within(chooser).getByRole("checkbox", { name: /Read.*Disable this built-in tool/ }),
-    ).toBeVisible()
+    expect(within(chooser).getByText("Claude Code · Project scope")).toBeVisible()
+    expect(within(chooser).getByRole("checkbox", { name: "ReportFindings" })).toBeVisible()
+    expect(within(chooser).getByRole("checkbox", { name: "Workflow" })).toBeVisible()
+    expect(within(chooser).getAllByText(/built-in tools to disable/i)).toHaveLength(1)
   })
 
   it("restores named target actions after their brief success state", async () => {

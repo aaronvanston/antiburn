@@ -352,6 +352,24 @@ fn automatic_replacement_requires_a_reviewed_exact_route() {
 }
 
 #[test]
+fn core_built_in_tools_have_no_automatic_disable_operation() {
+    let cause = |tool: &str| FindingCause::UnusedBuiltInTool {
+        tool: tool.into(),
+        tokens: antiburn_local::remediation::BuiltInToolTokens::Definition(100),
+        cost_usd: None,
+        pricing_revision: None,
+    };
+    for tool in ["Bash", "Edit", "Read", "Write"] {
+        assert_eq!(
+            reviewed_config_operation(AgentKind::Claude, &cause(tool)),
+            None,
+            "{tool}"
+        );
+    }
+    assert!(reviewed_config_operation(AgentKind::Claude, &cause("Workflow")).is_some());
+}
+
+#[test]
 fn reasoning_auto_fix_requires_an_above_cap_reviewed_route() {
     let cause = |reasoning: &str| FindingCause::ModelOverthinking {
         provider: Some("openai".into()),

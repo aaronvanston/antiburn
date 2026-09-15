@@ -255,12 +255,11 @@ pub(super) struct PreparedCreation {
 
 impl fmt::Debug for PreparedOperation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("PreparedOperation")
-            .field("changes", &self.changes.len())
-            .field("creations", &self.creations.len())
-            .field("warning", &self.warning)
-            .finish()
+        let mut debug = formatter.debug_struct("PreparedOperation");
+        debug.field("changes", &self.changes.len());
+        #[cfg(not(windows))]
+        debug.field("creations", &self.creations.len());
+        debug.field("warning", &self.warning).finish()
     }
 }
 

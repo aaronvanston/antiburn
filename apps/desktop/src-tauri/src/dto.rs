@@ -1198,6 +1198,7 @@ pub enum PromptFixUnavailableReason {
     TargetNotFound,
     PromptSizeLimit,
     EssentialIdentityUnavailable,
+    ProtectedBuiltInTool,
     DeferredAgent,
     UnsupportedSourceFormat,
     CheckUnsupportedForAgent,
@@ -1658,6 +1659,7 @@ impl From<antiburn_local::remediation::RemediationUnavailableReason>
             RemediationUnavailableReason::EssentialIdentityUnavailable => {
                 Self::EssentialIdentityUnavailable
             }
+            RemediationUnavailableReason::ProtectedBuiltInTool => Self::ProtectedBuiltInTool,
             RemediationUnavailableReason::DeferredAgent => Self::DeferredAgent,
             RemediationUnavailableReason::UnsupportedSourceFormat => Self::UnsupportedSourceFormat,
             RemediationUnavailableReason::CheckUnsupportedForAgent => {

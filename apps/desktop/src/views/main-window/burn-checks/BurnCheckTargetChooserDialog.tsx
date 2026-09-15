@@ -1,6 +1,8 @@
+import { Check } from "lucide-react"
 import { useId, useState } from "react"
 import { createPortal } from "react-dom"
 
+import { PushButton } from "../../../components/ui/PushButton"
 import { cn } from "../../../lib/cn"
 import {
   noteInteraction,
@@ -16,7 +18,7 @@ import {
   type PrepareAutoFixBurnCheckTargetOutcome,
 } from "../../../lib/insightsIpc"
 import { agentDisplayName } from "../../../lib/presentation/agents"
-import { scopeLabel, targetChangeDescription, targetTitle } from "./BurnCheckTargetPresentation"
+import { scopeLabel, targetTitle } from "./BurnCheckTargetPresentation"
 
 type PreparedTarget = {
   target: BurnCheckTargetPayload
@@ -29,6 +31,13 @@ type PreparedGroup = {
   scope: AutoFixReviewPayload["scope"]
   configFile: string
   items: PreparedTarget[]
+}
+
+type TargetGroup = {
+  key: string
+  agent: string
+  scope: BurnCheckTargetPayload["display"]["scopeKind"]
+  targets: BurnCheckTargetPayload[]
 }
 
 type Step = "select" | "preparing" | "review" | "applying" | "result"
@@ -75,6 +84,39 @@ function groupPreparedTargets(prepared: PreparedTarget[]): PreparedGroup[] {
     else groups.set(key, { key, agent, scope, configFile, items: [item] })
   }
   return Array.from(groups.values())
+}
+
+function groupTargets(targets: BurnCheckTargetPayload[]): TargetGroup[] {
+  const groups = new Map<string, TargetGroup>()
+  for (const target of targets) {
+    const { agent } = target.finding
+    const scope = target.display.scopeKind
+    const key = `${agent}\u0000${scope}`
+    const group = groups.get(key)
+    if (group) group.targets.push(target)
+    else groups.set(key, { key, agent, scope, targets: [target] })
+  }
+  return Array.from(groups.values())
+}
+
+function selectionInstruction(targets: BurnCheckTargetPayload[]): string {
+  const resourceKind = targets[0]?.display.resourceKind
+  if (
+    !resourceKind ||
+    !targets.every((target) => target.display.resourceKind === resourceKind)
+  ) {
+    return "Select the config changes to review."
+  }
+  switch (resourceKind) {
+    case "builtInTool":
+      return "Select optional built-in tools to disable."
+    case "mcpServer":
+      return "Select the MCP servers to disable."
+    case "skill":
+      return "Select the skills to disable."
+    default:
+      return "Select the config changes to review."
+  }
 }
 
 function preparationMessage(outcome: PrepareAutoFixBurnCheckTargetOutcome | null): string {
@@ -130,6 +172,7 @@ export function BurnCheckTargetChooserDialog({
   const [status, setStatus] = useState<string | null>(null)
   const [appliedCount, setAppliedCount] = useState(0)
   const selectedTargets = targets.filter((target) => selected.has(target.actionId))
+  const targetGroups = groupTargets(targets)
   const preparedGroups = groupPreparedTargets(prepared)
   const busy = step === "preparing" || step === "applying"
 
@@ -276,70 +319,77 @@ export function BurnCheckTargetChooserDialog({
         </h4>
         {step === "select" || step === "preparing" ? (
           <>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="type-body text-label-secondary">
-                Select the config changes to review.
+            <p className="mt-2 type-body text-label-secondary">
+              {selectionInstruction(targets)}
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="type-callout text-label-tertiary">
+                {selectedTargets.length} of {targets.length} selected
               </p>
-              <div className="flex shrink-0 gap-2 type-callout">
-                <button
-                  type="button"
+              <div className="flex shrink-0 gap-2">
+                <PushButton
                   disabled={busy || selected.size === targets.length}
                   onClick={() => setSelected(new Set(targets.map((target) => target.actionId)))}
-                  className="text-label-secondary hover:text-label disabled:text-label-tertiary"
                 >
                   Select all
-                </button>
-                <button
-                  type="button"
+                </PushButton>
+                <PushButton
                   disabled={busy || selected.size === 0}
                   onClick={() => setSelected(new Set())}
-                  className="text-label-secondary hover:text-label disabled:text-label-tertiary"
                 >
-                  Clear
-                </button>
+                  Clear all
+                </PushButton>
               </div>
             </div>
-            <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              {targets.map((target, index) => {
-                const checked = selected.has(target.actionId)
-                return (
-                  <label
-                    key={target.findingId}
-                    className={cn(
-                      "flex cursor-pointer gap-3 rounded-control border border-separator px-3 py-2.5 transition-colors duration-[var(--duration-fast)]",
-                      checked ? "bg-surface-tertiary" : "bg-surface-secondary",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      autoFocus={index === 0}
-                      checked={checked}
-                      disabled={busy}
-                      onChange={() => toggle(target.actionId)}
-                      className="mt-0.5 size-4 shrink-0 accent-accent-fill"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-3">
-                        <span className="truncate type-body font-semibold text-label">
-                          {targetTitle(target)}
-                        </span>
-                        <span className="shrink-0 type-footnote text-label-tertiary">
-                          {scopeLabel(target.display.scopeKind)}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block type-callout text-label-secondary">
-                        {targetChangeDescription(target)}
-                      </span>
-                      <span className="mt-0.5 block type-footnote text-label-tertiary">
-                        {agentDisplayName(target.finding.agent)}
-                        {target.occurrenceCount > 1
-                          ? ` · ${target.occurrenceCount} observations`
-                          : ""}
-                      </span>
-                    </span>
-                  </label>
-                )
-              })}
+            <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              {targetGroups.map((group, groupIndex) => (
+                <div key={group.key}>
+                  <p className="mb-2 type-footnote font-medium text-label-secondary">
+                    {agentDisplayName(group.agent)} · {scopeLabel(group.scope)}
+                  </p>
+                  <div className="space-y-1">
+                    {group.targets.map((target, targetIndex) => {
+                      const checked = selected.has(target.actionId)
+                      const { currentValue, replacementValue } = target.display
+                      return (
+                        <button
+                          key={target.actionId}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={checked}
+                          autoFocus={groupIndex === 0 && targetIndex === 0}
+                          disabled={busy}
+                          onClick={() => toggle(target.actionId)}
+                          className={cn(
+                            "flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover disabled:opacity-50",
+                            checked ? "bg-surface-selected" : "bg-surface-secondary",
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "flex size-3.5 shrink-0 items-center justify-center rounded-small border transition-colors duration-[var(--duration-fast)]",
+                              checked
+                                ? "border-accent-fill bg-accent-fill text-white"
+                                : "border-separator bg-input-fill",
+                            )}
+                          >
+                            {checked && <Check size={12} strokeWidth={3} />}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate type-body font-medium text-label">
+                            {targetTitle(target)}
+                          </span>
+                          {currentValue && replacementValue && (
+                            <span className="shrink-0 type-footnote font-mono text-label-tertiary">
+                              {currentValue} → {replacementValue}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </>
         ) : (
@@ -402,48 +452,38 @@ export function BurnCheckTargetChooserDialog({
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {step === "select" || step === "preparing" ? (
             <>
-              <button type="button" disabled={busy} onClick={close} className="ui-push-button">
+              <PushButton disabled={busy} onClick={close}>
                 Cancel
-              </button>
-              <button
-                type="button"
+              </PushButton>
+              <PushButton
+                variant="primary"
                 disabled={busy || selectedTargets.length === 0}
                 onClick={() => void prepare()}
-                className="ui-push-button bg-accent-fill text-white border-transparent"
               >
                 {step === "preparing"
                   ? "Preparing…"
                   : `Review ${selectedTargets.length} ${selectedTargets.length === 1 ? "change" : "changes"}`}
-              </button>
+              </PushButton>
             </>
           ) : step === "review" || step === "applying" ? (
             <>
-              <button
-                type="button"
+              <PushButton
                 disabled={busy}
                 onClick={() => {
                   setPrepared([])
                   setStep("select")
                 }}
-                className="ui-push-button"
               >
                 Back
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void apply()}
-                className="ui-push-button bg-accent-fill text-white border-transparent"
-              >
+              </PushButton>
+              <PushButton variant="primary" disabled={busy} onClick={() => void apply()}>
                 {step === "applying"
                   ? `Applying ${appliedCount + 1} of ${prepared.length}…`
                   : `Apply ${prepared.length} ${prepared.length === 1 ? "change" : "changes"}`}
-              </button>
+              </PushButton>
             </>
           ) : (
-            <button type="button" onClick={close} className="ui-push-button">
-              Done
-            </button>
+            <PushButton onClick={close}>Done</PushButton>
           )}
         </div>
       </section>

@@ -364,17 +364,21 @@ pub(super) fn reviewed_config_operation(
                 value: "false".to_owned(),
             },
         }),
-        FindingCause::UnusedBuiltInTool { tool, .. } => Some(ConfigOperation {
-            setting: ConfigSetting::BuiltInTool,
-            expected_value: crate::agent_config::ConfigOperationValue::MapEntry {
-                key: tool.clone(),
-                value: "true".to_owned(),
-            },
-            proposed_value: crate::agent_config::ConfigOperationValue::MapEntry {
-                key: tool.clone(),
-                value: "false".to_owned(),
-            },
-        }),
+        FindingCause::UnusedBuiltInTool { tool, .. }
+            if built_in_tool_remediation_supported(tool) =>
+        {
+            Some(ConfigOperation {
+                setting: ConfigSetting::BuiltInTool,
+                expected_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                    key: tool.clone(),
+                    value: "true".to_owned(),
+                },
+                proposed_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                    key: tool.clone(),
+                    value: "false".to_owned(),
+                },
+            })
+        }
         FindingCause::UnusedSkill { skill, .. } => Some(ConfigOperation {
             setting: ConfigSetting::Skill,
             expected_value: crate::agent_config::ConfigOperationValue::MapEntry {

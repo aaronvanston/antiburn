@@ -8,9 +8,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(windows))]
 use super::config::{ApplyConflict, ApplyError, ApplyReadbackError};
 use super::config::{
-    ConfigChange, ConfigContext, ConfigOperation, ConfigScope, ConfigSetting,
-    ConfigUnavailableReason, EffectiveConfig, PreparedChange, PreparedOperation,
+    ConfigChange, ConfigContext, ConfigOperation, ConfigSetting, ConfigUnavailableReason,
+    EffectiveConfig, PreparedOperation,
 };
+#[cfg(not(windows))]
+use super::config::{ConfigScope, PreparedChange};
 use super::filesystem::{canonical_root, read_checked};
 #[cfg(not(windows))]
 use super::filesystem::{create_temporary, file_identity, file_ownership, map_write_error};
@@ -68,6 +70,17 @@ impl AgentConfigEditor {
         self.effective(context, ConfigSetting::Model)
     }
 
+    #[cfg(windows)]
+    pub fn prepare_operation(
+        &self,
+        context: &ConfigContext,
+        operation: &ConfigOperation,
+    ) -> Result<PreparedOperation, ConfigUnavailableReason> {
+        validate_write_context(context, operation.setting, current_platform())?;
+        Err(ConfigUnavailableReason::AutomaticApplyUnsupported)
+    }
+
+    #[cfg(not(windows))]
     pub fn prepare_operation(
         &self,
         context: &ConfigContext,
@@ -144,33 +157,22 @@ impl AgentConfigEditor {
             if current.as_deref() == Some(proposed.as_str()) {
                 continue;
             }
-            #[cfg(not(windows))]
             let proposed_bytes = vendor.edit_value(&file.bytes, &target.operation, &proposed)?;
             changes.push(PreparedChange {
-                #[cfg(not(windows))]
                 agent: context.agent,
                 setting: operation.setting,
                 selector: target.operation.physical_selector(),
-                #[cfg(not(windows))]
                 operation: target.operation,
                 expected_value: expected.clone(),
                 path: target.path,
                 scope: target.scope,
-                #[cfg(not(windows))]
                 resolution_home_root: home.clone(),
-                #[cfg(not(windows))]
                 workspace_cwd: workspace_cwd.clone(),
-                #[cfg(not(windows))]
                 trusted_workspace_root: trusted_workspace_root.clone(),
-                #[cfg(not(windows))]
                 safety_root: target.safety_root,
-                #[cfg(not(windows))]
                 original_bytes: file.bytes,
-                #[cfg(not(windows))]
                 proposed_bytes,
-                #[cfg(not(windows))]
                 identity: file.identity,
-                #[cfg(not(windows))]
                 permissions: file.permissions,
                 #[cfg(unix)]
                 ownership: file.ownership,
@@ -182,7 +184,6 @@ impl AgentConfigEditor {
         Ok(PreparedOperation {
             warning: context.runtime_override_present || context.managed_configuration_present,
             changes,
-            #[cfg(not(windows))]
             creations,
         })
     }

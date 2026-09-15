@@ -405,6 +405,7 @@ export type PromptFixUnavailableReason =
   | "targetNotFound"
   | "promptSizeLimit"
   | "essentialIdentityUnavailable"
+  | "protectedBuiltInTool"
   | "deferredAgent"
   | "unsupportedSourceFormat"
   | "checkUnsupportedForAgent"
