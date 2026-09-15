@@ -1,17 +1,22 @@
 /* ==========================================================================
    Overview series sub-palette.
 
-   One color for each provider account charted on the Overview. The colors
-   come from the Okabe-Ito set, which stays separable for every common type
-   of color vision deficiency and in greyscale.
+   One color for each provider account charted on the Overview.
 
-   Color names an account here and nothing else. The chart draws more than
-   one account on one scale, so the key names an account by color. The order
-   puts the most separable pair first: a reader with two accounts gets the
-   blue and the orange, which no type of color vision deficiency confuses.
+   The hues come from the palettes the app already draws with: the deep blue
+   of a reading, the brand orange, the violet of the output series, and the
+   teal of real work. A chart that borrows the product's own colors reads as
+   part of the product.
 
-   A fifth account repeats the first color. Repeated color is honest; an
-   invented fifth hue does not stay separable.
+   Color names an account here and nothing else. The order hands out the
+   most separable pair first, so a reader with two accounts gets the blue
+   and the orange: they differ in warmth and in lightness, which no common
+   type of color vision deficiency collapses, and they hold apart in
+   greyscale. The violet and the teal follow, each a long way in lightness
+   from the color before it.
+
+   A fifth account repeats the first color. A repeat is honest; an invented
+   fifth hue does not stay separable.
 
    Every token is presentation only: nothing here knows which account it
    draws. Tailwind v4 processes `@theme` in any file the build imports.
@@ -27,10 +32,10 @@
 /* --- Light (default and explicit) --- */
 :root,
 :root[data-theme="light"] {
-  --color-series-1-val: hsl(201.5 100% 34.9%); /* Okabe-Ito blue */
-  --color-series-2-val: hsl(41.5 100% 45%); /* Okabe-Ito orange */
-  --color-series-3-val: hsl(327 45% 63.7%); /* Okabe-Ito reddish purple */
-  --color-series-4-val: hsl(163.6 100% 31%); /* Okabe-Ito bluish green */
+  --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
+  --color-series-2-val: hsl(17.6 100% 58.6%); /* brand orange */
+  --color-series-3-val: hsl(258.3 89% 66.2%); /* violet */
+  --color-series-4-val: hsl(173.4 80% 40%); /* teal */
 }
 
 /* --- Dark ---
@@ -39,16 +44,16 @@
    written separately, mirroring how tokens.css duplicates its dark palette. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-series-1-val: hsl(201.6 77% 62.5%); /* Okabe-Ito sky: the blue, lifted */
-    --color-series-2-val: hsl(41.4 100% 55%); /* orange, lifted for the dark surface */
-    --color-series-3-val: hsl(327 45% 63.7%); /* reddish purple */
-    --color-series-4-val: hsl(163.4 68% 45%); /* bluish green, lifted */
+    --color-series-1-val: hsl(201.6 77% 62.5%); /* deep blue, lifted for the dark surface */
+    --color-series-2-val: hsl(17.6 100% 58.6%); /* brand orange, the same in both themes */
+    --color-series-3-val: hsl(258 89% 69.8%); /* violet */
+    --color-series-4-val: hsl(173.5 78% 46.4%); /* teal */
   }
 }
 
 :root[data-theme="dark"] {
   --color-series-1-val: hsl(201.6 77% 62.5%);
-  --color-series-2-val: hsl(41.4 100% 55%);
-  --color-series-3-val: hsl(327 45% 63.7%);
-  --color-series-4-val: hsl(163.4 68% 45%);
+  --color-series-2-val: hsl(17.6 100% 58.6%);
+  --color-series-3-val: hsl(258 89% 69.8%);
+  --color-series-4-val: hsl(173.5 78% 46.4%);
 }

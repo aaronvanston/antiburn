@@ -322,6 +322,7 @@
   block-size: 100%;
 }
 
+/* The ring keeps the mark crisp over any series color it lands on. */
 .overview-block-mark {
   position: absolute;
   inset-block-start: 0;
@@ -330,4 +331,5 @@
   block-size: var(--overview-bar-width);
   transform: translateX(-50%);
   border-radius: 9999px;
+  box-shadow: 0 0 0 1.5px var(--color-surface-window);
 }
