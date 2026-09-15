@@ -646,7 +646,11 @@ describe("BurnChecksView", () => {
     }))
     const { adapter } = setup(targets, false, aggregate, report)
 
-    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+    const fix = await screen.findByRole("button", { name: "Fix" })
+    const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
+    expect(fix.parentElement).not.toHaveClass("mt-3")
+    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    fireEvent.click(fix)
     fireEvent.click(screen.getByRole("button", { name: "model-0" }))
     fireEvent.click(screen.getByRole("button", { name: "Fix" }))
     const dialog = await screen.findByRole("dialog", { name: "Fix model-0" })
@@ -1402,8 +1406,11 @@ describe("BurnChecksView", () => {
       "Some sessions used an older model when a newer one was available.",
     )
     const fix = screen.getByRole("button", { name: "Fix" })
+    const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
 
     expect(finding.compareDocumentPosition(fix) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(fix.parentElement?.parentElement).toHaveClass("items-start")
     expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
     expect(screen.queryByText(target.finding.observation)).not.toBeInTheDocument()
   })

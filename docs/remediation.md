@@ -122,6 +122,10 @@ passive origin and original boundary. The store records the first action join
 time separately. This design measures passive discovery and deliberate use
 without claiming that the action caused the result.
 
+An action watch with unavailable verification does not block a later Auto Fix.
+The store upgrades that watch through the same crash-safe reservation path. A
+verifiable action watch and an active or uncertain write still block Auto Fix.
+
 After recurrence, a later publication can create a new attempt. The new attempt
 gets a new durable ID and prompt reference.
 
@@ -236,8 +240,9 @@ MCP server for Claude Code or Codex. Claude appends only
 editor, but its accepted sources do not yet provide M evidence. Antigravity
 remains unavailable until public source and precedence evidence identify one
 winning persisted field. Cursor never edits its private store or invokes its CLI.
-B can disable one exact Claude Code built-in tool from an existing standard
-settings deny list. It adds the canonical tool name only, never a wildcard or a
+B can disable one exact Claude Code built-in tool from a standard settings file.
+It can add a missing deny list or create a missing global settings file. It adds
+the canonical tool name only, never a wildcard or a
 general permission rule. OpenCode has an exact V2 action deny editor and Pi can
 remove one unique `defaultTools` member from the winning settings file, but both
 remain source-gated until their accepted sources prove a complete tool inventory.

@@ -173,7 +173,7 @@ function FixAction({
       />
     )
   return (
-    <div className="mt-3">
+    <div>
       {selected ? (
         <>
           <BurnCheckTargetActions
@@ -238,14 +238,14 @@ export function BurnCheckDetail({
   return (
     <article className="m-4 min-w-0 rounded-control bg-surface-card/75 p-4">
       <p className="type-body text-label-secondary">{CHECK_SENTENCES[detector]}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-start gap-2">
+        <FixAction targets={targets} refresh={refresh} />
         <CheckPromptAction
           key={targets.map((target) => target.actionId).join(":")}
           detector={detector}
           targets={targets}
           refresh={refresh}
         />
-        <FixAction targets={targets} refresh={refresh} />
       </div>
       {statuses.length === 1 && (
         <p role="status" className="mt-3 type-callout text-label-secondary">

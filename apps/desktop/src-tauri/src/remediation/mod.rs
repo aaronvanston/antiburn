@@ -238,11 +238,7 @@ impl RemediationController {
                 .transpose()?
                 .flatten();
             let auto_fix = match (&target.config, watch.as_ref()) {
-                (Some(_), Some(watch))
-                    if watch.lifecycle != RemediationState::Recurred
-                        && !(watch.lifecycle == RemediationState::Watching
-                            && watch.origin == RemediationOrigin::Passive) =>
-                {
+                (Some(_), Some(watch)) if auto_fix_blocked_by_watch(watch) => {
                     AutoFixAvailability::Unavailable(AutoFixUnavailableReason::ActiveWatch)
                 }
                 (Some(_), _) => AutoFixAvailability::Available,
@@ -496,9 +492,7 @@ impl RemediationController {
             .map(|watch| public_watch(store, watch))
             .transpose()?
             .flatten()
-            && watch.lifecycle != RemediationState::Recurred
-            && !(watch.lifecycle == RemediationState::Watching
-                && watch.origin == RemediationOrigin::Passive)
+            && auto_fix_blocked_by_watch(&watch)
         {
             return Err(ControllerError::AutoFixUnavailable(
                 AutoFixUnavailableReason::ActiveWatch,
@@ -1153,6 +1147,16 @@ impl RemediationController {
             .map_err(|_| ControllerError::PersistenceFailed)?
             .ok_or(ControllerError::TargetChanged)
     }
+}
+
+fn auto_fix_blocked_by_watch(watch: &WatchStatus) -> bool {
+    watch.lifecycle != RemediationState::Recurred
+        && !(watch.lifecycle == RemediationState::Watching
+            && (watch.origin == RemediationOrigin::Passive
+                || matches!(
+                    watch.verification,
+                    VerificationStatus::VerificationUnavailable
+                )))
 }
 
 fn display_config_file(path: &Path, home: &Path) -> String {

@@ -767,6 +767,59 @@ fn auto_write_does_not_upgrade_an_existing_action_watch() {
 }
 
 #[test]
+fn auto_write_upgrades_an_unverifiable_action_watch() {
+    let store = store();
+    let guard = seed_evidence(&store, "baseline", 100);
+    let mut prompt_input = remediation("prompt", "target", RemediationState::Watching, 10);
+    prompt_input.result_json = r#"{"version":1,"verification":{"status":"verificationUnavailable"},"savings":{"status":"unavailable"}}"#.into();
+    let prompt = store
+        .create_or_reuse_remediation(&prompt_input, std::slice::from_ref(&guard))
+        .unwrap()
+        .unwrap();
+    let mut snapshot = display_snapshot(&prompt.remediation_id);
+    snapshot.origin = "action".into();
+    snapshot.effective_boundary_ms = prompt.effective_boundary_ms.unwrap();
+    snapshot.verified_boundary_ms = None;
+    store
+        .upsert_remediation_display_snapshot(&snapshot)
+        .unwrap();
+    assert!(
+        store
+            .mark_remediation_action_joined(&prompt.remediation_id, 10_000)
+            .unwrap()
+    );
+
+    let reserved = store
+        .create_or_reuse_remediation(
+            &remediation("auto", "target", RemediationState::Reserved, 20),
+            &[guard],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(reserved.remediation_id, prompt.remediation_id);
+    assert_eq!(reserved.state, RemediationState::Reserved);
+
+    assert!(
+        store
+            .cancel_remediation_reservation(&reserved.remediation_id)
+            .unwrap()
+    );
+    let restored = store
+        .remediation(&reserved.remediation_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.state, RemediationState::Watching);
+    assert_eq!(restored.result_json, prompt.result_json);
+    assert_eq!(restored.action_joined_at_ms, Some(10_000));
+    assert_eq!(
+        store
+            .remediation_display_snapshot(&restored.remediation_id)
+            .unwrap(),
+        Some(snapshot)
+    );
+}
+
+#[test]
 fn startup_restores_a_complete_upgraded_reservation() {
     let store = store();
     let guard = seed_evidence(&store, "baseline", 100);
