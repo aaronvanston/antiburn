@@ -253,6 +253,32 @@ impl RemediationController {
                 finding: display,
                 display: display_facts,
                 occurrences: target.findings.len(),
+                affected_sessions: target
+                    .findings
+                    .iter()
+                    .map(|finding| {
+                        (
+                            &finding.environment_key,
+                            &finding.agent,
+                            &finding.session_id,
+                        )
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .len(),
+                project_name: (target.scope_kind == "project")
+                    .then(|| {
+                        target.findings[0]
+                            .workspace_candidate()
+                            .and_then(display::project_name)
+                    })
+                    .flatten(),
+                project_location: (target.scope_kind == "project")
+                    .then(|| {
+                        target.findings[0]
+                            .workspace_candidate()
+                            .and_then(display::project_location)
+                    })
+                    .flatten(),
                 auto_fix,
                 prompt_fix: match remediation_prompt(&target.findings[0].finding) {
                     Ok(_) => PromptFixAvailability::Available,

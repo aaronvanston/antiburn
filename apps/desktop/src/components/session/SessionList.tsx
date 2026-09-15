@@ -856,7 +856,7 @@ export function SessionList({
     <section
       aria-label="Sessions"
       data-tauri-drag-region={draggableHeader ? "" : undefined}
-      className="flex h-full min-h-0 flex-col pt-2"
+      className={cn("flex h-full min-h-0 flex-col", !onBadgeMetricChange && "pt-2")}
       onKeyDownCapture={moveVirtualFocus}
     >
       <span className="sr-only" aria-live="polite" aria-atomic="true">

@@ -122,6 +122,8 @@ export interface InsightsReportPayload {
 }
 
 export interface ChecksCategoryPayload {
+  /** Agents with findings, or complete clean results when no finding exists. */
+  agents?: string[]
   /** Stable category identifier, e.g. `sessionsOverDepth`. */
   id: BurnCheckDetectorId
   /** Applicable sessions with a confirmed finding. */
@@ -319,6 +321,9 @@ export interface BurnCheckTargetPayload {
   finding: BurnCheckFindingPayload
   display: BurnCheckDisplayFactsPayload
   occurrenceCount: number
+  affectedSessionCount?: number
+  projectName?: string | null
+  projectLocation?: string | null
   autoFix: AutoFixAvailabilityPayload
   promptFix: PromptFixAvailabilityPayload
   watch: BurnCheckWatchPayload | null
