@@ -1,0 +1,54 @@
+/* ==========================================================================
+   Overview series sub-palette.
+
+   One color for each provider account charted on the Overview. The colors
+   come from the Okabe-Ito set, which stays separable for every common type
+   of color vision deficiency and in greyscale.
+
+   Color names an account here and nothing else. The chart draws more than
+   one account on one scale, so the key names an account by color. The order
+   puts the most separable pair first: a reader with two accounts gets the
+   blue and the orange, which no type of color vision deficiency confuses.
+
+   A fifth account repeats the first color. Repeated color is honest; an
+   invented fifth hue does not stay separable.
+
+   Every token is presentation only: nothing here knows which account it
+   draws. Tailwind v4 processes `@theme` in any file the build imports.
+   ========================================================================== */
+
+@theme {
+  --color-series-1: var(--color-series-1-val);
+  --color-series-2: var(--color-series-2-val);
+  --color-series-3: var(--color-series-3-val);
+  --color-series-4: var(--color-series-4-val);
+}
+
+/* --- Light (default and explicit) --- */
+:root,
+:root[data-theme="light"] {
+  --color-series-1-val: hsl(201.5 100% 34.9%); /* Okabe-Ito blue */
+  --color-series-2-val: hsl(41.5 100% 45%); /* Okabe-Ito orange */
+  --color-series-3-val: hsl(327 45% 63.7%); /* Okabe-Ito reddish purple */
+  --color-series-4-val: hsl(163.6 100% 31%); /* Okabe-Ito bluish green */
+}
+
+/* --- Dark ---
+   `@media` cannot share a selector list with a plain `:root` rule, so the
+   system-preference branch and the explicit [data-theme='dark'] branch are
+   written separately, mirroring how tokens.css duplicates its dark palette. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-series-1-val: hsl(201.6 77% 62.5%); /* Okabe-Ito sky: the blue, lifted */
+    --color-series-2-val: hsl(41.4 100% 55%); /* orange, lifted for the dark surface */
+    --color-series-3-val: hsl(327 45% 63.7%); /* reddish purple */
+    --color-series-4-val: hsl(163.4 68% 45%); /* bluish green, lifted */
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-series-1-val: hsl(201.6 77% 62.5%);
+  --color-series-2-val: hsl(41.4 100% 55%);
+  --color-series-3-val: hsl(327 45% 63.7%);
+  --color-series-4-val: hsl(163.4 68% 45%);
+}

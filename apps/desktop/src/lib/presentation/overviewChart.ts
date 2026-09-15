@@ -104,21 +104,6 @@ export function allowancePointsLabel(usedPercent: number | null): string {
   return `${pointsFigure(usedPercent)} points`
 }
 
-/**
- * The change from the comparison day to the day, in percentage points.
- * Null when either day has no reading, so the caption never compares a
- * figure with a gap.
- */
-export function allowanceDeltaLabel(
-  day: AllowanceDayPayload,
-  previous: AllowanceDayPayload | undefined,
-): string | null {
-  if (day.usedPercent == null || previous?.usedPercent == null) return null
-  const delta = day.usedPercent - previous.usedPercent
-  if (Math.abs(delta) < 0.05) return "no change"
-  return `${delta < 0 ? "−" : "+"}${pointsFigure(Math.abs(delta))} points`
-}
-
 /** How many blocks a day carried, in the reader's words. */
 export function blockDayLabel(blockCount: number): string | null {
   if (blockCount <= 0) return null

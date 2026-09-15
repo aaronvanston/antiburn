@@ -32,15 +32,17 @@ function account(overrides: Partial<AllowanceUsageAccountPayload> = {}) {
   } satisfies AllowanceUsageAccountPayload
 }
 
+function dayButtons(): HTMLElement[] {
+  const group = screen.getByRole("group", { name: "Allowance for the past 30 days" })
+  return within(group).getAllByRole("button")
+}
+
 describe("OverviewAllowanceChart", () => {
   it("reads each day in allowance points and names the account", () => {
     render(<OverviewAllowanceChart accounts={[account()]} />)
-    const group = screen.getByRole("group", {
-      name: "Allowance for the past 30 days, Claude",
-    })
-    const buttons = within(group).getAllByRole("button")
+    const buttons = dayButtons()
     expect(buttons).toHaveLength(30)
-    const today = "Today · 15 points · +14 points vs 30 days before"
+    const today = "Today · Claude 15 points"
     expect(buttons[29]).toHaveAttribute("aria-label", today)
     fireEvent.focus(buttons[29]!)
     expect(screen.getByRole("tooltip")).toHaveTextContent(today)
@@ -48,26 +50,19 @@ describe("OverviewAllowanceChart", () => {
 
   it("calls a day with no reading unknown, never zero", () => {
     render(<OverviewAllowanceChart accounts={[account()]} />)
-    const group = screen.getByRole("group", {
-      name: "Allowance for the past 30 days, Claude",
-    })
-    const buttons = within(group).getAllByRole("button")
-    // The gap states no figure and makes no comparison against the day before.
-    expect(buttons[3]).toHaveAttribute("aria-label", expect.stringContaining("no reading"))
-    expect(buttons[3]!.getAttribute("aria-label")).not.toContain("vs 30 days before")
+    // The gap states no figure rather than a zero.
+    expect(dayButtons()[3]).toHaveAttribute("aria-label", expect.stringContaining("no reading"))
   })
 
   it("marks a day that carried a block", () => {
     const { container } = render(<OverviewAllowanceChart accounts={[account()]} />)
-    const group = screen.getByRole("group", {
-      name: "Allowance for the past 30 days, Claude",
-    })
-    const buttons = within(group).getAllByRole("button")
-    expect(buttons[10]).toHaveAttribute("aria-label", expect.stringContaining("2 blocks"))
+    expect(dayButtons()[10]).toHaveAttribute("aria-label", expect.stringContaining("2 blocks"))
     expect(container.querySelectorAll(".overview-block-mark")).toHaveLength(1)
   })
 
-  it("draws one chart for each account", () => {
+  it("draws every account on one chart, each in its own color", () => {
+    // Two accounts both read in percent of their own plan, so one scale holds
+    // them both. Color is the only thing that names which is which.
     render(
       <OverviewAllowanceChart
         accounts={[
@@ -76,8 +71,35 @@ describe("OverviewAllowanceChart", () => {
         ]}
       />,
     )
-    expect(screen.getByRole("region", { name: "Allowance by day, Claude" })).toBeTruthy()
-    expect(screen.getByRole("region", { name: "Allowance by day, Codex" })).toBeTruthy()
+    expect(screen.getAllByRole("region", { name: /Allowance by day/ })).toHaveLength(1)
+    const buttons = dayButtons()
+    expect(buttons).toHaveLength(30)
+    expect(buttons[29]).toHaveAttribute(
+      "aria-label",
+      "Today · Claude 15 points · Codex 15 points",
+    )
+    expect(buttons[29]!.querySelectorAll(".overview-series")).toHaveLength(2)
+    expect(buttons[29]!.querySelector(".bg-series-1")).toBeTruthy()
+    expect(buttons[29]!.querySelector(".bg-series-2")).toBeTruthy()
+  })
+
+  it("draws one column for a date only one account knows", () => {
+    // Two accounts can start metering on different days. A column always
+    // holds the same date in every series.
+    render(
+      <OverviewAllowanceChart
+        accounts={[
+          account({ days: days.slice(28) }),
+          account({ provider: "openai", displayName: "Codex", accountKey: "other" }),
+        ]}
+      />,
+    )
+    const buttons = dayButtons()
+    expect(buttons).toHaveLength(30)
+    expect(buttons[0]).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("Claude no reading"),
+    )
   })
 
   it("says antiburn has no readings rather than drawing an empty chart", () => {
@@ -89,10 +111,7 @@ describe("OverviewAllowanceChart", () => {
 
   it("walks the days with the arrow keys", () => {
     render(<OverviewAllowanceChart accounts={[account()]} />)
-    const group = screen.getByRole("group", {
-      name: "Allowance for the past 30 days, Claude",
-    })
-    const buttons = within(group).getAllByRole("button")
+    const buttons = dayButtons()
     buttons[29]!.focus()
     fireEvent.focus(buttons[29]!)
     fireEvent.keyDown(buttons[29]!, { key: "ArrowLeft" })

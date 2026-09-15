@@ -12,9 +12,17 @@
   /* One meter dot. */
   --overview-bar-width: 7px;
   --overview-chart-height: 90px;
-  /* Between the two bars of a day, and between days. */
+  /* Between the bars of a day, and between days. The spend chart draws two
+     bars in a day and the allowance chart draws one for each account. */
   --overview-pair-gap: 2px;
   --overview-day-gap: 3px;
+  /* Bars to a day: two for the spend chart, one for each account on the
+     allowance chart. The chart sets it when it is not two. */
+  --overview-series-count: 2;
+  --overview-day-width: calc(
+    var(--overview-series-count) * var(--overview-bar-width) +
+      (var(--overview-series-count) - 1) * var(--overview-pair-gap)
+  );
   /* Left-to-right delay per day on first paint. */
   --overview-bar-stagger: 12ms;
   /* Room for the scale figures to the right of the bars. */
@@ -22,8 +30,8 @@
   --overview-day-count: 30;
   /* The bars, the gaps, and the gutter at their natural size. */
   --overview-min-width: calc(
-    var(--overview-day-count) * (2 * var(--overview-bar-width) + var(--overview-pair-gap)) +
-      var(--overview-day-count) * var(--overview-day-gap) + var(--overview-scale-gutter)
+    var(--overview-day-count) * var(--overview-day-width) + var(--overview-day-count) *
+      var(--overview-day-gap) + var(--overview-scale-gutter)
   );
 }
 
@@ -131,7 +139,7 @@
 .overview-axis-day {
   position: relative;
   flex: 0 0 auto;
-  inline-size: calc(var(--overview-bar-width) * 2 + var(--overview-pair-gap));
+  inline-size: var(--overview-day-width);
   block-size: 1.4em;
 }
 
@@ -298,22 +306,20 @@
 /* ==========================================================================
    Overview allowance chart.
 
-   One chart for each provider account, because each account has its own
-   meter and its own allowance. The charts share the height the window has
-   to spare. A day that carried a block gets a mark above its bars; a block
-   is its own fact and does not change the height of a bar.
+   Every provider account draws on one scale, because every account reads in
+   percent of its own plan. One day holds one bar for each account, and color
+   names the account. A day that carried a block gets a mark over that
+   account's bar; a block is its own fact and does not change a bar's height.
    ========================================================================== */
 
-.overview-allowance-charts {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: var(--space-lg);
-  min-block-size: 0;
-}
-
-.overview-day-marked {
+/* One account's column inside a day. It is one bar wide, so the block mark
+   centers on the bar it belongs to. */
+.overview-series {
   position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  block-size: 100%;
 }
 
 .overview-block-mark {
