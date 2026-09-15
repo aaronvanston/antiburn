@@ -19,6 +19,7 @@
     "allow-acknowledge-main-window-session-target",
     "allow-delete-session-data",
     "allow-get-live-usage",
+    "allow-get-provider-usage",
     "allow-get-checks-report",
     "allow-get-burn-check-aggregate-wins",
     "allow-get-main-window-visible",

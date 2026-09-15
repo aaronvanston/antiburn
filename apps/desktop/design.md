@@ -17,6 +17,7 @@ sources:
   - src/styles/session-detail.css
   - src/components/ui/text-roll.css
   - src/components/burn-checks/burn-check-summary.css
+  - src/views/main-window/overview/overview.css
 colors:
   # Concrete token colors use modern HSL function syntax.
   # Use the shortest value that keeps the same 8-bit RGB channels.
@@ -45,6 +46,9 @@ colors:
   session-card: # quiet session-list rest fill; dark mode needs less lift than generic cards
     light: "hsl(0 0% 0% / 0.02)"
     dark: "hsl(0 0% 100% / 0.03)"
+  surface-key: # a translucent white pill over a chart; the same in both themes
+    light: "hsl(0 0% 100% / 0.2)"
+    dark: "hsl(0 0% 100% / 0.2)"
   surface-header: # the quiet band at the head of the menu-bar popover; fainter than a card
     light: "hsl(0 0% 0% / 0.025)"
     dark: "hsl(0 0% 100% / 0.03)"
@@ -277,6 +281,7 @@ fonts:
   mono: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" # via `font-mono`
 typography:
   display: { fontSize: 40px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.36px" }
+  hero-figure: { fontSize: 32px, fontWeight: 800, lineHeight: 1.4, letterSpacing: "-0.96px" } # a headline number; pair with font-mono
   # class .type-<name> · [fontSize, fontWeight, lineHeight, letterSpacing] · family = fonts.sans
   large-title: { fontSize: 26px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.36px" }
   title-1: { fontSize: 22px, fontWeight: 400, lineHeight: 1.4, letterSpacing: "0.35px" }
@@ -441,6 +446,17 @@ components:
 The token reference is the YAML front matter above. Light and Dark live in one file:
 every `colors` entry carries both values, and only those values differ between themes.
 Notes for what isn't expressible as a token:
+
+- **Overview panels** — the provider usage meters stay 180 CSS pixels wide
+  (180 native logical points), including when the panels stack below 700px. The
+  usage meters use a card background and inset outline. The checks and sessions
+  section fills the remaining column without an outer card. Both retain 16px internal
+  padding. Individual burn findings match compact session cards: `bg-session-card`,
+  `--radius-popover` corners, 12px horizontal and 8px vertical padding, 6px gaps,
+  and `hover:bg-surface-secondary/50` with the shared `session-card` transition.
+  Finding rows have no separator lines. “Recent” sits at the left
+  of the sessions header, on the same baseline as “All sessions”, with both using
+  `type-caption text-label-secondary`. The width stays local to `overview.css`.
 
 - **Popover spend summary** — one shared `surface-card` card uses `rounded-control`,
   a 12px top inset, 8px side insets, 12px horizontal and 8px vertical internal padding, and three equal columns with 8px gaps.

@@ -234,13 +234,17 @@ pub fn get_popover_peek_state(
 }
 
 #[tauri::command]
-pub fn get_popover_peek_data(
+pub async fn get_popover_peek_data(
     window: tauri::WebviewWindow,
     generation: u64,
     manager: tauri::State<'_, PopoverPeekManager>,
 ) -> Result<PopoverPeekData, String> {
     validate_peek_caller(window.label())?;
-    peek_data(window.app_handle(), &manager, generation)
+    let app = window.app_handle().clone();
+    let manager = manager.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || peek_data(&app, &manager, generation))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn peek_data(
@@ -279,6 +283,8 @@ fn selected_provider_data(
                 .collect(),
             totals: local.totals,
             agents: local.agents,
+            days: local.days,
+            previous_days: local.previous_days,
             generated_at: local.generated_at,
         }),
         live: Box::new(LiveUsageSummary {
@@ -674,6 +680,8 @@ mod tests {
                 providers: vec![local_provider("anthropic"), local_provider("openai")],
                 totals: ProviderUsageWindows::default(),
                 agents: Vec::new(),
+                days: Vec::new(),
+                previous_days: Vec::new(),
                 generated_at: "now".to_string(),
             },
             LiveUsageSummary {

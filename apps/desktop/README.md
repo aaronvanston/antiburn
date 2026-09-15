@@ -137,8 +137,9 @@ Settings teardown, and the memory rules behind those policies.
 
 - **Main window.** Explicit launch opens the main window after onboarding.
   It uses native window controls and participates in application switching.
-  Closing hides it while monitoring continues; opening it again reuses the
-  renderer. On macOS, switching away and Command-Tabbing back restores a main
+  Closing hides it while monitoring continues, except on Windows and Linux
+  when the system-tray icon is hidden; closing then exits. Opening it again
+  reuses the renderer. On macOS, switching away and Command-Tabbing back restores a main
   window that was closed or minimized earlier. Restoration uses the native
   unminimize operation. Tray interactions and login startup stay quiet.
   The initial content size is
@@ -146,20 +147,24 @@ Settings teardown, and the memory rules behind those policies.
   frame is capped at 85% of each usable display dimension. Saved user sizes
   retain their dimensions within the available work area. The navigation shell
   uses a persistent 220px sidebar with dense desktop rows. Burn checks is the
-  default section. Sessions shows the session list and selected detail. The sidebar Settings action and
-  Command+, (Control+, on Windows and Linux) open the existing Settings window; see the
-  [main-window validation runbook](../../docs/runbooks/main-window.md).
+  default section. Sessions shows the session list and selected detail. The
+  sidebar Settings action opens the existing Settings window. Command+,
+  (Control+, on Windows and Linux) opens it from the main window, onboarding,
+  and popover; see the [main-window validation runbook](../../docs/runbooks/main-window.md).
 - **Tray item.** Primary click toggles the popover. Secondary click opens a
   menu with Open antiburn, Pin Window, Settings, and Quit. Native application
-  menus also provide Quit. Explicit Quit stops the
-  application; closing the main window does not. On macOS the
+  menus also provide Quit. On macOS, the antiburn application menu provides
+  Settings... with Command+,. Explicit Quit stops the application. Closing the
+  main window does not exit unless the system-tray icon is hidden on Windows
+  or Linux. On macOS the
   item stays highlighted for as long as the popover is open: the system's own
   highlight is momentary and lets go on mouse-up, so the shell drives it, and
   clears it again on every path that puts the popover away.
   The dot mark also shows the lowest remaining displayable provider allowance:
   bright dots remain and depleted dots stay dim. It starts full on launch,
   then moves to the cached reading without opening a provider connection.
-  Unknown or disabled live usage keeps the ordinary full mark.
+  Unknown or disabled live usage keeps the ordinary full mark. General settings
+  can hide this item immediately. Hiding it also unpins and closes its popover.
 - **Popover.** 380pt wide, frameless, always on top, hidden from the taskbar.
   It is created on demand and anchored under its menu-bar item on each
   open, flipping above the item and clamping to the display when there is no
@@ -183,11 +188,16 @@ Settings teardown, and the memory rules behind those policies.
   it is unfinished the tray click goes here rather than to the popover, which
   has nothing to show yet, and antiburn is an ordinary Dock application so the
   window can be reached again once something else takes focus. Finishing it
-  puts the onboarding window away, opens the main window, and retains the Dock
-  icon. The existing notification still identifies the menu-bar companion.
+  puts the onboarding window away and opens the main window. The existing
+  notification still identifies the menu-bar companion.
 - **Settings.** An ordinary decorated window, created on demand and destroyed
   on close. A source list on the left, one pane on the right; every control
   writes through immediately, so there is no Save button and no dirty state.
+  General → Application controls the menu-bar or system-tray icon. macOS also
+  controls Dock visibility and always keeps at least one entry point visible.
+  Windows and Linux keep the ordinary application launcher as their recovery
+  route when the system-tray icon is hidden. Closing the main window then exits
+  the app instead of leaving an invisible resident process.
 - **Popover lifetime.** Finishing onboarding starts one hidden renderer before
   the onboarding window retires. After it becomes ready, the handoff renderer
   stays warm for up to 60 seconds. The first reveal consumes that lease; later
@@ -231,9 +241,10 @@ Settings teardown, and the memory rules behind those policies.
   banner kind.
 - **Theme.** Follows the operating system through `color-scheme` and Tailwind's
   `prefers-color-scheme` dark variant.
-- **macOS.** `LSUIElement` in [`src-tauri/Info.plist`](src-tauri/Info.plist)
-  makes the bundled app an agent; the shell applies the equivalent accessory
-  activation policy at runtime so unbundled development runs match.
+- **macOS.** The app starts with regular activation and a Dock icon. General
+  settings can hide the Dock immediately when the menu-bar icon remains
+  visible. A delayed state-aware retry covers macOS transitions that happen
+  within one second of showing the Dock icon.
 
 Settings, onboarding, and native macOS hover previews have dedicated HTML and
 TypeScript entries. The resident shell uses URL fragments for the nudge and overlay, with the popover

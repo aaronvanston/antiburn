@@ -53,11 +53,14 @@ buckets; the Claude diagnostic had nine additional optional fields.
 | `antiburn.onboarding_step_viewed`        | `OnboardingSession.noteOnboardingStep`; four fixed steps, once per step per flow instance.                                                                         | Shows setup progress. Has no new-versus-restarted flow distinction or failure reason.                                                   |
 | `antiburn.onboarding_finished`           | After the finish command saves settings. Explicit setup restarts can emit another completion.                                                                      | Shows completed setup, not first useful data or unique new installations.                                                               |
 | `antiburn.scan_completed`                | Full discovery pass; first outcome or changed count bucket relative to the previous reported outcome. Scoped passes emit nothing.                                  | Shows coarse discovery health and inventory. Is not an interaction or a scan-attempt counter.                                           |
-| `antiburn.setting_toggled`               | Saved changes to `live_usage`, `notifications`, `launch_at_login`, or `discovery_paused`; key only.                                                                | Shows use of four controls. Does not show direction, current adoption, other settings, or success of OS integration.                    |
+| `antiburn.setting_toggled`               | Saved changes to `live_usage`, `notifications`, `launch_at_login`, `tray_icon`, `dock_icon`, or `discovery_paused`; key only.                                      | Shows use of six controls. Does not show direction, current adoption, other settings, or success of OS integration.                     |
 | `antiburn.session_opened`                | Activity-card handler before analysis loads; agent category and native/WSL.                                                                                        | Measures list-to-detail intent. Does not establish that detail loaded, or cover related sessions, subagents, or newer/older navigation. |
 | `antiburn.error_occurred`                | Full scan failure, with `scan_failed`; repeated identical outcomes suppressed.                                                                                     | Shows some discovery failures. Misses scoped failures and other feature failures; cannot supply an operation failure rate.              |
 | `antiburn.unrecognized_records_observed` | Nonempty unknown-record summary returned to Settings Insights; changed category/count bucket within the process. Clean results reset suppression without an event. | Diagnoses reader-selected cohorts. Does not count all Insights visits or population parser failure rates.                               |
 | `antiburn.claude_limit_reset_observed`   | Changed Claude reset diagnostic after normal usage refresh, with a separate five-minute cooldown and additional enablement gates.                                  | Answers a narrow provider experiment question. Does not establish that anyone viewed usage or used a reset.                             |
+| `antiburn.quota_incidents_observed`      | Settings → Insights report with an assessed quota-pressure section; fires per limit kind, only when that kind's bucketed hit count changes within the process.     | Diagnoses reader-selected cohorts read afterward. Does not count incidents at ingest time; see `antiburn.provider_incidents_ingested` below for that. |
+| `antiburn.provider_incidents_observed`   | Settings → Insights report with an assessed provider-incidents section; fires per incident kind, only when that kind's bucketed hit count changes within the process. | Diagnoses reader-selected cohorts read afterward. Does not count incidents at ingest time; see `antiburn.provider_incidents_ingested` below for that. |
+| `antiburn.provider_incidents_ingested`   | The durable evidence worker publishes a session whose evidence gained an incident within the last two hours that its previously published evidence did not carry; fires per incident kind present, content-deduplicated against the previous evidence blob. | Counts incidents at ingest time, independent of whether a reader ever opens Insights. Counts installations that ingested a failure, not requests; a closed laptop reports nothing. |
 
 Evidence: [event schema](../apps/desktop/src-tauri/src/analytics/event.rs),
 [recording and delivery](../apps/desktop/src-tauri/src/analytics/mod.rs),
@@ -216,7 +219,7 @@ to reject duplicates and stale results. It need not leave the process.
 
 | Proposed event                                | Trigger and safe dimensions                                                                                                                                                                                                                                                                                                            | Owner and volume rule                                                                                                                                                                                                                         |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setting_changed`                             | Successfully saved change; allowlist product toggles such as live usage, notifications, discovery, launch at login, and HUD enablement. Fixed `enabled`/`disabled` state.                                                                                                                                                              | The relevant persistence boundary. Emit only an actual transition. Keep existing `setting_toggled` semantics stable while migrating dashboards; do not count both as separate actions.                                                        |
+| `setting_changed`                             | Successfully saved change; allowlist product toggles such as live usage, notifications, discovery, launch at login, app presence, and HUD enablement. Fixed `enabled`/`disabled` state.                                                                                                                                               | The relevant persistence boundary. Emit only an actual transition. Keep existing `setting_toggled` semantics stable while migrating dashboards; do not count both as separate actions.                                                        |
 | `action_requested`, `action_completed`        | A deliberate operation starts, then reaches success, failure, or cancellation. Initial action vocabulary: manual scan, report refresh, source add/remove, source permission request, reveal source, diagnostics export, delete local session data, and clear local index. `detail` on completion: `success`, `failed`, or `cancelled`. | UI handler owns intent; operation boundary owns outcome. One pair per explicit attempt; automatic retries remain one attempt. Do not send action arguments, file paths, exported data, or exact deletion counts.                              |
 | `notification_shown`, `notification_actioned` | Actual display and explicit action; fixed notification kind and action vocabulary.                                                                                                                                                                                                                                                     | Nudge lifecycle after display succeeds, not when delivery is requested. Suppress duplicate display callbacks; separate test/location nudges from product alerts. Never send message text, actor, provider account, or usage milestone values. |
 | `update_action_completed`                     | User-requested check, installation, or restart request reaches its known result; fixed action and outcome.                                                                                                                                                                                                                             | Update controller. Do not treat a restart request as verified installation; confirm running versions through later launch events. Suppress background polling and progress callbacks.                                                         |
@@ -337,6 +340,49 @@ unobserved. A distribution shift supports regression investigation, not a claim
 about all users or a causal conclusion. Resource bands can reveal coarse app
 work intensity and data volume, so the public catalog, privacy policy, and
 in-product disclosure name that consequence.
+
+The second background exception is `antiburn.provider_incidents_ingested`. It
+answers: "When a provider degrades, is a given user's failure part
+of a wider outage?" The metric is distinct reporting installations per
+`(agent, incident kind)` per hour, compared against installations that sent
+any event that hour; the decision it supports is telling a reader in-app and
+telling support, during a live incident, whether a capacity or server failure
+is fleet-wide or local to them — something the report-time
+`quota_incidents_observed` and `provider_incidents_observed` events cannot do,
+because they fire only when a reader happens to open Settings → Insights,
+possibly days later. The trigger and owning boundary is a background
+completed outcome: the durable evidence worker publishes a session's evidence
+(`insights_worker::apply_outcome`, the `PassOutcome::Published` arm) — never a
+per-record, per-poll, per-scan, or UI-driven trigger. Its properties are
+`label` (the agent that recorded the session, the same fixed list
+`session_opened` uses), `detail` (the incident kind — `capacity`,
+`server_error`, `connection`, `rate_limit`, or `usage_limit`), and `bucket`
+(the bucketed count of newly reported incidents for that pair in this
+publish); it carries no model name, session id, timestamp, path, or message
+text. Two mandatory filters bound its dedup and volume: an incident is new
+only when its `(ts_ms, kind)` pair is absent from the session's previously
+published evidence (so a revision-bump re-ingest of unchanged evidence
+reports nothing, and file growth reports only the appended incidents), and it
+must fall within `INGESTED_INCIDENT_FRESHNESS_MS` (two hours) of the worker's
+publish clock (bounding first-install backfill, a parser reclassification of
+old records, and an unreadable previous evidence blob). There is no
+in-memory suppression map — dedup is entirely by content — and the maximum
+volume is five events per publish, one per kind present. The owner is Dave
+Slutzkin; review date 2026-12-14, to confirm whether the signal is used in a
+fleet status view or a support workflow, or should be removed. Validation
+drives the real `apply_outcome` path against a store and asserts its computed
+result, the same boundary `insights_worker::process_next_work` hands to
+`analytics::record_provider_incidents_ingested` — this codebase has no
+`tauri::AppHandle` test harness, so, like `record_quota_incidents` and
+`record_provider_incidents` before it, the `allowed(app)` gate itself is
+exercised by inspection rather than by an app-driven test.
+
+This event counts installations that ingested a failure, not requests: a
+closed laptop, or an installation that never re-scans the affected session,
+reports nothing even during a real outage. The two-hour freshness window
+means a late ingest can report up to two hours after the actual incident, and
+opted-out installations are unobserved. Segment reports at the app version
+this event ships in.
 
 The implemented delivery changes add bounded queue-depth-triggered draining, protected retry backoff, and
 a request budget. Before expanding volume further, simulate normal repeated

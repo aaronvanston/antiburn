@@ -52,6 +52,10 @@ export interface AppSettings {
   onboardingCompleted: boolean
   /** Recorded; applied by the platform at next launch. */
   launchAtLogin: boolean
+  /** Whether the menu-bar or system-tray icon is visible. */
+  trayIconVisible: boolean
+  /** Whether the app is visible in the macOS Dock. */
+  dockIconVisible: boolean
   /** Whether the shell may install and restart for updates on its schedule. */
   autoUpdate: boolean
   /**
@@ -220,7 +224,7 @@ export interface MainWindowSessionRequest {
   target: SessionIdentityPayload
 }
 
-export type MainWindowSectionId = "activity" | "burnChecks"
+export type MainWindowSectionId = "overview" | "activity" | "burnChecks"
 
 /** One revisioned request to select a retained main-window section. */
 export interface MainWindowSectionRequest {
@@ -478,6 +482,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sessionDataRetentionDays: -1,
   onboardingCompleted: false,
   launchAtLogin: true,
+  trayIconVisible: true,
+  dockIconVisible: true,
   autoUpdate: true,
   discoveryPaused: false,
   notificationsEnabled: true,
@@ -587,9 +593,9 @@ export async function takeSettingsPane(): Promise<string | null> {
  * `core:window:allow-close` in `capabilities/default.json` — the ACL's
  * `core:window:default` set is read-only.
  *
- * Used by the two windows that own a ⌘W: settings, and the first-run flow.
- * Both are accessory-app windows with no application menu, so the standard
- * shortcut has no owner unless the view handles it.
+ * Used by the two windows that own Command-W: Settings and the first-run flow.
+ * Their view handlers keep Command-W and Control-W available across platform
+ * menu configurations.
  */
 export async function closeCurrentWindow(): Promise<void> {
   if (!hasShell()) return
@@ -1018,6 +1024,8 @@ export const EMPTY_PROVIDER_USAGE: ProviderUsageSummaryPayload = {
     },
   },
   agents: [],
+  days: [],
+  previousDays: [],
   generatedAt: "",
 }
 

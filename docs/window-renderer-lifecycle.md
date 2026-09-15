@@ -177,16 +177,23 @@ warm, acknowledgement, and visible-content measurements.
 ## Onboarding handoff and popover prewarm
 
 Completing onboarding performs a deliberate handoff from the first-run window
-to the menu-bar surface:
+to the main and menu-bar surfaces:
 
 1. The shell hides onboarding immediately, opens the main window, and shows
-   the menu-bar-location notification. macOS retains regular application mode.
+   the menu-bar-location notification. The default app-presence settings keep
+   both the menu-bar and macOS Dock icons visible.
 2. On the next main-loop turn, the shell requests one hidden popover renderer.
    This moves renderer startup out of the first menu-bar click.
 3. It waits one second before destroying onboarding. This lets the final
    settings IPC response leave the renderer that sent it.
 4. The popover remains hidden after it reports readiness. Readiness starts a
    one-minute handoff lease instead of revealing it.
+
+After onboarding, General → Application applies visibility changes without a
+renderer restart. Hiding the tray icon unpins and hides the tray-owned popover.
+On macOS the store normalizes a malformed both-hidden state by restoring the
+Dock icon, and the Settings controls prevent creating that state normally. On
+Windows and Linux, closing the main window exits when the tray icon is hidden.
 
 `prewarm` is a handoff optimization, not a permanent resident window. It does
 nothing while onboarding is pending, when a popover window already exists, or

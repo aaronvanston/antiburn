@@ -9,6 +9,7 @@
 //!
 //! - [`agents`] — translating between the engine's two names for an agent.
 //! - [`analysis`] — turning a located transcript into what the views render.
+//! - [`app_presence`] — applying tray and Dock visibility preferences.
 //! - [`commands`] — the IPC surface exposed to the webview.
 //! - [`diagnostics_export`] — the privacy-scoped support document.
 //! - [`disk_monitor`] — free-space polling, the tray readout, the low edge.
@@ -53,6 +54,7 @@ pub mod agent_config;
 mod agents;
 mod analysis;
 mod analytics;
+mod app_presence;
 mod commands;
 mod consent;
 mod diagnostics_export;
@@ -274,6 +276,9 @@ pub fn run() {
 
         tray::create(app.handle())?;
         tray::install_usage_meter(app.handle());
+        if let Ok(settings) = app.state::<store::Store>().settings() {
+            app_presence::apply_at_launch(app.handle(), &settings);
+        }
         // After the tray, and on the main thread: the monitor reaches the
         // menu-bar item to unlight it. The popover itself is lazy, and its
         // dismissal path already treats a missing window as idle.
@@ -381,7 +386,6 @@ pub fn run() {
             if let Some(manager) = app.try_state::<popover_peek::PopoverPeekManager>() {
                 manager.shutdown();
             }
-            main_window::flush_placement(app);
             // Ask a running report reduction to stop at its next probe.
             // The reduction is read-only, so even a task that never sees
             // the flag cannot corrupt durable evidence state.
@@ -459,14 +463,19 @@ fn finish_retention_cleanup(handle: &mut Option<tauri::async_runtime::JoinHandle
 enum ClosePolicy {
     Allow,
     HideMain,
+    QuitApp,
     HidePopover,
     HidePendingOnboarding,
     HideNudge,
 }
 
-fn close_policy(label: &str, onboarding_pending: bool) -> ClosePolicy {
+fn close_policy(label: &str, onboarding_pending: bool, quit_when_main_closes: bool) -> ClosePolicy {
     if label == main_window::LABEL {
-        ClosePolicy::HideMain
+        if quit_when_main_closes {
+            ClosePolicy::QuitApp
+        } else {
+            ClosePolicy::HideMain
+        }
     } else if label == popover::LABEL {
         ClosePolicy::HidePopover
     } else if label == antiburn_nudge::NUDGE_LABEL {
@@ -566,7 +575,17 @@ fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
             }
         }
         WindowEvent::CloseRequested { api, .. } => {
-            match close_policy(window.label(), onboarding::is_pending(window.app_handle())) {
+            let quit_when_main_closes = cfg!(not(target_os = "macos"))
+                && window
+                    .app_handle()
+                    .try_state::<store::Store>()
+                    .map(|store| store.settings_snapshot())
+                    .is_some_and(|settings| !settings.tray_icon_visible);
+            match close_policy(
+                window.label(),
+                onboarding::is_pending(window.app_handle()),
+                quit_when_main_closes,
+            ) {
                 ClosePolicy::Allow => {}
                 ClosePolicy::HideMain => {
                     api.prevent_close();
@@ -574,6 +593,10 @@ fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
                     {
                         main_window::close(&window);
                     }
+                }
+                ClosePolicy::QuitApp => {
+                    api.prevent_close();
+                    main_window::exit_after_placement_flush(window.app_handle());
                 }
                 ClosePolicy::HidePopover => {
                     api.prevent_close();
@@ -812,6 +835,7 @@ mod tests {
                 &runner,
                 &|entry| task_announced.lock().unwrap().push(entry),
                 &|| {},
+                &|_, _| {},
             )
             .await;
         });
@@ -853,27 +877,31 @@ mod tests {
     #[test]
     fn only_transient_or_incomplete_windows_intercept_close() {
         assert_eq!(
-            close_policy(super::main_window::LABEL, false),
+            close_policy(super::main_window::LABEL, false, false),
             ClosePolicy::HideMain
         );
         assert_eq!(
-            close_policy(super::popover::LABEL, false),
+            close_policy(super::main_window::LABEL, false, true),
+            ClosePolicy::QuitApp
+        );
+        assert_eq!(
+            close_policy(super::popover::LABEL, false, false),
             ClosePolicy::HidePopover
         );
         assert_eq!(
-            close_policy(super::onboarding::LABEL, true),
+            close_policy(super::onboarding::LABEL, true, false),
             ClosePolicy::HidePendingOnboarding
         );
         assert_eq!(
-            close_policy(super::onboarding::LABEL, false),
+            close_policy(super::onboarding::LABEL, false, false),
             ClosePolicy::Allow
         );
         assert_eq!(
-            close_policy(super::settings::LABEL, false),
+            close_policy(super::settings::LABEL, false, false),
             ClosePolicy::Allow
         );
         assert_eq!(
-            close_policy(antiburn_nudge::NUDGE_LABEL, false),
+            close_policy(antiburn_nudge::NUDGE_LABEL, false, false),
             ClosePolicy::HideNudge
         );
     }

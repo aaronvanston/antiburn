@@ -49,6 +49,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::read_source;
+use crate::analysis::evidence::{
+    ProviderIncident, ProviderIncidentKind, QuotaConfidence, QuotaHitSeverity, QuotaIncident,
+    QuotaLimitKind,
+};
 use crate::analysis::framing::{BoundedJsonlReader, FramedRecord, PartialReason, RecordSkip};
 use crate::analysis::initial_context::CodexContextAccumulator;
 use crate::analysis::interface::{
@@ -575,6 +579,11 @@ impl CodexStreamState {
                     },
                 )));
             }
+            if let Some(observation) =
+                task_complete_observation(&value, self.current_model.as_deref())
+            {
+                sink.record(NormalizedRecord::Observation(Box::new(observation)));
+            }
         }
 
         if is_usage_record {
@@ -988,6 +997,121 @@ fn is_recognized_eventless(record_type: Option<&str>, payload_type: Option<&str>
     )
 }
 
+/// Maps one `event_msg`/`task_complete` record's non-null `error` object to
+/// a quota incident or a provider incident, for the reviewed
+/// `codex_error_info` codes. `server_overloaded` and `internal_server_error`
+/// name a provider-side failure the user's own usage did not cause, so they
+/// map to a `ProviderIncident` instead of a `QuotaIncident`.
+///
+/// `codex_error_info` is the pinned `openai/codex` `CodexErrorInfo` enum's
+/// serde form: a unit variant serializes as a bare string
+/// (`"server_overloaded"`); a struct variant serializes as a single-key
+/// object (`{"http_connection_failed":{"http_status_code":503}}`). The four
+/// transport struct variants (`http_connection_failed`,
+/// `response_stream_connection_failed`, `response_stream_disconnected`,
+/// `response_too_many_failed_attempts`) carry an optional
+/// `http_status_code`: `500..=599` maps to `ServerError`; an absent or
+/// `null` status maps to `Connection`; any other status is ambiguous and
+/// maps to `None`, because the retry wrapper hides which layer produced it.
+///
+/// Ignored on purpose: `context_window_exceeded` and
+/// `session_budget_exceeded` name the user's own context or configured
+/// budget, not a provider or quota event. `cyber_policy`,
+/// `misalignment_policy_violation`, `unauthorized`, `bad_request`,
+/// `sandbox_error`, `active_turn_not_steerable`, `thread_rollback_failed`,
+/// and `other` are not provider incidents or quota incidents.
+///
+/// Every other code, an absent or non-object `error`, or a missing top-level
+/// `timestamp` returns `None`; the record stays allowlisted-eventless with
+/// no diagnostic. The observation never carries the error's `message` text.
+fn task_complete_observation(value: &Value, model: Option<&str>) -> Option<EvidenceObservation> {
+    if value.get("type").and_then(Value::as_str) != Some("event_msg") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("type").and_then(Value::as_str) != Some("task_complete") {
+        return None;
+    }
+    let error = payload.get("error")?.as_object()?;
+    let info = error.get("codex_error_info")?;
+    let ts_ms = value.get("timestamp").and_then(parse_ts)?;
+    // `task_complete` with a non-null error means the turn terminated, so
+    // every mapped code is a hard hit, never an advance warning.
+    let (code, struct_fields) = match info {
+        Value::String(code) => (code.as_str(), None),
+        Value::Object(fields) if fields.len() == 1 => {
+            let (code, inner) = fields.iter().next()?;
+            (code.as_str(), Some(inner))
+        }
+        _ => return None,
+    };
+    match code {
+        "server_overloaded" => Some(EvidenceObservation::ProviderIncident(ProviderIncident {
+            ts_ms,
+            kind: ProviderIncidentKind::Capacity,
+            model: model.map(ToOwned::to_owned),
+        })),
+        "internal_server_error" => Some(EvidenceObservation::ProviderIncident(ProviderIncident {
+            ts_ms,
+            kind: ProviderIncidentKind::ServerError,
+            model: model.map(ToOwned::to_owned),
+        })),
+        "http_connection_failed"
+        | "response_stream_connection_failed"
+        | "response_stream_disconnected"
+        | "response_too_many_failed_attempts" => {
+            let kind = transport_incident_kind(struct_fields?)?;
+            Some(EvidenceObservation::ProviderIncident(ProviderIncident {
+                ts_ms,
+                kind,
+                model: model.map(ToOwned::to_owned),
+            }))
+        }
+        "rate_limit_exceeded" => Some(EvidenceObservation::QuotaIncident(QuotaIncident {
+            ts_ms,
+            limit_kind: QuotaLimitKind::RateLimit,
+            severity: QuotaHitSeverity::HardHit,
+            model: model.map(ToOwned::to_owned),
+            reset_ts_ms: None,
+            utilization_pct: None,
+            confidence: QuotaConfidence::Observed,
+        })),
+        "usage_limit_exceeded" => Some(EvidenceObservation::QuotaIncident(QuotaIncident {
+            ts_ms,
+            limit_kind: QuotaLimitKind::UsageLimit,
+            severity: QuotaHitSeverity::HardHit,
+            model: model.map(ToOwned::to_owned),
+            reset_ts_ms: None,
+            utilization_pct: None,
+            confidence: QuotaConfidence::Observed,
+        })),
+        _ => None,
+    }
+}
+
+/// Reads `http_status_code` from one Codex transport error's struct-variant
+/// fields and names the provider incident it maps to. The value must be a
+/// JSON object. A status in `500..=599` names a `ServerError`; an absent or
+/// `null` status names a `Connection` failure; any other status is
+/// ambiguous, because the retry wrapper hides which layer produced it, so
+/// this returns `None`.
+fn transport_incident_kind(fields: &Value) -> Option<ProviderIncidentKind> {
+    let fields = fields.as_object()?;
+    match fields.get("http_status_code") {
+        None => Some(ProviderIncidentKind::Connection),
+        Some(Value::Null) => Some(ProviderIncidentKind::Connection),
+        Some(Value::Number(status)) => {
+            let status = status.as_u64()?;
+            if (500..=599).contains(&status) {
+                Some(ProviderIncidentKind::ServerError)
+            } else {
+                None
+            }
+        }
+        Some(_) => None,
+    }
+}
+
 /// The subset of `is_recognized_eventless` names that must still pass the
 /// light structural check (`is_inert_codex_record`'s `reject_nested = false`
 /// pass) before an unrecognized-record observation is skipped. See
@@ -1332,9 +1456,11 @@ fn codex_fork_owned_offset(content: &str) -> Option<usize> {
 }
 
 /// Map one rollout envelope record to a normalized event, or `None` for framing
-/// / bookkeeping records that carry no analyzable signal (`session_meta`,
+/// / bookkeeping records that carry no cost or usage signal (`session_meta`,
 /// `turn_context`, `task_started`, and the `user_message` / `agent_message` UI
-/// echoes of `response_item` turns).
+/// echoes of `response_item` turns). `task_complete` also returns `None` here,
+/// but [`task_complete_observation`] reads its `error` object separately, for
+/// the `QuotaIncident` or `ProviderIncident` observation.
 fn record_to_event(record: &Value) -> Option<NormalizedEvent> {
     let obj = record.as_object()?;
     let ts = obj.get("timestamp").and_then(parse_ts);
@@ -2371,7 +2497,16 @@ mod tests {
     fn record_to_event_changes_require_an_inertness_review() {
         // `codex_usage` now sets `cache_creation_1h_tokens: 0`: Codex never
         // reports a one-hour cache-write split, so this reads no new key.
-        const EXPECTED_FINGERPRINT: u64 = 14_933_235_305_670_794_504;
+        // `task_complete_observation` now reads a `task_complete` event's
+        // `error` object and `process_value` emits the mapped quota or
+        // provider incident observation; `is_recognized_eventless` still
+        // allowlists `task_complete` as eventless, so coverage and
+        // diagnostics are unchanged. `task_complete_observation` now also
+        // maps `internal_server_error` and the four transport struct
+        // variants' `http_status_code` to a `ServerError` or `Connection`
+        // provider incident, through the new `transport_incident_kind`
+        // helper; this changed the fingerprinted byte range.
+        const EXPECTED_FINGERPRINT: u64 = 5_782_876_435_163_781_937;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();
