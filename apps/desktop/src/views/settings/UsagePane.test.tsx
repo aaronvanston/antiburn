@@ -305,9 +305,7 @@ describe("UsagePane", () => {
     )
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(
-      screen.getByText("Signed in · 0 limits tracked · checked 5m ago"),
-    ).toBeInTheDocument()
+    expect(screen.getByText("Signed in · 0 limits tracked 5m ago")).toBeInTheDocument()
     expect(screen.queryByText(/Asked Claude directly/)).not.toBeInTheDocument()
   })
 
@@ -374,9 +372,7 @@ describe("UsagePane", () => {
     )
     pane()
     await waitFor(() => expect(screen.getByText("Codex")).toBeInTheDocument())
-    expect(
-      screen.getByText("Signed in · 1 limit tracked · checked 21s ago"),
-    ).toBeInTheDocument()
+    expect(screen.getByText("Signed in · 1 limit tracked 21s ago")).toBeInTheDocument()
   })
 
   it("lists every provider it can meter, with nothing to report yet", async () => {
@@ -515,7 +511,7 @@ describe("UsagePane — the grace period", () => {
       )
       await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
       expect(
-        screen.getByText(/^Signed in · 0 limits tracked · checked .* · rate limited$/),
+        screen.getByText(/^Signed in · 0 limits tracked .* · rate limited$/),
       ).toBeInTheDocument()
       expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
       unmount()
@@ -548,7 +544,7 @@ describe("UsagePane — the grace period", () => {
     getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:50:00Z"))
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(screen.getByText(/^Signed in · 0 limits tracked · checked/)).toBeInTheDocument()
+    expect(screen.getByText(/^Signed in · 0 limits tracked/)).toBeInTheDocument()
   })
 })
 
