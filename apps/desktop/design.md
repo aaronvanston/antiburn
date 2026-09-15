@@ -254,7 +254,7 @@ colors:
     light: "hsl(14.7 63% 59.6%)"
     dark: "hsl(14.7 63% 59.6%)"
   provider-openai: # OpenAI's graphite, which draws the Codex account; inverted on dark
-    light: "hsl(240 4% 30%)"
+    light: "hsl(240 4% 42%)"
     dark: "hsl(240 12% 78%)"
   series-1: # Overview fallback series, first: the deep blue of a reading, lifted on dark
     light: "hsl(201.5 100% 34.9%)"

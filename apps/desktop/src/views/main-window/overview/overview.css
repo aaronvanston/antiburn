@@ -35,9 +35,9 @@
   );
 }
 
-/* The chart is the last block on the page and takes the height the window
-   has to spare, so a taller window shows taller bars. Each layer down to
-   the plot grows with it; the chart height is the floor. */
+/* The chart takes the height the window has to spare, so a taller window
+   shows taller bars. Each layer down to the plot grows with it; the chart
+   height is the floor. */
 .overview-chart,
 .overview-chart-scroll,
 .overview-chart-body {
@@ -173,8 +173,8 @@
    at the bottom can grow. */
 /* Radix's viewport wrapper has no set height, so a percent min-height on
    the page cannot resolve through it. Make the wrapper a column that fills
-   the viewport and let the page grow inside it. The chart, last on the
-   page, takes that spare height. */
+   the viewport and let the page grow inside it. The usage block takes that
+   spare height and gives it to the chart. */
 [data-radix-scroll-area-viewport]:has(> div > .overview-page) > div {
   display: flex !important;
   flex-direction: column;
@@ -219,31 +219,12 @@
 }
 
 /* The sessions card fills the space beside the fixed-width provider limits card. */
-.overview-panels {
-  --overview-provider-width: 180px;
-
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--overview-provider-width);
-  align-items: stretch;
-  gap: var(--space-xl);
-}
-
-.overview-provider-limits {
-  inline-size: var(--overview-provider-width);
-}
-
 /* Inside the stack card, a rule and a gap separate the sessions from the
    checks above them. */
 .overview-stack > * + * {
   margin-block-start: var(--space-lg);
   border-block-start: 1px solid var(--color-separator);
   padding-block-start: var(--space-md);
-}
-
-@container (max-width: 700px) {
-  .overview-panels {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @container (max-width: 540px) {

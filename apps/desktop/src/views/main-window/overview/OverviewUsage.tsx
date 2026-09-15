@@ -1,9 +1,12 @@
 import type {
   AllowanceUsageSummaryPayload,
+  ProviderUsageDayPayload,
   ProviderUsageWindowsPayload,
 } from "../../../lib/providerUsageIpc"
 import { SegmentedControl } from "../../../components/ui/SegmentedControl"
+import { OverviewAllowanceChart } from "./OverviewAllowanceChart"
 import { OverviewAllowanceTotals } from "./OverviewAllowanceTotals"
+import { OverviewSpendChart } from "./OverviewSpendChart"
 import { OverviewSpendTotals } from "./OverviewSpendTotals"
 import { allowanceAccounts } from "./overviewAllowance"
 
@@ -18,7 +21,7 @@ const METRICS: ReadonlyArray<{ value: OverviewMetric; label: string }> = [
 ]
 
 /**
- * The Overview's headline, in one of two units.
+ * The Overview's usage block, in one of two units.
  *
  * Cost states what the local sessions would cost at list price. Allowance
  * states how much of each subscription the provider's own meter reports,
@@ -26,24 +29,35 @@ const METRICS: ReadonlyArray<{ value: OverviewMetric; label: string }> = [
  * whatever the token count, so the dollar figure answers a question they do
  * not have.
  *
- * The choice is page-wide. The chart below reads the same state, so the page
- * can never show two units at once.
+ * The unit control sits over the chart and the figures together, because it
+ * changes both. A control beside one of them would read as the control of
+ * that one alone.
+ *
+ * The chart comes first: the shape of the last 30 days is the reason to
+ * open this page, and the figures under it summarize that shape.
  */
-export function OverviewUsageTotals({
+export function OverviewUsage({
   metric,
   onMetricChange,
   totals,
+  days,
+  previousDays,
   allowance,
   loading = false,
 }: {
   metric: OverviewMetric
   onMetricChange: (next: OverviewMetric) => void
   totals: ProviderUsageWindowsPayload | null
+  days: ProviderUsageDayPayload[]
+  previousDays: ProviderUsageDayPayload[]
   allowance: AllowanceUsageSummaryPayload | null
   loading?: boolean
 }) {
   return (
-    <div className="flex flex-col gap-[var(--space-md)]">
+    <section
+      aria-label="Usage"
+      className="overview-usage flex min-h-0 flex-1 flex-col gap-[var(--space-lg)]"
+    >
       <SegmentedControl
         options={METRICS}
         value={metric}
@@ -53,14 +67,23 @@ export function OverviewUsageTotals({
         className="self-start"
       />
       {metric === "cost" ? (
-        <OverviewSpendTotals totals={totals} loading={loading} />
+        <>
+          <OverviewSpendChart days={days} previousDays={previousDays} loading={loading} />
+          <OverviewSpendTotals totals={totals} loading={loading} />
+        </>
       ) : (
-        <OverviewAllowanceTotals
-          accounts={allowanceAccounts(allowance)}
-          spanDays={allowance?.overageSpanDays ?? 0}
-          loading={loading && !allowance}
-        />
+        <>
+          <OverviewAllowanceChart
+            accounts={allowanceAccounts(allowance)}
+            loading={loading && !allowance}
+          />
+          <OverviewAllowanceTotals
+            accounts={allowanceAccounts(allowance)}
+            spanDays={allowance?.overageSpanDays ?? 0}
+            loading={loading && !allowance}
+          />
+        </>
       )}
-    </div>
+    </section>
   )
 }

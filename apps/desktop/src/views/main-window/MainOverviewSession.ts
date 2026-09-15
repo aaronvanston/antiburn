@@ -8,11 +8,9 @@ import {
 } from "../../lib/insightsIpc"
 import {
   getAllowanceUsage,
-  getLiveUsage,
   getMainWindowVisible,
   getProviderUsage,
   listRecentSessions,
-  onLiveUsageChanged,
   onMainWindowVisibilityChanged,
   onScanEvent,
   onSessionEntryChanged,
@@ -21,20 +19,17 @@ import {
 } from "../../lib/ipc"
 import type {
   AllowanceUsageSummaryPayload,
-  LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
 } from "../../lib/providerUsageIpc"
 
 export interface MainOverviewAdapter {
   getUsage(): Promise<ProviderUsageSummaryPayload>
-  getLiveUsage(): Promise<LiveUsageSummaryPayload>
   getAllowanceUsage(): Promise<AllowanceUsageSummaryPayload>
   getChecksReport(consumerId: string): Promise<ChecksReportPayload | null>
   cancelChecksReport(consumerId: string): Promise<void>
   listRecentSessions(): Promise<ActivityEntryPayload[]>
   getVisible(): Promise<boolean>
   onVisible(handler: (visible: boolean) => void): Promise<() => void>
-  onLiveUsageChanged(handler: (usage: LiveUsageSummaryPayload) => void): Promise<() => void>
   onChecksReportChanged(handler: () => void): Promise<() => void>
   onSessionsInvalidated(handler: () => void): Promise<() => void>
   onSessionEntryChanged(handler: () => void): Promise<() => void>
@@ -43,14 +38,12 @@ export interface MainOverviewAdapter {
 
 const productionAdapter: MainOverviewAdapter = {
   getUsage: () => getProviderUsage(),
-  getLiveUsage: () => getLiveUsage(),
   getAllowanceUsage: () => getAllowanceUsage(),
   getChecksReport: (consumerId) => getChecksReport(consumerId),
   cancelChecksReport: (consumerId) => cancelChecksReport(consumerId),
   listRecentSessions: () => listRecentSessions(),
   getVisible: () => getMainWindowVisible(),
   onVisible: (handler) => onMainWindowVisibilityChanged(handler),
-  onLiveUsageChanged: (handler) => onLiveUsageChanged(handler),
   onChecksReportChanged: (handler) => onChecksReportChanged(handler),
   onSessionsInvalidated: (handler) => onSessionsInvalidated(handler),
   onSessionEntryChanged: (handler) => onSessionEntryChanged(() => handler()),
@@ -72,7 +65,6 @@ export interface MainOverviewSnapshot {
   /** True when the newest local usage read failed and nothing replaced it. */
   usageError: boolean
   /** The provider limit snapshot, or null before the first successful read. */
-  liveUsage: LiveUsageSummaryPayload | null
   /** Utilization and overage for each account, or null before the first
    *  successful read. */
   allowance: AllowanceUsageSummaryPayload | null
@@ -110,7 +102,6 @@ export class MainOverviewSession {
     active: false,
     usage: null,
     usageError: false,
-    liveUsage: null,
     allowance: null,
     report: null,
     recentSessions: null,
@@ -183,12 +174,6 @@ export class MainOverviewSession {
       ),
       this.listen(
         generation,
-        this.adapter.onLiveUsageChanged((liveUsage) => {
-          if (generation === this.generation && this.snapshot.active) this.update({ liveUsage })
-        }),
-      ),
-      this.listen(
-        generation,
         this.adapter.onChecksReportChanged(whenCurrent(this.refreshReport)),
       ),
       this.listen(generation, this.adapter.onSessionsInvalidated(whenCurrent(this.refresh))),
@@ -241,8 +226,7 @@ export class MainOverviewSession {
       const work = this.workVersion
       const version = this.refreshVersion
       this.update({ loading: !this.snapshot.usage, refreshing: !!this.snapshot.usage })
-      void this.loadLiveUsage(work, version)
-      void this.loadAllowance(work, ++this.allowanceVersion)
+      void void this.loadAllowance(work, ++this.allowanceVersion)
       this.refreshReport()
       this.refreshRecentSessions()
       try {
@@ -254,22 +238,6 @@ export class MainOverviewSession {
           this.update({ loading: false, refreshing: false, usageError: true })
         }
       }
-    }
-  }
-
-  private async loadLiveUsage(work: number, version: number): Promise<void> {
-    try {
-      const liveUsage = await this.adapter.getLiveUsage()
-      if (
-        work === this.workVersion &&
-        version === this.refreshVersion &&
-        this.snapshot.active
-      ) {
-        this.update({ liveUsage })
-      }
-    } catch {
-      // The limits panel shows its own empty state. A failed read must not
-      // hide the local totals.
     }
   }
 

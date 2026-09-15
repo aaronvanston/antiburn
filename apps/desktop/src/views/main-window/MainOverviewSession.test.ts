@@ -4,7 +4,6 @@ import type { ChecksReportPayload } from "../../lib/insightsIpc"
 import type { ActivityEntryPayload } from "../../lib/ipc"
 import type {
   AllowanceUsageSummaryPayload,
-  LiveUsageSummaryPayload,
   ProviderUsageSummaryPayload,
 } from "../../lib/providerUsageIpc"
 import { MainOverviewSession, type MainOverviewAdapter } from "./MainOverviewSession"
@@ -13,13 +12,6 @@ const usage = (generatedAt: string): ProviderUsageSummaryPayload => ({
   providers: [],
   days: [],
   previousDays: [],
-  generatedAt,
-})
-
-const liveUsage = (generatedAt: string): LiveUsageSummaryPayload => ({
-  providers: [],
-  errors: [],
-  meters: [],
   generatedAt,
 })
 
@@ -66,12 +58,10 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
   let visible: (value: boolean) => void = () => undefined
   let scanFinished: () => void = () => undefined
   let invalidated: () => void = () => undefined
-  let liveChanged: (value: LiveUsageSummaryPayload) => void = () => undefined
   let reportChanged: () => void = () => undefined
   let entryChanged: () => void = () => undefined
   const adapter: MainOverviewAdapter = {
     getUsage: vi.fn().mockResolvedValue(usage("first")),
-    getLiveUsage: vi.fn().mockResolvedValue(liveUsage("live-first")),
     getAllowanceUsage: vi.fn().mockResolvedValue(allowance("allowance-first")),
     getChecksReport: vi.fn().mockResolvedValue(report(0)),
     cancelChecksReport: vi.fn().mockResolvedValue(undefined),
@@ -86,10 +76,6 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
     getVisible: vi.fn().mockResolvedValue(visibleInitially),
     onVisible: vi.fn(async (handler) => {
       visible = handler
-      return vi.fn()
-    }),
-    onLiveUsageChanged: vi.fn(async (handler) => {
-      liveChanged = handler
       return vi.fn()
     }),
     onChecksReportChanged: vi.fn(async (handler) => {
@@ -117,7 +103,6 @@ function setup(visibleInitially = true, overrides: Partial<MainOverviewAdapter> 
     setVisible: (value: boolean) => visible(value),
     scanFinished: () => scanFinished(),
     invalidated: () => invalidated(),
-    liveChanged: (value: LiveUsageSummaryPayload) => liveChanged(value),
     reportChanged: () => reportChanged(),
     entryChanged: () => entryChanged(),
   }
@@ -137,7 +122,6 @@ describe("MainOverviewSession", () => {
     const stopActive = session.subscribe(() => undefined)
     await vi.waitFor(() => expect(adapter.getUsage).toHaveBeenCalledOnce())
     await vi.waitFor(() => expect(session.getSnapshot().usage?.generatedAt).toBe("first"))
-    expect(session.getSnapshot().liveUsage?.generatedAt).toBe("live-first")
     setVisible(false)
     expect(session.getSnapshot().active).toBe(false)
     stopActive()
@@ -193,23 +177,19 @@ describe("MainOverviewSession", () => {
     stop()
   })
 
-  it("rejects a hidden read's result and takes pushed live usage only while active", async () => {
+  it("rejects a hidden read's result", async () => {
     const pending = deferred<ProviderUsageSummaryPayload>()
-    const { adapter, session, setVisible, liveChanged } = setup()
+    const { adapter, session, setVisible } = setup()
     sessions.push(session)
     const stop = session.subscribe(() => undefined)
     await vi.waitFor(() => expect(session.getSnapshot().usage).not.toBeNull())
     vi.mocked(adapter.getUsage).mockReturnValueOnce(pending.promise)
     session.refresh()
     setVisible(false)
-    liveChanged(liveUsage("live-hidden"))
     pending.resolve(usage("hidden"))
     await Promise.resolve()
     expect(session.getSnapshot().usage?.generatedAt).toBe("first")
-    expect(session.getSnapshot().liveUsage?.generatedAt).toBe("live-first")
     setVisible(true)
-    liveChanged(liveUsage("live-pushed"))
-    expect(session.getSnapshot().liveUsage?.generatedAt).toBe("live-pushed")
     await vi.waitFor(() => expect(adapter.getUsage).toHaveBeenCalledTimes(3))
     stop()
   })

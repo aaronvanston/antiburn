@@ -5,24 +5,22 @@ import { isMacOS } from "../../lib/platform"
 import type { SessionListEntry } from "../../components/session/SessionList"
 import { ScrollPane } from "../../components/ui/ScrollPane"
 import { type MainOverviewSession } from "./MainOverviewSession"
-import { OverviewProviderLimits } from "./overview/OverviewProviderLimits"
 import { OverviewRecentSessions } from "./overview/OverviewRecentSessions"
-import { OverviewAllowanceChart } from "./overview/OverviewAllowanceChart"
-import { OverviewSpendChart } from "./overview/OverviewSpendChart"
-import { allowanceAccounts } from "./overview/overviewAllowance"
-import { OverviewUsageTotals, type OverviewMetric } from "./overview/OverviewUsageTotals"
+import { OverviewUsage, type OverviewMetric } from "./overview/OverviewUsage"
 
 import "./overview/overview.css"
 
 /**
- * The main window's landing section: the usage totals in the unit the page
- * reads in, then one card with the recent sessions beside the provider
- * limits card, and the daily chart along the bottom, where it takes any
- * height the window has to spare. The Sessions panel is a summary; its
- * control leaves for the full section.
+ * The main window's landing section: the usage block, which is the unit
+ * control over the daily chart and the totals it summarizes, and then the
+ * recent sessions card. The chart takes any height the window has to spare.
+ * The Sessions panel is a summary; its control leaves for the full section.
  *
- * The page holds the unit. The totals and the chart both read it, so the
+ * The page holds the unit. The chart and the totals both read it, so the
  * page can never show dollars in one place and allowance in another.
+ *
+ * The live provider limits are not here. They sit in the main window's
+ * sidebar, where every section shows them.
  */
 export function OverviewView({
   active,
@@ -80,39 +78,23 @@ export function OverviewView({
                 Loading Overview.
               </p>
             )}
-            <OverviewUsageTotals
+            <OverviewUsage
               metric={metric}
               onMetricChange={setMetric}
               totals={usage?.totals ?? null}
+              days={usage?.days ?? []}
+              previousDays={usage?.previousDays ?? []}
               allowance={state.allowance}
               loading={loading}
             />
-            <div className="overview-panels">
-              <div className="overview-stack p-[var(--space-lg)]">
-                <OverviewRecentSessions
-                  entries={state.recentSessions}
-                  loading={loading && !state.recentSessions}
-                  onSelect={onSelectSession}
-                  onOpenAll={onOpenSessions}
-                />
-              </div>
-              <OverviewProviderLimits
-                live={state.liveUsage}
-                loading={loading && !state.liveUsage}
+            <div className="overview-stack p-[var(--space-lg)]">
+              <OverviewRecentSessions
+                entries={state.recentSessions}
+                loading={loading && !state.recentSessions}
+                onSelect={onSelectSession}
+                onOpenAll={onOpenSessions}
               />
             </div>
-            {metric === "cost" ? (
-              <OverviewSpendChart
-                days={usage?.days ?? []}
-                previousDays={usage?.previousDays ?? []}
-                loading={loading}
-              />
-            ) : (
-              <OverviewAllowanceChart
-                accounts={allowanceAccounts(state.allowance)}
-                loading={loading && !state.allowance}
-              />
-            )}
           </div>
         </ScrollPane>
       )}

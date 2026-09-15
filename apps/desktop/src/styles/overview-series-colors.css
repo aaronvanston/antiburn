@@ -32,7 +32,7 @@
 :root,
 :root[data-theme="light"] {
   --color-provider-anthropic-val: hsl(14.7 63% 59.6%); /* Claude coral */
-  --color-provider-openai-val: hsl(240 4% 30%); /* graphite */
+  --color-provider-openai-val: hsl(240 4% 42%); /* graphite */
   --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
   --color-series-2-val: hsl(258.3 89% 66.2%); /* violet */
   --color-series-3-val: hsl(173.4 80% 40%); /* teal */

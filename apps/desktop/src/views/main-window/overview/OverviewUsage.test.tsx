@@ -6,7 +6,7 @@ import type {
   AllowanceUsageSummaryPayload,
   ProviderUsageWindowsPayload,
 } from "../../../lib/providerUsageIpc"
-import { OverviewUsageTotals } from "./OverviewUsageTotals"
+import { OverviewUsage } from "./OverviewUsage"
 
 const TOTALS: ProviderUsageWindowsPayload = {
   today: window_(1.5),
@@ -70,14 +70,16 @@ function summary(
 }
 
 function renderTotals(
-  overrides: Partial<Parameters<typeof OverviewUsageTotals>[0]> = {},
+  overrides: Partial<Parameters<typeof OverviewUsage>[0]> = {},
 ): (next: "cost" | "allowance") => void {
   const onMetricChange = vi.fn()
   render(
-    <OverviewUsageTotals
+    <OverviewUsage
       metric="allowance"
       onMetricChange={onMetricChange}
       totals={TOTALS}
+      days={[]}
+      previousDays={[]}
       allowance={summary()}
       {...overrides}
     />,
@@ -89,13 +91,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe("OverviewUsageTotals", () => {
+describe("OverviewUsage", () => {
   it("shows the spend figures on the cost branch and the meters on the allowance branch", () => {
     const { rerender } = render(
-      <OverviewUsageTotals
+      <OverviewUsage
         metric="cost"
         onMetricChange={vi.fn()}
         totals={TOTALS}
+        days={[]}
+        previousDays={[]}
         allowance={summary()}
       />,
     )
@@ -103,10 +107,12 @@ describe("OverviewUsageTotals", () => {
     expect(screen.queryByRole("region", { name: "Allowance" })).not.toBeInTheDocument()
 
     rerender(
-      <OverviewUsageTotals
+      <OverviewUsage
         metric="allowance"
         onMetricChange={vi.fn()}
         totals={TOTALS}
+        days={[]}
+        previousDays={[]}
         allowance={summary()}
       />,
     )
