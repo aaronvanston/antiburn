@@ -44,21 +44,16 @@ describe("OverviewBurnChecks", () => {
       />,
     )
     const panel = screen.getByRole("region", { name: "Burn checks" })
-    expect(within(panel).getByText("3 findings · 1 passed")).toBeVisible()
-    expect(within(panel).getByText("Less than 1% estimated burn")).toBeVisible()
-    // The gauge shows the burn share, floored to a trace, not the check count.
-    const burnArc = panel.querySelector('[data-segment-id="burn"]')
-    const restArc = panel.querySelector('[data-segment-id="rest"]')
-    expect(burnArc).not.toBeNull()
-    expect(Number(burnArc!.getAttribute("data-arc-angle"))).toBeLessThan(
-      Number(restArc!.getAttribute("data-arc-angle")) / 50,
-    )
+    // The rows are the whole panel: no dial, no headline, no burn estimate.
+    expect(within(panel).queryByText(/estimated burn/i)).toBeNull()
+    expect(within(panel).queryByText(/findings · /)).toBeNull()
+    expect(panel.querySelector("svg[data-segment-id], [data-segment-id]")).toBeNull()
     const rows = within(panel).getAllByRole("listitem")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Excess cache rehydration4 sessions")
     expect(rows[1]).toHaveTextContent("Unused MCP servers12 sessions")
-    fireEvent.click(within(panel).getByRole("button", { name: /^Open Burn checks/ }))
-    fireEvent.click(within(rows[0]!).getByRole("button"))
+    // Every row still opens the full section.
+    for (const row of rows) fireEvent.click(within(row).getByRole("button"))
     expect(onOpen).toHaveBeenCalledTimes(2)
   })
 
@@ -70,7 +65,6 @@ describe("OverviewBurnChecks", () => {
       />,
     )
     const panel = screen.getByRole("region", { name: "Burn checks" })
-    expect(within(panel).getByText("All 2 checks passed")).toBeVisible()
     expect(within(panel).getByText("Nothing to review right now.")).toBeVisible()
     expect(within(panel).queryByRole("list")).toBeNull()
   })
@@ -86,7 +80,6 @@ describe("OverviewBurnChecks", () => {
       />,
     )
     const panel = screen.getByRole("region", { name: "Burn checks" })
-    expect(within(panel).getByText("Assessing sessions")).toBeVisible()
     expect(within(panel).getByText("Results appear when the scan finishes.")).toBeVisible()
     expect(within(panel).queryByText(/0 findings|passed/)).toBeNull()
   })
@@ -96,5 +89,6 @@ describe("OverviewBurnChecks", () => {
     const panel = screen.getByRole("region", { name: "Burn checks" })
     expect(panel).toHaveAttribute("aria-busy", "true")
     expect(within(panel).queryByText(/finding|passed|Assessing/)).toBeNull()
+    expect(within(panel).queryByRole("button")).toBeNull()
   })
 })
