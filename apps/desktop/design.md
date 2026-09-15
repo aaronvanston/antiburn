@@ -250,18 +250,24 @@ colors:
   mark-compaction: # a compaction mark, lit; the brand tint in both themes
     light: "hsl(17.6 100% 58.6%)"
     dark: "hsl(17.6 100% 58.6%)"
-  series-1: # Overview account series, first: the deep blue of a reading, lifted on dark
-    light: "hsl(201.5 100% 34.9%)"
-    dark: "hsl(201.6 77% 62.5%)"
-  series-2: # Overview account series, second: graphite, the label ink hue; inverted on dark
+  provider-anthropic: # Anthropic's Claude coral, which draws the Claude account
+    light: "hsl(14.7 63% 59.6%)"
+    dark: "hsl(14.7 63% 59.6%)"
+  provider-openai: # OpenAI's graphite, which draws the Codex account; inverted on dark
     light: "hsl(240 4% 30%)"
     dark: "hsl(240 12% 78%)"
-  series-3: # Overview account series, third: the violet of the output series
+  series-1: # Overview fallback series, first: the deep blue of a reading, lifted on dark
+    light: "hsl(201.5 100% 34.9%)"
+    dark: "hsl(201.6 77% 62.5%)"
+  series-2: # Overview fallback series, second: the violet of the output series
     light: "hsl(258.3 89% 66.2%)"
     dark: "hsl(258 89% 69.8%)"
-  series-4: # Overview account series, fourth: the teal of real work
+  series-3: # Overview fallback series, third: the teal of real work
     light: "hsl(173.4 80% 40%)"
     dark: "hsl(173.5 78% 46.4%)"
+  series-4: # Overview fallback series, fourth: pink, the hue furthest from the three before it
+    light: "hsl(330.3 81% 60.3%)"
+    dark: "hsl(330.6 82% 64.5%)"
   measure: # the reading itself: the real-work run and the cost-scale measure; a calm blue
     light: "hsl(191.5 83% 36.8%)"
     dark: "hsl(192 63% 47.6%)"
@@ -654,11 +660,13 @@ Notes for what isn't expressible as a token:
   startup context and large in absolute terms. `waste-warn` is its own token because `brand` is
   too dark on the light surface to read as orange beside that red. Everything else stays greyscale
   until the pointer names a layer. The Overview allowance chart draws every provider account on
-  one percent scale, so there color names an account: the `series-1` to `series-4` tokens hand out
-  the product's own colors in order, the deep blue of a reading and then the graphite of the
-  label ink, which differ in chroma and not only in hue: a neutral carries no hue to confuse,
-  so no common type of color vision deficiency collapses the pair. A fifth account repeats the first color, because a repeat is
-  honest and an invented fifth hue is not separable. A block keeps the system red and its own
+  one percent scale, so there color names an account: a provider draws in its own brand color,
+  the Claude coral and the OpenAI graphite, so the color names the account before the legend
+  does. The pair differs in chroma and not only in hue: a neutral carries no hue to confuse, so
+  no common type of color vision deficiency collapses it. The `series-1` to `series-4` tokens are
+  the fallback, for a provider with no brand color here and for the second and later accounts of
+  one provider. A further account repeats a fallback color, because a repeat is honest and an
+  invented hue is not separable. A block keeps the system red and its own
   shape, a dot over the bar ringed in the window surface, so it never depends on hue alone and
   never sinks into the bar beneath it. The wide Cost tab is a query
   container, and its burn checks answer their own pane width. Each check is a card, which is what

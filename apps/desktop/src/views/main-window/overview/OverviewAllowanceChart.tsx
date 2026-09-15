@@ -27,11 +27,22 @@ import {
 import "./overview.css"
 
 /**
- * The colors one chart gives its accounts, in the order it hands them out.
+ * The color each provider draws in, where antiburn knows its brand color.
  *
- * The set is Okabe-Ito, which stays separable for every common type of color
- * vision deficiency. A fifth account repeats the first color, because a
- * repeat is honest and an invented fifth hue is not separable.
+ * A reader knows a provider by its own color before any legend states it.
+ */
+const PROVIDER_COLORS: Record<string, string> = {
+  anthropic: "bg-provider-anthropic text-provider-anthropic",
+  openai: "bg-provider-openai text-provider-openai",
+}
+
+/**
+ * The colors for a provider with no brand color, in the order they go out.
+ *
+ * They also draw the second and later accounts of one provider, which cannot
+ * share the one brand color and still name an account. A further account
+ * repeats a color, because a repeat is honest and an invented hue is not
+ * separable.
  */
 const SERIES_COLORS = [
   "bg-series-1 text-series-1",
@@ -40,9 +51,18 @@ const SERIES_COLORS = [
   "bg-series-4 text-series-4",
 ]
 
-/** The color for one account, by its place in the chart. */
-function seriesColor(index: number): string {
-  return SERIES_COLORS[index % SERIES_COLORS.length]!
+/** The color for each charted account, in chart order. */
+function accountColors(accounts: ReadonlyArray<AllowanceUsageAccountPayload>): string[] {
+  const taken = new Set<string>()
+  let next = 0
+  return accounts.map((account) => {
+    const brand = PROVIDER_COLORS[account.provider]
+    if (brand && !taken.has(account.provider)) {
+      taken.add(account.provider)
+      return brand
+    }
+    return SERIES_COLORS[next++ % SERIES_COLORS.length]!
+  })
 }
 
 /** The figures beside the guides: points of the allowance, in percent. */
@@ -145,6 +165,7 @@ export function OverviewAllowanceChart({
   }
 
   const series = charted.map(daysByDate)
+  const colors = accountColors(charted)
   const lastIndex = dates.length - 1
   const foundFocus = focusDate == null ? -1 : dates.indexOf(focusDate)
   const focusIndex = foundFocus >= 0 ? foundFocus : lastIndex
@@ -184,7 +205,7 @@ export function OverviewAllowanceChart({
         <div className="overview-chart-body">
           <div className="overview-plot">
             <div className="relative h-full">
-              <AccountLegend accounts={charted} />
+              <AccountLegend accounts={charted} colors={colors} />
               <Guides />
               <div
                 role="group"
@@ -227,7 +248,7 @@ export function OverviewAllowanceChart({
                               <Bar
                                 fraction={geometry.fraction}
                                 outline={geometry.outline}
-                                className={seriesColor(accountIndex)}
+                                className={colors[accountIndex] ?? ""}
                               />
                             </span>
                           )
@@ -250,8 +271,10 @@ export function OverviewAllowanceChart({
 /** The key: which color draws which account, and what a red mark means. */
 function AccountLegend({
   accounts,
+  colors,
 }: {
   accounts: ReadonlyArray<AllowanceUsageAccountPayload>
+  colors: ReadonlyArray<string>
 }) {
   return (
     <p className="overview-legend type-caption flex items-center gap-[var(--space-md)] text-label-secondary">
@@ -262,7 +285,7 @@ function AccountLegend({
         >
           <span
             aria-hidden="true"
-            className={`h-2 w-2 rounded-small ${seriesColor(index).split(" ")[0]}`}
+            className={`h-2 w-2 rounded-small ${colors[index]?.split(" ")[0] ?? ""}`}
           />
           {account.displayName}
         </span>

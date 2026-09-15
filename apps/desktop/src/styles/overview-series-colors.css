@@ -3,26 +3,25 @@
 
    One color for each provider account charted on the Overview.
 
-   The colors come from the palettes the app already draws with: the deep
-   blue of a reading, the graphite of the label ink, the violet of the
-   output series, and the teal of real work. A chart that borrows the
-   product's own colors reads as part of the product.
+   A provider antiburn knows draws in its own brand color, so the chart
+   names an account with the color the reader already knows it by. Anthropic
+   takes the Claude coral and OpenAI takes the graphite of its own mark.
 
-   Color names an account here and nothing else. The order hands out the
-   most separable pair first, so a reader with two accounts gets the blue
-   and the graphite. They differ in chroma and not only in hue: a neutral
-   carries no hue to confuse with another, so no type of color vision
-   deficiency collapses the pair. The violet and the teal follow, each a
-   long way in hue from the colors before it.
+   The numbered series are the fallback: they draw a provider with no brand
+   color here, and the second and later accounts of one provider, which
+   cannot share the one brand color and still name an account. The order
+   hands out the most separable pair first.
 
-   A fifth account repeats the first color. A repeat is honest; an invented
-   fifth hue does not stay separable.
+   A further account repeats a fallback color. A repeat is honest; an
+   invented hue does not stay separable.
 
    Every token is presentation only: nothing here knows which account it
    draws. Tailwind v4 processes `@theme` in any file the build imports.
    ========================================================================== */
 
 @theme {
+  --color-provider-anthropic: var(--color-provider-anthropic-val);
+  --color-provider-openai: var(--color-provider-openai-val);
   --color-series-1: var(--color-series-1-val);
   --color-series-2: var(--color-series-2-val);
   --color-series-3: var(--color-series-3-val);
@@ -32,10 +31,12 @@
 /* --- Light (default and explicit) --- */
 :root,
 :root[data-theme="light"] {
+  --color-provider-anthropic-val: hsl(14.7 63% 59.6%); /* Claude coral */
+  --color-provider-openai-val: hsl(240 4% 30%); /* graphite */
   --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
-  --color-series-2-val: hsl(240 4% 30%); /* graphite, the label ink hue */
-  --color-series-3-val: hsl(258.3 89% 66.2%); /* violet */
-  --color-series-4-val: hsl(173.4 80% 40%); /* teal */
+  --color-series-2-val: hsl(258.3 89% 66.2%); /* violet */
+  --color-series-3-val: hsl(173.4 80% 40%); /* teal */
+  --color-series-4-val: hsl(330.3 81% 60.3%); /* pink */
 }
 
 /* --- Dark ---
@@ -44,16 +45,20 @@
    written separately, mirroring how tokens.css duplicates its dark palette. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-series-1-val: hsl(201.6 77% 62.5%); /* deep blue, lifted for the dark surface */
-    --color-series-2-val: hsl(240 12% 78%); /* graphite, inverted for the dark surface */
-    --color-series-3-val: hsl(258 89% 69.8%); /* violet */
-    --color-series-4-val: hsl(173.5 78% 46.4%); /* teal */
+    --color-provider-anthropic-val: hsl(14.7 63% 59.6%); /* Claude coral, the same in both */
+    --color-provider-openai-val: hsl(240 12% 78%); /* graphite, inverted for the dark surface */
+    --color-series-1-val: hsl(201.6 77% 62.5%); /* deep blue, lifted */
+    --color-series-2-val: hsl(258 89% 69.8%); /* violet */
+    --color-series-3-val: hsl(173.5 78% 46.4%); /* teal */
+    --color-series-4-val: hsl(330.6 82% 64.5%); /* pink */
   }
 }
 
 :root[data-theme="dark"] {
+  --color-provider-anthropic-val: hsl(14.7 63% 59.6%);
+  --color-provider-openai-val: hsl(240 12% 78%);
   --color-series-1-val: hsl(201.6 77% 62.5%);
-  --color-series-2-val: hsl(240 12% 78%);
-  --color-series-3-val: hsl(258 89% 69.8%);
-  --color-series-4-val: hsl(173.5 78% 46.4%);
+  --color-series-2-val: hsl(258 89% 69.8%);
+  --color-series-3-val: hsl(173.5 78% 46.4%);
+  --color-series-4-val: hsl(330.6 82% 64.5%);
 }
