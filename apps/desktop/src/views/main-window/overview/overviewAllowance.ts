@@ -1,4 +1,5 @@
 import type {
+  AllowanceOveragePayload,
   AllowanceUsageAccountPayload,
   AllowanceUsageSummaryPayload,
   AllowanceUtilizationPayload,
@@ -68,29 +69,40 @@ export function utilizationCaption(utilization: AllowanceUtilizationPayload): st
   return `typical to peak of ${periods}`
 }
 
-/** The overage hero figure: how many times the provider said no. */
-export function blockFigure(blockCount: number): string {
-  return `${blockCount}`
+/** The figure for a number antiburn does not hold. It is not a zero. */
+const UNKNOWN_FIGURE = "\u2014"
+
+/**
+ * The overage hero figure: the time the reader waited on the provider.
+ *
+ * A block that states no usable reset contributes no time. When no block
+ * states one, the wait is unknown and the figure says so. A zero there would
+ * claim the reader waited no time, which is a different and false claim.
+ */
+export function blockedFigure(overage: AllowanceOveragePayload): string {
+  if (overage.blockCount === 0) return "0h"
+  if (overage.waitedSeconds <= 0) return UNKNOWN_FIGURE
+  const hours = overage.waitedSeconds / SECONDS_PER_HOUR
+  if (hours < 1) return `${Math.max(1, Math.round(overage.waitedSeconds / 60))}m`
+  return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`
 }
 
-/** What the overage figure counts, over the span it covers. */
-export function blockCaption(blockCount: number, spanDays: number): string {
-  const blocks = blockCount === 1 ? "block" : "blocks"
-  return `${blocks} in ${spanDays} days`
+/** How many blocks the wait above covers, over the span it covers. */
+export function blockedCaption(overage: AllowanceOveragePayload, spanDays: number): string {
+  const blocks = overage.blockCount === 1 ? "block" : "blocks"
+  return `${overage.blockCount} ${blocks} in ${spanDays} days`
 }
 
 /**
- * The waiting a set of blocks cost, or null when no block states a reset.
+ * The blocks that state no reset, or null when every block states one.
  *
- * A block that states no usable reset is counted and contributes no time.
- * Reporting the wait as zero would say the reader waited no time, which is
- * a different and false claim.
+ * The wait above covers only the blocks that state a reset. This note tells
+ * the reader how many blocks the figure leaves out.
  */
-export function waitLabel(waitedSeconds: number): string | null {
-  if (waitedSeconds <= 0) return null
-  const hours = waitedSeconds / SECONDS_PER_HOUR
-  if (hours < 1) return `${Math.max(1, Math.round(waitedSeconds / 60))}m waiting`
-  return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h waiting`
+export function blockedNote(overage: AllowanceOveragePayload): string | null {
+  if (overage.blocksWithoutWait === 0) return null
+  if (overage.blocksWithoutWait === overage.blockCount) return "no stated reset"
+  return `${overage.blocksWithoutWait} with no stated reset`
 }
 
 /**

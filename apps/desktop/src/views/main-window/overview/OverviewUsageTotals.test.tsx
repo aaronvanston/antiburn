@@ -129,10 +129,31 @@ describe("OverviewUsageTotals", () => {
     expect(within(cell).getByText("Busiest week")).toBeInTheDocument()
     expect(within(cell).getByText("40-62%")).toBeInTheDocument()
     expect(within(cell).getByText("typical to peak of 9 weeks")).toBeInTheDocument()
-    expect(within(cell).getByText("8")).toBeInTheDocument()
-    expect(within(cell).getByText(/blocks in 30 days/)).toBeInTheDocument()
-    expect(within(cell).getByText(/11h waiting/)).toBeInTheDocument()
+    expect(within(cell).getByText("11h")).toBeInTheDocument()
+    expect(within(cell).getByText(/8 blocks in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()
+  })
+
+  it("states an unknown wait, not zero, when no block states a reset", () => {
+    // Codex refuses without naming a reset. The blocks still happened, so the
+    // count stays and only the wait is unknown.
+    renderTotals({
+      allowance: summary([
+        account({
+          overage: {
+            blockCount: 1,
+            waitedSeconds: 0,
+            blocksWithoutWait: 1,
+            lastBlockAt: "2026-09-11T00:00:00Z",
+          },
+        }),
+      ]),
+    })
+    const cell = screen.getByRole("region", { name: "Allowance" })
+
+    expect(within(cell).getByText("\u2014")).toBeInTheDocument()
+    expect(within(cell).getByText(/1 block in 30 days/)).toBeInTheDocument()
+    expect(within(cell).getByText(/no stated reset/)).toBeInTheDocument()
   })
 
   it("shows no utilization figure for an account with no meter history", () => {
@@ -142,7 +163,7 @@ describe("OverviewUsageTotals", () => {
     const cell = screen.getByRole("region", { name: "Allowance" })
 
     expect(within(cell).queryByText(/Busiest/)).not.toBeInTheDocument()
-    expect(within(cell).getByText("8")).toBeInTheDocument()
+    expect(within(cell).getByText("11h")).toBeInTheDocument()
   })
 
   it("says the readings have not arrived rather than showing an empty meter", () => {

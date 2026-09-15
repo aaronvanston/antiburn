@@ -260,7 +260,7 @@
    Overview allowance totals.
 
    One cell for each provider account. Inside a cell the utilization figure
-   and the block count sit side by side, because the two answer different
+   and the time blocked sit side by side, because the two answer different
    questions about the same account. The cells stack at the same width the
    spend totals stack at.
    ========================================================================== */

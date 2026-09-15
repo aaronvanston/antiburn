@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest"
 
 import type {
+  AllowanceOveragePayload,
   AllowanceUsageAccountPayload,
   AllowanceUsageSummaryPayload,
   AllowanceUtilizationPayload,
 } from "../../../lib/providerUsageIpc"
 import {
   allowanceAccounts,
-  blockCaption,
+  blockedCaption,
+  blockedFigure,
+  blockedNote,
   causeLine,
   hasAllowanceFigures,
   utilizationCaption,
   utilizationFigure,
   utilizationLabel,
-  waitLabel,
 } from "./overviewAllowance"
 
 function utilization(
@@ -86,21 +88,54 @@ describe("utilizationLabel and utilizationCaption", () => {
   })
 })
 
-describe("blockCaption and waitLabel", () => {
-  it("names the span the block count covers", () => {
-    expect(blockCaption(8, 30)).toBe("blocks in 30 days")
-    expect(blockCaption(1, 30)).toBe("block in 30 days")
-  })
+function overage(overrides: Partial<AllowanceOveragePayload> = {}): AllowanceOveragePayload {
+  return {
+    blockCount: 2,
+    waitedSeconds: 8220,
+    blocksWithoutWait: 0,
+    lastBlockAt: "2026-09-14T03:43:00Z",
+    ...overrides,
+  }
+}
 
+describe("blockedFigure", () => {
   it("reads a long wait in hours and a short one in minutes", () => {
-    expect(waitLabel(8220)).toBe("2.3h waiting")
-    expect(waitLabel(2700)).toBe("45m waiting")
+    expect(blockedFigure(overage())).toBe("2.3h")
+    expect(blockedFigure(overage({ waitedSeconds: 2700 }))).toBe("45m")
+    expect(blockedFigure(overage({ blockCount: 12, waitedSeconds: 39_960 }))).toBe("11h")
   })
 
-  it("states no wait at all rather than zero hours", () => {
+  it("states an unknown wait rather than zero hours", () => {
     // A block that reports no usable reset is counted and adds no time.
-    // "0h waiting" would claim the reader waited no time, which is false.
-    expect(waitLabel(0)).toBeNull()
+    // "0h" would claim the reader waited no time, which is false.
+    expect(
+      blockedFigure(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
+    ).toBe("\u2014")
+  })
+
+  it("states zero hours for an account no provider blocked", () => {
+    // No block is a fact the provider states, not a gap in the evidence.
+    expect(blockedFigure(overage({ blockCount: 0, waitedSeconds: 0 }))).toBe("0h")
+  })
+})
+
+describe("blockedCaption and blockedNote", () => {
+  it("names the span the block count covers", () => {
+    expect(blockedCaption(overage(), 30)).toBe("2 blocks in 30 days")
+    expect(blockedCaption(overage({ blockCount: 1 }), 30)).toBe("1 block in 30 days")
+  })
+
+  it("says nothing when every block states a reset", () => {
+    expect(blockedNote(overage())).toBeNull()
+  })
+
+  it("names the blocks the wait leaves out", () => {
+    expect(blockedNote(overage({ blockCount: 3, blocksWithoutWait: 1 }))).toBe(
+      "1 with no stated reset",
+    )
+    expect(
+      blockedNote(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
+    ).toBe("no stated reset")
   })
 })
 

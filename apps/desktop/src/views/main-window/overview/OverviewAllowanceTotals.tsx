@@ -1,12 +1,12 @@
 import type { AllowanceUsageAccountPayload } from "../../../lib/providerUsageIpc"
 import {
-  blockCaption,
-  blockFigure,
+  blockedCaption,
+  blockedFigure,
+  blockedNote,
   causeLine,
   utilizationCaption,
   utilizationFigure,
   utilizationLabel,
-  waitLabel,
 } from "./overviewAllowance"
 
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
@@ -20,8 +20,8 @@ import "./overview.css"
  *
  * Utilization is supply consumed and overage is demand refused. The meter
  * stops at 100%, so a reader who is blocked at noon and a reader who
- * finished their day both read the same meter. Only the block count tells
- * them apart, which is why the two figures sit side by side.
+ * finished their day both read the same meter. Only the blocks tell them
+ * apart, which is why the two figures sit side by side.
  *
  * An account with no meter history shows no utilization figure. A gap is
  * never drawn as a zero.
@@ -77,7 +77,7 @@ function AllowanceAccount({
   spanDays: number
 }) {
   const utilization = account.utilization
-  const wait = waitLabel(account.overage.waitedSeconds)
+  const note = blockedNote(account.overage)
   const cause = causeLine(account.burst)
   return (
     <div className="overview-allowance-account min-w-0 border-separator">
@@ -99,14 +99,14 @@ function AllowanceAccount({
         <div className="min-w-0">
           <dt className="type-caption text-label-tertiary">Blocked</dt>
           <dd className="type-hero-figure mt-[var(--space-xs)] whitespace-nowrap font-mono text-measure">
-            <SegmentFigure>{blockFigure(account.overage.blockCount)}</SegmentFigure>
+            <SegmentFigure>{blockedFigure(account.overage)}</SegmentFigure>
           </dd>
           <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
-            {blockCaption(account.overage.blockCount, spanDays)}
-            {wait && (
+            {blockedCaption(account.overage, spanDays)}
+            {note && (
               <>
                 <span aria-hidden="true"> · </span>
-                {wait}
+                {note}
               </>
             )}
           </dd>
