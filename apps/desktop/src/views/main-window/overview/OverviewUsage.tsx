@@ -17,21 +17,21 @@ export type OverviewMetric = "cost" | "allowance"
 
 const METRICS: ReadonlyArray<{ value: OverviewMetric; label: string }> = [
   { value: "cost", label: "Cost" },
-  { value: "allowance", label: "Allowance" },
+  { value: "allowance", label: "Subscription" },
 ]
 
 /**
  * The Overview's usage block, in one of two units.
  *
- * Cost states what the local sessions would cost at list price. Allowance
- * states how much of each subscription the provider's own meter reports,
- * and how often the provider refused a request. A subscriber pays one price
- * whatever the token count, so the dollar figure answers a question they do
- * not have.
+ * Cost states what the local sessions would cost at list price.
+ * Subscription states how much of each plan the provider's own meter
+ * reports, and how often the provider refused a request. A subscriber pays
+ * one price whatever the token count, so the dollar figure answers a
+ * question they do not have.
  *
- * The unit control sits centered over the chart and the figures together,
- * because it changes both. A control at one edge would read as the control
- * of the block it sits nearest.
+ * The unit control sits at the top right, over the figures and the chart
+ * together, because it changes both. It reads as the control of the block
+ * under it, which is what it is.
  *
  * The figures come first and the chart follows them. The figures answer
  * "where do I stand" in one line, which is the first question. The chart
@@ -65,7 +65,7 @@ export function OverviewUsage({
         onChange={onMetricChange}
         ariaLabel="Usage unit"
         variant="text-tabs"
-        className="self-center"
+        className="self-end"
       />
       {metric === "cost" ? (
         <>
