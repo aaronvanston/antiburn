@@ -10,6 +10,7 @@
 //! around them belongs to the views — so these payloads carry values and facts,
 //! never labels.
 
+use crate::provider_usage::live::{Detection, LoginCarrier, SourceErrorDetail};
 use antiburn_local::analysis::{
     ActiveSessionsSummary, EfficiencyTotals, EvidenceValue, FAST_SPEED_KEY, ModelRun,
     ProviderIncidentKind, QuotaLimitKind, RepeatedContextAccounting, SessionCost, SessionEvidence,
@@ -2520,6 +2521,8 @@ pub struct LiveUsageSourceError {
     pub display_name: String,
     /// `authentication`, `rateLimited`, `schema`, or `unavailable`.
     pub category: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<SourceErrorDetail>,
 }
 
 /// One provider antiburn can meter, and whether the reader shows it.
@@ -2536,6 +2539,15 @@ pub struct LiveUsageMeter {
     pub display_name: String,
     /// False when the reader turned this meter off.
     pub shown: bool,
+    #[serde(default)]
+    pub detection: Detection,
+    /// Where the login was found, when a carrier was. Kept through the
+    /// `signedIn` upgrade so the note can name the tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<LoginCarrier>,
+    /// `carrier`'s display name, so the views never restate the enum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier_label: Option<String>,
 }
 
 /// Live provider usage, as one snapshot.
@@ -2566,6 +2578,74 @@ pub struct LiveUsageSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_live_errors_round_trip_without_a_detail_field() {
+        let json = serde_json::json!({
+            "source": "fixture", "provider": "anthropic", "displayName": "Claude", "category": "unavailable"
+        });
+        let error: LiveUsageSourceError = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(error.detail, None);
+        assert_eq!(serde_json::to_value(error).unwrap(), json);
+    }
+
+    #[test]
+    fn live_error_details_use_closed_camel_case_values() {
+        for (detail, wire, provider, category) in [
+            (
+                SourceErrorDetail::KeychainUnreadable,
+                "keychainUnreadable",
+                "anthropic",
+                "unavailable",
+            ),
+            (
+                SourceErrorDetail::RefreshUnsupported,
+                "refreshUnsupported",
+                "google",
+                "authentication",
+            ),
+        ] {
+            let json = serde_json::json!({
+                "source": "fixture", "provider": provider, "displayName": "Fixture",
+                "category": category, "detail": wire
+            });
+            let error: LiveUsageSourceError = serde_json::from_value(json.clone()).unwrap();
+            assert_eq!(error.detail, Some(detail));
+            assert_eq!(serde_json::to_value(error).unwrap(), json);
+        }
+    }
+
+    #[test]
+    fn a_legacy_live_meter_round_trips_with_unknown_detection() {
+        let meter: LiveUsageMeter = serde_json::from_value(serde_json::json!({
+            "provider": "anthropic", "displayName": "Claude", "shown": true
+        }))
+        .unwrap();
+        assert_eq!(meter.detection, Detection::Unknown);
+        let json = serde_json::to_value(&meter).unwrap();
+        assert_eq!(json["detection"], "unknown");
+        assert_eq!(
+            serde_json::from_value::<LiveUsageMeter>(json).unwrap(),
+            meter
+        );
+    }
+
+    #[test]
+    fn live_detection_uses_camel_case_wire_values() {
+        for (detection, wire) in [
+            (Detection::Unknown, "unknown"),
+            (Detection::NotInstalled, "notInstalled"),
+            (Detection::InstalledNotSignedIn, "installedNotSignedIn"),
+            (Detection::SignedIn, "signedIn"),
+        ] {
+            let json = serde_json::to_value(detection).unwrap();
+            assert_eq!(json, wire);
+            assert_eq!(
+                serde_json::from_value::<Detection>(json).unwrap(),
+                detection
+            );
+        }
+    }
 
     mod insights {
         use std::collections::{BTreeMap, BTreeSet};

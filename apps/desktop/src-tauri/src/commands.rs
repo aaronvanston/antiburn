@@ -1122,7 +1122,7 @@ pub(crate) fn session_limit_allocations(
 /// `max_age` takes back over (see `usage_alerts::BACKGROUND_MAX_AGE`).
 const POPOVER_LIVE_USAGE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(50);
 
-/// Return the last provider limit snapshot without reading a provider.
+/// Return cached limits and update inactive provider detection on a blocking thread.
 ///
 /// This remains separate from [`get_provider_usage`]. That payload carries no
 /// percentage, allowance, or reset anywhere, and a test proves it by
@@ -1137,9 +1137,25 @@ pub async fn get_live_usage(
     app: tauri::AppHandle,
     _utc_offset_minutes: Option<i32>,
 ) -> CommandResult<LiveUsageSummary> {
-    run_blocking(move || Ok(cached_live_usage(&app))).await
+    run_blocking(move || {
+        // With live usage off no collection pass runs, so this is the one
+        // place detection advances for the roster. Metadata-only here: the
+        // reader has not opted in.
+        let active = app
+            .try_state::<Store>()
+            .and_then(|store| store.settings().ok())
+            .is_some_and(|settings| settings.live_usage_active());
+        if !active && let Some(live) = app.try_state::<crate::usage_alerts::LiveUsage>() {
+            let detection = provider_usage::live::detect_all(&live.sources, false);
+            live.store_detection(detection);
+        }
+        Ok(cached_live_usage(&app))
+    })
+    .await
 }
 
+/// Keep this reader cache-only because synchronous popover IPC calls it.
+/// Never read provider metadata or start subprocesses here.
 pub(crate) fn cached_live_usage(app: &tauri::AppHandle) -> LiveUsageSummary {
     let settings = app
         .try_state::<Store>()
@@ -1157,7 +1173,9 @@ pub(crate) fn cached_live_usage(app: &tauri::AppHandle) -> LiveUsageSummary {
             .unwrap_or_default();
         return LiveUsageSummary {
             meters: live
-                .map(|live| provider_usage::live::roster(&live.sources, &hidden))
+                .map(|live| {
+                    provider_usage::live::roster(&live.sources, &hidden, &live.detection_snapshot())
+                })
                 .unwrap_or_default(),
             ..LiveUsageSummary::default()
         };
