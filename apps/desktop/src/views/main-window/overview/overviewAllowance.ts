@@ -96,13 +96,14 @@ export function blockedFigure(overage: AllowanceOveragePayload): string {
 /**
  * What the figure above counts, over the span it covers.
  *
- * The caption states the count when the figure states a wait. When the
- * figure is already the count, the caption gives it its noun instead.
+ * The caption carries the whole sentence, because no label sits over the
+ * figure. It names the wait when the figure states one, and gives the
+ * figure its noun when the figure is already the count.
  */
 export function blockedCaption(overage: AllowanceOveragePayload, spanDays: number): string {
   const blocks = overage.blockCount === 1 ? "block" : "blocks"
   const span = `${blocks} in ${spanDays} days`
-  return statesWait(overage) ? `${overage.blockCount} ${span}` : span
+  return statesWait(overage) ? `waiting on ${overage.blockCount} ${span}` : span
 }
 
 /**

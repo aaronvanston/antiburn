@@ -25,6 +25,10 @@ import "./overview.css"
  *
  * An account with no meter history shows no utilization figure. A gap is
  * never drawn as a zero.
+ *
+ * Each caption names what the figure over it measures, so a label above the
+ * figure would say the same thing twice. The label stays for a screen
+ * reader, which needs a term for each figure in the list.
  */
 export function OverviewAllowanceTotals({
   accounts,
@@ -85,10 +89,8 @@ function AllowanceAccount({
       <dl className="overview-allowance-pair mt-[var(--space-sm)]">
         {utilization && (
           <div className="min-w-0">
-            <dt className="type-caption text-label-tertiary">
-              {utilizationLabel(utilization)}
-            </dt>
-            <dd className="type-hero-figure mt-[var(--space-xs)] whitespace-nowrap font-mono text-measure">
+            <dt className="sr-only">{utilizationLabel(utilization)}</dt>
+            <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
               <SegmentFigure>{utilizationFigure(utilization)}</SegmentFigure>
             </dd>
             <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
@@ -97,8 +99,8 @@ function AllowanceAccount({
           </div>
         )}
         <div className="min-w-0">
-          <dt className="type-caption text-label-tertiary">Blocked</dt>
-          <dd className="type-hero-figure mt-[var(--space-xs)] whitespace-nowrap font-mono text-measure">
+          <dt className="sr-only">Blocked</dt>
+          <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
             <SegmentFigure>{blockedFigure(account.overage)}</SegmentFigure>
           </dd>
           <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">

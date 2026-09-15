@@ -116,9 +116,9 @@ describe("blockedFigure", () => {
 })
 
 describe("blockedCaption and blockedNote", () => {
-  it("names the span, and the count the wait covers", () => {
-    expect(blockedCaption(overage(), 30)).toBe("2 blocks in 30 days")
-    expect(blockedCaption(overage({ blockCount: 1 }), 30)).toBe("1 block in 30 days")
+  it("names the wait, and the blocks it covers, over the span", () => {
+    expect(blockedCaption(overage(), 30)).toBe("waiting on 2 blocks in 30 days")
+    expect(blockedCaption(overage({ blockCount: 1 }), 30)).toBe("waiting on 1 block in 30 days")
   })
 
   it("leaves the count to the figure when the figure is the count", () => {
