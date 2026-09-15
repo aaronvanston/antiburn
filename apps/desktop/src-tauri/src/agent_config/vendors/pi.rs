@@ -241,6 +241,7 @@ impl VendorConfig for Pi {
         ))
     }
 
+    #[cfg(not(windows))]
     fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
         match setting {
             ConfigSetting::Model => "defaultProvider+defaultModel",

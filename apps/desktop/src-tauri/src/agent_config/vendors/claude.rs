@@ -250,6 +250,7 @@ impl VendorConfig for Claude {
         ))
     }
 
+    #[cfg(not(windows))]
     fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
         match setting {
             ConfigSetting::Model => "model",

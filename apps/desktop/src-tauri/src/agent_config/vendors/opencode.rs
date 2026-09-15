@@ -268,6 +268,7 @@ impl VendorConfig for OpenCode {
         ))
     }
 
+    #[cfg(not(windows))]
     fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
         match setting {
             ConfigSetting::Model => "model",
