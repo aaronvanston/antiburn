@@ -219,6 +219,16 @@ impl VendorConfig for Codex {
         ))
     }
 
+    fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
+        match setting {
+            ConfigSetting::Model => "model",
+            ConfigSetting::Reasoning => "model_reasoning_effort",
+            ConfigSetting::Compaction => "model_auto_compact_token_limit",
+            ConfigSetting::FastMode => "service_tier",
+            _ => "standalone",
+        }
+    }
+
     fn read_value(
         &self,
         bytes: &[u8],

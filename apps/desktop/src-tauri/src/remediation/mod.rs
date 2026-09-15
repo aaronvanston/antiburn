@@ -954,6 +954,28 @@ impl RemediationController {
             .config
             .as_ref()
             .ok_or(ControllerError::TargetChanged)?;
+        if prepared.creates_file() {
+            let selector_qualifier = physical_selector_qualifier(
+                &self.editor,
+                &config.context,
+                prepared.physical_identity().1,
+            );
+            let current_key = physical_key(
+                store,
+                target.agent,
+                prepared.physical_identity(),
+                selector_qualifier.as_deref(),
+            )
+            .map_err(|_| ControllerError::Internal)?;
+            if prepared.setting() != config.operation.setting
+                || prepared.scope()
+                    != scope_from_name(&target.scope_kind).ok_or(ControllerError::TargetChanged)?
+                || current_key != config.physical_key
+            {
+                return Err(ControllerError::Conflict);
+            }
+            return Ok(());
+        }
         let effective = self
             .editor
             .effective_for_value(

@@ -413,6 +413,74 @@ fn built_in_tool_rejects_broad_or_undocumented_controls() {
 }
 
 #[cfg(not(windows))]
+#[test]
+fn claude_built_in_tool_creates_an_exact_global_deny_rule() {
+    let (_temporary, home, project) = roots();
+    let operation = ConfigOperation {
+        setting: ConfigSetting::BuiltInTool,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "WebSearch".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "WebSearch".into(),
+            value: "false".into(),
+        },
+    };
+    let editor = AgentConfigEditor::new();
+    let prepared = editor
+        .prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, &home, Some(project)),
+            &operation,
+        )
+        .unwrap();
+
+    editor.apply(&prepared).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
+        "{\n  \"permissions\": {\n    \"deny\": [\n      \"WebSearch\"\n    ]\n  }\n}"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_built_in_tool_adds_a_deny_list_to_existing_settings() {
+    let (_temporary, home, project) = roots();
+    write(
+        &home.join(".claude/settings.json"),
+        r#"{"model":"claude-sonnet-5"}"#,
+    );
+    let operation = ConfigOperation {
+        setting: ConfigSetting::BuiltInTool,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "WebSearch".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "WebSearch".into(),
+            value: "false".into(),
+        },
+    };
+    let editor = AgentConfigEditor::new();
+    let prepared = editor
+        .prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, &home, Some(project)),
+            &operation,
+        )
+        .unwrap();
+
+    editor.apply(&prepared).unwrap();
+
+    assert!(
+        fs::read_to_string(home.join(".claude/settings.json"))
+            .unwrap()
+            .replace([' ', '\n'], "")
+            .contains(r#""permissions":{"deny":["WebSearch"]}"#)
+    );
+}
+
+#[cfg(not(windows))]
 fn operation(setting: ConfigSetting, expected: &str, proposed: &str) -> ConfigOperation {
     ConfigOperation {
         setting,
@@ -657,6 +725,148 @@ fn missing_global_model_configs_are_created_for_each_supported_vendor() {
                 .unwrap()
                 .value,
             proposed
+        );
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn missing_global_configs_are_created_for_each_supported_auto_fix() {
+    struct Case {
+        agent: AgentKind,
+        setting: ConfigSetting,
+        expected: ConfigOperationValue,
+        proposed: ConfigOperationValue,
+        relative_path: &'static str,
+        expected_content: &'static str,
+    }
+
+    let cases = [
+        Case {
+            agent: AgentKind::Claude,
+            setting: ConfigSetting::Model,
+            expected: "old".into(),
+            proposed: "new".into(),
+            relative_path: ".claude/settings.json",
+            expected_content: "\"model\": \"new\"",
+        },
+        Case {
+            agent: AgentKind::Claude,
+            setting: ConfigSetting::Reasoning,
+            expected: "high".into(),
+            proposed: "medium".into(),
+            relative_path: ".claude/settings.json",
+            expected_content: "\"effortLevel\": \"medium\"",
+        },
+        Case {
+            agent: AgentKind::Claude,
+            setting: ConfigSetting::FastMode,
+            expected: "fast".into(),
+            proposed: "standard".into(),
+            relative_path: ".claude/settings.json",
+            expected_content: "\"fastMode\": false",
+        },
+        Case {
+            agent: AgentKind::Claude,
+            setting: ConfigSetting::BuiltInTool,
+            expected: ConfigOperationValue::MapEntry {
+                key: "WebSearch".into(),
+                value: "true".into(),
+            },
+            proposed: ConfigOperationValue::MapEntry {
+                key: "WebSearch".into(),
+                value: "false".into(),
+            },
+            relative_path: ".claude/settings.json",
+            expected_content: "\"WebSearch\"",
+        },
+        Case {
+            agent: AgentKind::Codex,
+            setting: ConfigSetting::Model,
+            expected: "old".into(),
+            proposed: "new".into(),
+            relative_path: ".codex/config.toml",
+            expected_content: "model = \"new\"",
+        },
+        Case {
+            agent: AgentKind::Codex,
+            setting: ConfigSetting::Reasoning,
+            expected: "high".into(),
+            proposed: "medium".into(),
+            relative_path: ".codex/config.toml",
+            expected_content: "model_reasoning_effort = \"medium\"",
+        },
+        Case {
+            agent: AgentKind::Codex,
+            setting: ConfigSetting::Compaction,
+            expected: ConfigOperationValue::Number(300_000),
+            proposed: ConfigOperationValue::Number(200_000),
+            relative_path: ".codex/config.toml",
+            expected_content: "model_auto_compact_token_limit = \"200000\"",
+        },
+        Case {
+            agent: AgentKind::Codex,
+            setting: ConfigSetting::FastMode,
+            expected: "fast".into(),
+            proposed: "standard".into(),
+            relative_path: ".codex/config.toml",
+            expected_content: "service_tier = \"standard\"",
+        },
+        Case {
+            agent: AgentKind::OpenCode,
+            setting: ConfigSetting::Model,
+            expected: "provider/old".into(),
+            proposed: "provider/new".into(),
+            relative_path: ".config/opencode/opencode.json",
+            expected_content: "\"model\": \"provider/new\"",
+        },
+        Case {
+            agent: AgentKind::Pi,
+            setting: ConfigSetting::Model,
+            expected: "provider/old".into(),
+            proposed: "provider/new".into(),
+            relative_path: ".pi/agent/settings.json",
+            expected_content: "\"defaultModel\": \"new\"",
+        },
+        Case {
+            agent: AgentKind::Pi,
+            setting: ConfigSetting::Reasoning,
+            expected: "high".into(),
+            proposed: "medium".into(),
+            relative_path: ".pi/agent/settings.json",
+            expected_content: "\"defaultThinkingLevel\": \"medium\"",
+        },
+    ];
+
+    for case in cases {
+        let (_temporary, home, project) = roots();
+        let editor = AgentConfigEditor::new();
+        let prepared = editor
+            .prepare_operation(
+                &ConfigContext::native(case.agent, &home, Some(project)),
+                &ConfigOperation {
+                    setting: case.setting,
+                    expected_value: case.expected,
+                    proposed_value: case.proposed,
+                },
+            )
+            .unwrap_or_else(|error| panic!("{:?} {:?}: {error:?}", case.agent, case.setting));
+        assert!(
+            prepared.changes.is_empty(),
+            "{:?} {:?}",
+            case.agent,
+            case.setting
+        );
+
+        editor.apply(&prepared).unwrap();
+
+        assert!(
+            fs::read_to_string(home.join(case.relative_path))
+                .unwrap()
+                .contains(case.expected_content),
+            "{:?} {:?}",
+            case.agent,
+            case.setting
         );
     }
 }

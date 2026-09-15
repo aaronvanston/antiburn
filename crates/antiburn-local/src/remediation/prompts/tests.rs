@@ -113,16 +113,38 @@ fn every_detector_has_an_actionable_bounded_fallback_prompt() {
         let prompt = fallback_remediation_prompt(detector).unwrap();
         assert!(prompt.as_str().len() <= MAX_PROMPT_BYTES);
         assert!(prompt.as_str().contains("Failed check\n"));
-        assert!(prompt.as_str().contains("Practical objective\n"));
-        assert!(prompt.as_str().contains("Safe inspection steps\n"));
+        assert!(prompt.as_str().contains("Goal\n"));
+        assert!(prompt.as_str().contains("What to inspect\n"));
+        assert!(prompt.as_str().contains("Before you apply a change\n"));
         assert!(
             prompt
                 .as_str()
                 .contains("representative local session evidence")
         );
         assert!(prompt.as_str().contains("effective configuration"));
-        assert!(prompt.as_str().contains("before proposing changes"));
+        assert!(prompt.as_str().contains("Before you apply a change"));
         assert!(!prompt.as_str().contains("Remediation reference:"));
+    }
+}
+
+#[test]
+fn finding_prompts_have_clear_human_readable_sections() {
+    for cause in causes() {
+        let prompt = build_prompt(AgentKind::Claude, SourceFormat::ClaudeJsonl, &cause).unwrap();
+        for heading in [
+            "Finding\n",
+            "Evidence\n",
+            "Limit\n",
+            "What to do\n",
+            "How to verify\n",
+        ] {
+            assert!(prompt.as_str().contains(heading), "missing {heading}");
+        }
+        assert!(
+            prompt
+                .as_str()
+                .contains("Show the proposed edit before you apply it.")
+        );
     }
 }
 

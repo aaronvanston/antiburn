@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed, Flame, LoaderCircle } from "lucide-react"
+import { CheckCircle2, CircleDashed, Flame } from "lucide-react"
 import { useCallback, useId, useState } from "react"
 
 import { cn } from "../../../lib/cn"
@@ -302,20 +302,6 @@ export function BurnChecksReport({
                 />
               )}
               {hero.summary}
-            </p>
-          )}
-          {report.pendingEvidence > 0 && (
-            <p
-              className="mt-2 flex items-center gap-1.5 type-body text-label-tertiary"
-              role="status"
-            >
-              <LoaderCircle
-                size={12}
-                strokeWidth={2}
-                className="animate-spin"
-                aria-hidden="true"
-              />
-              {`${report.pendingEvidence} session${report.pendingEvidence === 1 ? "" : "s"} processing`}
             </p>
           )}
         </div>

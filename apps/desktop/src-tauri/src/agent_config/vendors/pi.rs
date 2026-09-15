@@ -240,6 +240,14 @@ impl VendorConfig for Pi {
         ))
     }
 
+    fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
+        match setting {
+            ConfigSetting::Model => "defaultProvider+defaultModel",
+            ConfigSetting::Reasoning => "defaultThinkingLevel",
+            _ => "standalone",
+        }
+    }
+
     fn read_value(
         &self,
         bytes: &[u8],

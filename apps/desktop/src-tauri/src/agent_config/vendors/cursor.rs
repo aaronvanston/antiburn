@@ -129,6 +129,13 @@ impl VendorConfig for Cursor {
         ))
     }
 
+    fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
+        match setting {
+            ConfigSetting::Model => "model",
+            _ => "standalone",
+        }
+    }
+
     fn read_value(
         &self,
         bytes: &[u8],

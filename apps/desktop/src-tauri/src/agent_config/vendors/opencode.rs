@@ -267,6 +267,14 @@ impl VendorConfig for OpenCode {
         ))
     }
 
+    fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
+        match setting {
+            ConfigSetting::Model => "model",
+            ConfigSetting::Compaction => "compaction.auto",
+            _ => "standalone",
+        }
+    }
+
     fn read_value(
         &self,
         bytes: &[u8],

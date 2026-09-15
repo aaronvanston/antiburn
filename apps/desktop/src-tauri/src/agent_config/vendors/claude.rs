@@ -233,6 +233,13 @@ impl VendorConfig for Claude {
         let value = match setting {
             ConfigSetting::Model => serde_json::json!({ "model": proposed }),
             ConfigSetting::Reasoning => serde_json::json!({ "effortLevel": proposed }),
+            ConfigSetting::FastMode => serde_json::json!({ "fastMode": proposed == "fast" }),
+            ConfigSetting::BuiltInTool => {
+                let name = proposed
+                    .strip_suffix("=false")
+                    .ok_or(ConfigUnavailableReason::InvalidTarget)?;
+                serde_json::json!({ "permissions": { "deny": [name] } })
+            }
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         };
         Ok((
@@ -240,6 +247,16 @@ impl VendorConfig for Claude {
             serde_json::to_vec_pretty(&value)
                 .map_err(|_| ConfigUnavailableReason::MalformedConfig)?,
         ))
+    }
+
+    fn standalone_selector(&self, setting: ConfigSetting) -> &'static str {
+        match setting {
+            ConfigSetting::Model => "model",
+            ConfigSetting::Reasoning => "effortLevel",
+            ConfigSetting::FastMode => "fastMode",
+            ConfigSetting::BuiltInTool => "permissions.deny.<tool>",
+            _ => "standalone",
+        }
     }
 
     fn read_value(
@@ -398,11 +415,15 @@ impl VendorConfig for Claude {
                 let root = root
                     .as_object_mut()
                     .ok_or(ConfigUnavailableReason::MalformedConfig)?;
-                let deny = root
-                    .get_mut("permissions")
-                    .and_then(Value::as_object_mut)
-                    .and_then(|permissions| permissions.get_mut("deny"))
-                    .and_then(Value::as_array_mut)
+                let permissions = root
+                    .entry("permissions")
+                    .or_insert_with(|| Value::Object(Default::default()))
+                    .as_object_mut()
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                let deny = permissions
+                    .entry("deny")
+                    .or_insert_with(|| Value::Array(Vec::new()))
+                    .as_array_mut()
                     .ok_or(ConfigUnavailableReason::MissingTarget)?;
                 if deny.iter().any(|value| value.as_str() == Some(name)) {
                     return Err(ConfigUnavailableReason::CurrentValueMismatch);
@@ -490,18 +511,17 @@ impl Claude {
                 continue;
             }
             let document = parse_strict(&read_checked(&path, root)?.bytes)?;
-            if claude_deny_list(&document)?.is_some() {
-                return Ok(Target {
-                    path,
-                    safety_root: root.to_owned(),
-                    scope: if root == home {
-                        ConfigScope::Global
-                    } else {
-                        ConfigScope::Project
-                    },
-                    operation: OperationSelector::NamedClaudeBuiltInTool(name.to_owned()),
-                });
-            }
+            claude_deny_list(&document)?;
+            return Ok(Target {
+                path,
+                safety_root: root.to_owned(),
+                scope: if root == home {
+                    ConfigScope::Global
+                } else {
+                    ConfigScope::Project
+                },
+                operation: OperationSelector::NamedClaudeBuiltInTool(name.to_owned()),
+            });
         }
         Err(ConfigUnavailableReason::MissingTarget)
     }
@@ -586,7 +606,7 @@ fn claude_built_in_tool_value(
     name: &str,
 ) -> Result<Option<String>, ConfigUnavailableReason> {
     let Some(deny) = claude_deny_list(document)? else {
-        return Ok(None);
+        return Ok(Some(format!("{name}=true")));
     };
     Ok(Some(format!(
         "{name}={}",

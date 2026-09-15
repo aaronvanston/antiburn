@@ -8,8 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(windows))]
 use super::config::{ApplyConflict, ApplyError, ApplyReadbackError};
 use super::config::{
-    ConfigChange, ConfigContext, ConfigOperation, ConfigSetting, ConfigUnavailableReason,
-    EffectiveConfig, PreparedChange, PreparedOperation,
+    ConfigChange, ConfigContext, ConfigOperation, ConfigScope, ConfigSetting,
+    ConfigUnavailableReason, EffectiveConfig, PreparedChange, PreparedOperation,
 };
 use super::filesystem::{canonical_root, read_checked};
 #[cfg(not(windows))]
@@ -118,15 +118,15 @@ impl AgentConfigEditor {
                 ConfigUnavailableReason::MissingConfig | ConfigUnavailableReason::MissingTarget,
             ) if !matches!(
                 operation.setting,
-                ConfigSetting::SubagentModel
-                    | ConfigSetting::McpServer
-                    | ConfigSetting::BuiltInTool
-                    | ConfigSetting::Skill
+                ConfigSetting::SubagentModel | ConfigSetting::McpServer | ConfigSetting::Skill
             ) =>
             {
                 let (path, bytes) =
                     vendor.standalone_global(operation.setting, &home, &proposed)?;
                 creations.push(super::config::PreparedCreation {
+                    setting: operation.setting,
+                    selector: vendor.standalone_selector(operation.setting),
+                    scope: ConfigScope::Global,
                     safety_root: home.clone(),
                     path,
                     bytes,

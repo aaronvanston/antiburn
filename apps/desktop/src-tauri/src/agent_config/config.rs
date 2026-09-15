@@ -245,6 +245,9 @@ pub struct PreparedOperation {
 
 #[cfg(not(windows))]
 pub(super) struct PreparedCreation {
+    pub(super) setting: ConfigSetting,
+    pub(super) selector: &'static str,
+    pub(super) scope: ConfigScope,
     pub(super) path: PathBuf,
     pub(super) safety_root: PathBuf,
     pub(super) bytes: Vec<u8>,
@@ -262,8 +265,9 @@ impl fmt::Debug for PreparedOperation {
 }
 
 impl PreparedOperation {
+    #[cfg(test)]
     pub(crate) fn primary(&self) -> &PreparedChange {
-        // The first change is the publication-attributed target when available.
+        // Existing-file operations keep the first change as their primary target.
         &self.changes[0]
     }
 
@@ -292,15 +296,43 @@ impl PreparedOperation {
     }
 
     pub(crate) fn physical_identity(&self) -> (&Path, &'static str) {
-        self.primary().physical_identity()
+        if let Some(change) = self.changes.first() {
+            return change.physical_identity();
+        }
+        #[cfg(not(windows))]
+        {
+            let creation = &self.creations[0];
+            (&creation.path, creation.selector)
+        }
+        #[cfg(windows)]
+        unreachable!("a Windows operation always has a file change")
     }
 
     pub(crate) fn scope(&self) -> ConfigScope {
-        self.primary().scope()
+        if let Some(change) = self.changes.first() {
+            return change.scope();
+        }
+        #[cfg(not(windows))]
+        return self.creations[0].scope;
+        #[cfg(windows)]
+        unreachable!("a Windows operation always has a file change")
     }
 
     pub(crate) fn setting(&self) -> ConfigSetting {
-        self.primary().setting()
+        if let Some(change) = self.changes.first() {
+            return change.setting();
+        }
+        #[cfg(not(windows))]
+        return self.creations[0].setting;
+        #[cfg(windows)]
+        unreachable!("a Windows operation always has a file change")
+    }
+
+    pub(crate) fn creates_file(&self) -> bool {
+        #[cfg(not(windows))]
+        return self.changes.is_empty() && !self.creations.is_empty();
+        #[cfg(windows)]
+        return false;
     }
 }
 

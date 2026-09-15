@@ -139,6 +139,10 @@ pub(super) trait VendorConfig: Sync {
         Err(ConfigUnavailableReason::MissingConfig)
     }
 
+    fn standalone_selector(&self, _setting: ConfigSetting) -> &'static str {
+        "standalone"
+    }
+
     fn read_value(
         &self,
         _bytes: &[u8],
