@@ -23,10 +23,8 @@ colors:
   # Hue uses at most one decimal. Saturation and lightness use at most two decimals.
   # Alpha uses at most three decimals. Remove trailing zeros. Achromatic colors use hue 0.
   # name → Tailwind utility via bg-/text-/border-<name>
-  # Both values are the explicit [data-theme="light"|"dark"] palettes.
-  # A `# @media <theme>: <value>` note states the system-preference value where it
-  # differs. The drift check reads those notes: a difference it cannot find a note
-  # for is a failure, and so is a note that no longer differs.
+  # System selects the same palette as explicit Light or Dark from the OS preference.
+  # The drift check requires the system and explicit palette values to match.
   surface: # the menu-bar popover, which sits on the window material
     light: "hsl(0 0% 100% / 0.85)" # reduced-transparency: hsl(0 0% 100%)
     dark: "hsl(0 0% 11.7% / 0.92)"
@@ -50,10 +48,10 @@ colors:
     dark: "hsl(0 0% 100% / 0.03)"
   surface-hover: # stays clear of surface-selected, so a hover never reads as a selection
     light: "hsl(0 0% 0% / 0.04)"
-    dark: "hsl(0 0% 100% / 0.04)" # @media dark: hsl(0 0% 100% / 0.07)
+    dark: "hsl(0 0% 100% / 0.04)"
   surface-window: # standard decorated window
-    light: "hsl(0 0% 96.4%)" # @media light: hsl(0 0% 96.4% / 0.8)
-    dark: "hsl(0 0% 12.5%)" # @media dark: hsl(0 0% 15.6% / 0.8)
+    light: "hsl(0 0% 96.4%)"
+    dark: "hsl(0 0% 12.5%)"
   surface-sidebar: # source-list / sidebar material
     light: "hsl(0 0% 0% / 0.03)"
     dark: "hsl(0 0% 100% / 0.04)"
@@ -61,8 +59,8 @@ colors:
     light: "hsl(0 0% 0% / 0.09)"
     dark: "hsl(0 0% 100% / 0.14)"
   input-fill:
-    light: "hsl(0 0% 100%)" # @media light: hsl(0 0% 100% / 0.5)
-    dark: "hsl(240 1.6% 23%)" # @media dark: hsl(0 0% 100% / 0.08)
+    light: "hsl(0 0% 100%)"
+    dark: "hsl(240 1.6% 23%)"
   label: # live system label token where available
     light: "hsl(0 0% 0% / 0.85)"
     dark: "hsl(0 0% 100% / 0.92)"
@@ -440,6 +438,9 @@ components:
 
 The token reference is the YAML front matter above. Light and Dark live in one file:
 every `colors` entry carries both values, and only those values differ between themes.
+System follows changes to the OS appearance and uses the same Light or Dark palette,
+including its opacity and native system colours. Reduced transparency applies equally
+to System and the corresponding explicit theme.
 Notes for what isn't expressible as a token:
 
 - **Popover spend summary** — one shared `surface-card` card uses `rounded-control`,
