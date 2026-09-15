@@ -1721,6 +1721,7 @@ impl Store {
         tx.execute("DELETE FROM provider_limit_factor_sample", [])?;
         tx.execute("DELETE FROM provider_limit_factor_point", [])?;
         tx.execute("DELETE FROM provider_usage_observation", [])?;
+        tx.execute("DELETE FROM provider_usage_period_rollup", [])?;
         tx.execute("DELETE FROM provider_usage_period", [])?;
         let sessions = tx.execute("DELETE FROM session", [])?;
         tx.execute("DELETE FROM provider_account_seen", [])?;

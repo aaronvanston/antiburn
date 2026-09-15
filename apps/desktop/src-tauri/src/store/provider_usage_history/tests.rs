@@ -470,13 +470,14 @@ mod history_tests {
         assert_eq!(remaining, 0);
     }
 
-    /// Retention used to keep an orphaned period alive whenever a
-    /// materialized allocation row or a dirty-queue entry still pointed at
-    /// it. Both checks are gone with the allocator; a period with no
-    /// remaining observations must still disappear on its own.
+    /// Retention keeps a period whose readings have expired, because its
+    /// rollup is the only record of the peak the reader reached inside it.
+    ///
+    /// The allocation-era exemptions are gone. A materialized allocation row
+    /// and a dirty-queue entry no longer hold a period alive. The rollup is
+    /// the one exemption that remains.
     #[test]
-    fn retention_deletes_an_orphaned_period_and_its_observations_after_the_allocation_checks_are_gone()
-     {
+    fn retention_keeps_an_expired_period_for_its_rollup() {
         let store = store();
         let old = snapshot(
             ACCOUNT_A,
@@ -507,7 +508,101 @@ mod history_tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert!(!period_exists, "an orphaned period is deleted, not kept");
+        assert!(
+            period_exists,
+            "a period with a rollup outlives its readings"
+        );
+        drop(connection);
+
+        let rollups = store.provider_usage_period_rollups(0, 10).unwrap();
+        assert_eq!(rollups.len(), 1);
+        assert_eq!(rollups[0].period_id, period_id);
+        assert_eq!(rollups[0].peak_used_percent, Some(10.0));
+        assert_eq!(rollups[0].observation_count, 1);
+    }
+
+    #[test]
+    fn a_rollup_states_the_peak_the_last_figure_and_the_refusal_count() {
+        let store = store();
+        let start = NOW - 18_000;
+        let low = snapshot(
+            ACCOUNT_A,
+            start,
+            "five-hour",
+            Some(start),
+            Some(NOW),
+            Some(20.0),
+        );
+        let mut peak = snapshot(
+            ACCOUNT_A,
+            start + 600,
+            "five-hour",
+            Some(start),
+            Some(NOW),
+            Some(100.0),
+        );
+        peak.refusal_kind = Some("usage_limit_reached".to_string());
+        let last = snapshot(
+            ACCOUNT_A,
+            start + 1_200,
+            "five-hour",
+            Some(start),
+            Some(NOW),
+            Some(65.0),
+        );
+
+        let changed = store
+            .record_provider_usage_snapshots(&[low, peak, last])
+            .unwrap();
+        assert_eq!(changed.len(), 1);
+
+        let rollups = store.provider_usage_period_rollups(0, 10).unwrap();
+        assert_eq!(rollups.len(), 1);
+        let rollup = &rollups[0];
+        assert_eq!(rollup.period_id, changed[0]);
+        assert_eq!(rollup.peak_used_percent, Some(100.0));
+        assert_eq!(rollup.last_used_percent, Some(65.0));
+        assert_eq!(rollup.observation_count, 3);
+        assert_eq!(rollup.refusal_count, 1);
+        assert_eq!(rollup.starts_at_epoch, Some(start));
+        assert_eq!(rollup.resets_at_epoch, Some(NOW));
+    }
+
+    /// A reading that arrives after retention pruned the earlier ones must
+    /// not lower the peak the period already reached.
+    #[test]
+    fn a_later_reading_never_lowers_a_recorded_peak() {
+        let store = store();
+        let start = NOW - 91 * 86_400 - 18_000;
+        let reset = NOW - 91 * 86_400;
+        let peak = snapshot(
+            ACCOUNT_A,
+            start,
+            "five-hour",
+            Some(start),
+            Some(reset),
+            Some(80.0),
+        );
+        let period_id = store.record_provider_usage_snapshots(&[peak]).unwrap()[0];
+        store.apply_session_retention(NOW).unwrap();
+
+        let late = snapshot(
+            ACCOUNT_A,
+            start + 60,
+            "five-hour",
+            Some(start),
+            Some(reset),
+            Some(5.0),
+        );
+        store.record_provider_usage_snapshots(&[late]).unwrap();
+
+        let rollup = store
+            .provider_usage_period_rollups(0, 10)
+            .unwrap()
+            .into_iter()
+            .find(|rollup| rollup.period_id == period_id)
+            .expect("the period keeps its rollup");
+        assert_eq!(rollup.peak_used_percent, Some(80.0));
     }
 
     #[test]

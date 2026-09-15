@@ -13,7 +13,7 @@
 pub const MIGRATIONS: &[&str] = &[
     V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17, V18, V19, V20, V21,
     V22, V23, V24, V25, V26, V27, V28, V29, V30, V31, V32, V33, V34, V35, V36, V37, V38, V39, V40,
-    V41, V42, V43, V44, V45, V46, V47, V48,
+    V41, V42, V43, V44, V45, V46, V47, V48, V49,
 ];
 
 /// v1 — sessions, derived analysis, relations, settings, sources.
@@ -1024,4 +1024,45 @@ ALTER TABLE provider_usage_observation ADD COLUMN refusal_kind TEXT;
 CREATE INDEX provider_usage_observation_refusal
     ON provider_usage_observation (provider, account_key, observed_at_epoch)
     WHERE refusal_kind IS NOT NULL;
+"#;
+
+/// v49 keeps one rollup row for each allowance period.
+///
+/// Utilization is a per-period question: the peak the reader reached inside
+/// each window instance. Retention prunes the raw readings at 90 days, so
+/// the history stops there. One row for each period is small, so the rollup
+/// outlives the readings and the answer covers the full history.
+///
+/// The rollup holds only the figures. The period row keeps the identity, the
+/// start, and the reset, so retention now also keeps a period that has a
+/// rollup.
+const V49: &str = r#"
+CREATE TABLE provider_usage_period_rollup (
+    period_id         INTEGER PRIMARY KEY
+                      REFERENCES provider_usage_period(id),
+    peak_used_percent REAL,
+    last_used_percent REAL,
+    observation_count INTEGER NOT NULL,
+    refusal_count     INTEGER NOT NULL
+) STRICT;
+
+INSERT INTO provider_usage_period_rollup (
+    period_id, peak_used_percent, last_used_percent, observation_count,
+    refusal_count
+)
+SELECT period_id,
+       MAX(used_percent),
+       (
+           SELECT last.used_percent
+             FROM provider_usage_observation AS last
+            WHERE last.period_id = provider_usage_observation.period_id
+              AND last.used_percent IS NOT NULL
+            ORDER BY last.observed_at_epoch DESC
+            LIMIT 1
+       ),
+       COUNT(*),
+       COUNT(refusal_kind)
+  FROM provider_usage_observation
+ WHERE period_id IS NOT NULL
+ GROUP BY period_id;
 "#;
