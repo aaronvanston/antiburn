@@ -82,6 +82,10 @@ impl SessionReader for PiSessionReader {
                 RawSource::Sqlite(_) => {
                     anyhow::bail!("sqlite source must be handled by the sqlite adapter")
                 }
+                RawSource::ClineBundle { .. } => anyhow::bail!("Cline bundle is not a Pi source"),
+                RawSource::KiroCliV2Bundle { .. } => {
+                    anyhow::bail!("Kiro bundle is not a Pi source")
+                }
             };
             sink.finish(state.finish());
             Ok(VisitOutcome::Unvalidated)

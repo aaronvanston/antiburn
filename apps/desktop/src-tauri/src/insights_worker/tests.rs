@@ -336,16 +336,7 @@ fn a_capability_free_source_publishes_as_unsupported() {
     );
 }
 
-/// The widened cohort now enqueues generic-JSONL agents (Copilot, Cline,
-/// Kiro, Amp, Windsurf) alongside the vendors with a dedicated adapter.
-/// Before capabilities_for_vendor was made total, a Published pass with
-/// no evidence (the legacy analyze_sources_with path's shape) made
-/// apply_outcome error, leaving the claim stuck reprocessing forever.
-/// With every vendor streaming through a real `SourceCapabilities`
-/// profile, a generic-agent session must instead complete terminally —
-/// here, `SourceCapabilities::generic()` is all-unset, so no detector is
-/// eligible and the terminal status is `Unsupported`, never a stuck
-/// `Processing` claim or an `apply_outcome` error.
+/// A generic session must complete through the normal terminal path.
 #[tokio::test]
 async fn a_generic_agent_session_completes_terminally_through_process_next() {
     let store = store();
@@ -368,8 +359,8 @@ async fn a_generic_agent_session_completes_terminally_through_process_next() {
     let evidence = store.evidence(&key).unwrap().unwrap();
     assert_eq!(
         evidence.status,
-        EvidenceStatus::Unsupported,
-        "a capability-free source publishes as unsupported, not stuck processing"
+        EvidenceStatus::Ready,
+        "a parsed source publishes ready evidence, not a stuck processing claim"
     );
     assert_ne!(evidence.status, EvidenceStatus::Processing);
 }

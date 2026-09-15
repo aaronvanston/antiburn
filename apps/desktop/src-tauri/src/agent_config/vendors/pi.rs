@@ -17,9 +17,9 @@ impl VendorConfig for Pi {
             ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction => {
                 VendorPolicy::AutomaticEdit
             }
+            ConfigSetting::BuiltInTool => VendorPolicy::AutomaticEdit,
             ConfigSetting::SubagentModel
             | ConfigSetting::McpServer
-            | ConfigSetting::BuiltInTool
             | ConfigSetting::Skill
             | ConfigSetting::FastMode => {
                 VendorPolicy::Unsupported(ConfigUnavailableReason::UnsupportedSetting)
@@ -129,6 +129,49 @@ impl VendorConfig for Pi {
         }
     }
 
+    fn resolve_target_for_value(
+        &self,
+        setting: ConfigSetting,
+        expected: Option<&str>,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        if setting != ConfigSetting::BuiltInTool {
+            return self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root);
+        }
+        let name = expected.ok_or(ConfigUnavailableReason::MissingTarget)?;
+        let global_root = global_root(home)?;
+        let global_path = global_root.join("settings.json");
+        let project_path = workspace_cwd.map(|cwd| cwd.join(".pi/settings.json"));
+        if let (Some(path), Some(root)) = (project_path.as_ref(), trusted_workspace_root)
+            && path_entry_exists(path)?
+            && default_tool_value(&parse_strict(&read_checked(path, root)?.bytes)?, name)?.is_some()
+        {
+            return Ok(target(
+                path,
+                root,
+                ConfigScope::Project,
+                OperationSelector::NamedPiDefaultTool(name.to_owned()),
+            ));
+        }
+        if path_entry_exists(&global_path)?
+            && default_tool_value(
+                &parse_strict(&read_checked(&global_path, &global_root)?.bytes)?,
+                name,
+            )?
+            .is_some()
+        {
+            return Ok(target(
+                &global_path,
+                &global_root,
+                ConfigScope::Global,
+                OperationSelector::NamedPiDefaultTool(name.to_owned()),
+            ));
+        }
+        Err(ConfigUnavailableReason::MissingTarget)
+    }
+
     fn resolve_targets(
         &self,
         setting: ConfigSetting,
@@ -229,6 +272,7 @@ impl VendorConfig for Pi {
                     _ => Err(ConfigUnavailableReason::MalformedConfig),
                 })
                 .transpose(),
+            OperationSelector::NamedPiDefaultTool(name) => default_tool_value(&document, name),
             _ => Err(ConfigUnavailableReason::UnsupportedSetting),
         }
     }
@@ -299,6 +343,24 @@ impl VendorConfig for Pi {
                 }
                 compaction.insert(path[1].into(), value);
             }
+            OperationSelector::NamedPiDefaultTool(name) => {
+                let tools = document
+                    .get_mut("defaultTools")
+                    .and_then(Value::as_array_mut)
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                if tools.iter().any(|tool| !tool.is_string()) {
+                    return Err(ConfigUnavailableReason::MalformedConfig);
+                }
+                let positions = tools
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, tool)| (tool.as_str() == Some(name)).then_some(index))
+                    .collect::<Vec<_>>();
+                if positions.len() != 1 {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                tools.remove(positions[0]);
+            }
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         }
         let mut output = serde_json::to_vec_pretty(&document)
@@ -328,6 +390,29 @@ fn target(path: &Path, root: &Path, scope: ConfigScope, operation: OperationSele
         scope,
         operation,
     }
+}
+
+fn default_tool_value(
+    document: &Value,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    let Some(tools) = document.get("defaultTools") else {
+        return Ok(None);
+    };
+    let tools = tools
+        .as_array()
+        .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+    if tools.iter().any(|tool| !tool.is_string()) {
+        return Err(ConfigUnavailableReason::MalformedConfig);
+    }
+    let matches = tools
+        .iter()
+        .filter(|tool| tool.as_str() == Some(name))
+        .count();
+    if matches > 1 {
+        return Err(ConfigUnavailableReason::MalformedConfig);
+    }
+    Ok(Some(format!("{name}={}", matches == 1)))
 }
 
 fn effective_model(

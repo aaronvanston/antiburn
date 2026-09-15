@@ -127,6 +127,12 @@ impl SessionReader for CodexSessionReader {
                         path.display()
                     )
                 }
+                RawSource::ClineBundle { .. } => {
+                    anyhow::bail!("Cline bundle is not a Codex source")
+                }
+                RawSource::KiroCliV2Bundle { .. } => {
+                    anyhow::bail!("Kiro bundle is not a Codex source")
+                }
             };
             let summary = state.finish(sink);
             sink.finish(summary);

@@ -45,6 +45,15 @@ pub enum ConfigOperationValue {
 }
 
 impl ConfigOperationValue {
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Self::MapEntry { key, .. } => Some(key),
+            Self::Scalar(_) | Self::Boolean(_) | Self::Number(_) | Self::List(_) | Self::Delete => {
+                None
+            }
+        }
+    }
+
     pub fn scalar(&self) -> Option<&str> {
         match self {
             Self::Scalar(value) => Some(value),

@@ -19,6 +19,8 @@ fn input(source: RawSource) -> SessionInput {
             SourceFormat::AntigravityCascadeJson
         }
         RawSource::Jsonl(_) => SourceFormat::AntigravityBrainJsonl,
+        RawSource::ClineBundle { .. } => SourceFormat::Uncharacterized,
+        RawSource::KiroCliV2Bundle { .. } => SourceFormat::Uncharacterized,
     };
     SessionInput {
         agent: "antigravity".into(),

@@ -16,6 +16,55 @@ fn cursor_chat_database_uses_its_own_source_format() {
     );
 }
 
+#[test]
+fn kiro_cli_v2_and_v3_paths_use_separate_source_formats() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let v2_directory = temp.path().join("cli");
+    std::fs::create_dir_all(&v2_directory).unwrap();
+    let v2_path = v2_directory.join("11111111-1111-4111-8111-111111111111.json");
+    std::fs::write(v2_path.with_extension("jsonl"), "").unwrap();
+    let v2 = SessionSource::File(v2_path);
+    assert_eq!(
+        source_format(AgentKind::Kiro, &v2),
+        SourceFormat::KiroCliV2Bundle
+    );
+
+    let directory = temp
+        .path()
+        .join("sess_22222222-2222-4222-8222-222222222222");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join("messages.jsonl"), "").unwrap();
+    let v3 = SessionSource::File(directory.join("session.json"));
+    assert_eq!(
+        source_format(AgentKind::Kiro, &v3),
+        SourceFormat::KiroCliV3Bundle
+    );
+}
+
+#[test]
+fn copilot_cli_events_use_the_v1_cli_source_format() {
+    let source = SessionSource::File(std::path::PathBuf::from(
+        "/Users/test/.copilot/session-state/11111111-1111-4111-8111-111111111111/events.jsonl",
+    ));
+
+    assert_eq!(
+        source_format(AgentKind::Copilot, &source),
+        SourceFormat::CopilotCliJsonl
+    );
+}
+
+#[test]
+fn cline_v1_root_manifest_uses_the_messages_contract_source_format() {
+    let source = SessionSource::File(std::path::PathBuf::from(
+        "/Users/test/.cline/data/sessions/root_1/root_1.json",
+    ));
+
+    assert_eq!(
+        source_format(AgentKind::Cline, &source),
+        SourceFormat::ClineMessagesContractV1
+    );
+}
+
 /// A row store for a test pass that wants published evidence. A pass
 /// without a row store publishes no evidence, so any test that reads
 /// `session.evidence` or `pass.evidence` needs one of these.
@@ -224,7 +273,10 @@ async fn an_opencode_provider_database_stays_native() {
         session_id: "root".to_owned(),
     };
 
-    assert_eq!(raw_source(&source).await, Some(RawSource::Sqlite(path)));
+    assert_eq!(
+        raw_source(AgentKind::OpenCode, &source).await,
+        Some(RawSource::Sqlite(path))
+    );
 }
 
 #[tokio::test]
@@ -236,7 +288,7 @@ async fn a_claimed_antigravity_database_stays_native_and_publishes() {
         session_id: "root".to_owned(),
     };
     assert_eq!(
-        raw_source(&source).await,
+        raw_source(AgentKind::Antigravity, &source).await,
         Some(RawSource::Sqlite(path.clone()))
     );
     let (latest, rows) = Explorers::DISK

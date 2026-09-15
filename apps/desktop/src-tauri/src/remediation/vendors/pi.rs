@@ -83,4 +83,22 @@ mod tests {
             assert_eq!(trusted_workspace(candidate, trusted), expected);
         }
     }
+
+    #[test]
+    fn skill_exclusions_remain_unsupported_without_path_and_array_precedence() {
+        assert_eq!(
+            POLICY.action_support(
+                RemediationAction::AutomaticEdit(ConfigSetting::Skill),
+                SourceFormat::PiV3Jsonl,
+            ),
+            ActionSupport::Unsupported
+        );
+        assert_eq!(
+            POLICY.action_support(
+                RemediationAction::RecoverUncertainWrite(ConfigSetting::Skill),
+                SourceFormat::PiV3Jsonl,
+            ),
+            ActionSupport::Unsupported
+        );
+    }
 }

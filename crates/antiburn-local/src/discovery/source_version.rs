@@ -89,7 +89,7 @@ impl super::Explorers {
                 .fingerprint();
                 let streamability = if matches!(
                     descriptor.agent,
-                    AgentKind::Claude | AgentKind::Codex | AgentKind::Pi
+                    AgentKind::Claude | AgentKind::Codex | AgentKind::Pi | AgentKind::Copilot
                 ) {
                     Streamability::RecordStream
                 } else {

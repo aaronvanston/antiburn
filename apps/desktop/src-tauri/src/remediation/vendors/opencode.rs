@@ -31,9 +31,17 @@ impl VendorRemediationPolicy for OpenCodePolicy {
         ) && matches!(
             action,
             RemediationAction::AutomaticEdit(
-                ConfigSetting::Model | ConfigSetting::Compaction | ConfigSetting::SubagentModel
+                ConfigSetting::Model
+                    | ConfigSetting::Compaction
+                    | ConfigSetting::SubagentModel
+                    | ConfigSetting::McpServer
+                    | ConfigSetting::Skill
             ) | RemediationAction::RecoverUncertainWrite(
-                ConfigSetting::Model | ConfigSetting::Compaction | ConfigSetting::SubagentModel
+                ConfigSetting::Model
+                    | ConfigSetting::Compaction
+                    | ConfigSetting::SubagentModel
+                    | ConfigSetting::McpServer
+                    | ConfigSetting::Skill
             ) | RemediationAction::PublicationAttribution(
                 ConfigSetting::Model | ConfigSetting::Compaction
             )

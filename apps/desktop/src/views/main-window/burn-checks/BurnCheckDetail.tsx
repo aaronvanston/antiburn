@@ -2,6 +2,7 @@ import { Check, Clipboard, Wrench } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 
 import { noteInteraction } from "../../../lib/ipc"
+import { writeClipboardText } from "../../../lib/clipboard"
 import {
   copyPromptFixBurnCheckTargets,
   copyPromptFixBurnCheck,
@@ -79,7 +80,7 @@ function CheckPromptAction({
     setStatus(null)
     let nextPrompt = prompt
     try {
-      if (!nextPrompt) {
+      if (nextPrompt === null) {
         const outcome =
           targets.length === 0
             ? await copyPromptFixBurnCheck(detector)
@@ -104,7 +105,7 @@ function CheckPromptAction({
         }
         nextPrompt = outcome.prompt
       }
-      await navigator.clipboard.writeText(nextPrompt)
+      await writeClipboardText(nextPrompt)
       if (key.current !== startedKey) return
       noteInteraction({ kind: "burnCheckPromptCopied" })
       setPrompt(nextPrompt)
@@ -112,11 +113,17 @@ function CheckPromptAction({
       setBusy(false)
       scheduleCopiedReset(startedKey)
     } catch {
-      if (!nextPrompt) noteInteraction({ kind: "burnCheckPromptPrepared", outcome: "failed" })
+      const preparationFailed = nextPrompt === null
+      if (preparationFailed)
+        noteInteraction({ kind: "burnCheckPromptPrepared", outcome: "failed" })
       if (key.current !== startedKey) return
       setPrompt(nextPrompt)
       setBusy(false)
-      setStatus("Could not copy the prompt. Check clipboard access and try again.")
+      setStatus(
+        preparationFailed
+          ? "Could not prepare the prompt. Try again."
+          : "Could not copy the prompt. Try again.",
+      )
     }
   }
   if (targets.length > 0 && promptTargets.length === 0) return null

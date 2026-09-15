@@ -108,6 +108,311 @@ fn named_subagent_model_rejects_ambiguous_or_unsupported_workers() {
 }
 
 #[cfg(not(windows))]
+#[test]
+fn named_mcp_server_requires_one_enabled_definition_and_reads_back() {
+    let cases = [
+        (
+            AgentKind::Codex,
+            ".codex/config.toml",
+            "[mcp_servers.docs]\nenabled = true\ncommand = \"docs\"\n",
+            "enabled = false",
+        ),
+        (
+            AgentKind::OpenCode,
+            "opencode.json",
+            r#"{"mcp":{"docs":{"enabled":true,"command":"docs"}}}"#,
+            "\"enabled\": false",
+        ),
+    ];
+    for (agent, relative, contents, expected_text) in cases {
+        let (_temporary, home, project) = roots();
+        let path = project.join(relative);
+        write(&path, contents);
+        if agent == AgentKind::Codex {
+            let project_key = project.canonicalize().unwrap();
+            write(
+                &home.join(".codex/config.toml"),
+                &format!(
+                    "[projects.{}]\ntrust_level = \"trusted\"\n",
+                    toml_edit::Value::from(project_key.to_string_lossy().as_ref())
+                ),
+            );
+        }
+        let operation = ConfigOperation {
+            setting: ConfigSetting::McpServer,
+            expected_value: ConfigOperationValue::MapEntry {
+                key: "docs".into(),
+                value: "true".into(),
+            },
+            proposed_value: ConfigOperationValue::MapEntry {
+                key: "docs".into(),
+                value: "false".into(),
+            },
+        };
+        let editor = AgentConfigEditor::new();
+        let context = ConfigContext::native(agent, &home, Some(project));
+        let prepared = editor.prepare_operation(&context, &operation).unwrap();
+        editor.apply(&prepared).unwrap();
+        assert!(fs::read_to_string(path).unwrap().contains(expected_text));
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_mcp_server_adds_only_the_exact_server_deny_rule() {
+    let (_temporary, home, _project) = roots();
+    write(
+        &home.join(".claude.json"),
+        r#"{"mcpServers":{"docs":{"command":"docs"}}}"#,
+    );
+    let path = home.join(".claude/settings.json");
+    write(&path, r#"{"permissions":{"deny":[]},"theme":"dark"}"#);
+    let operation = ConfigOperation {
+        setting: ConfigSetting::McpServer,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "docs".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "docs".into(),
+            value: "false".into(),
+        },
+    };
+    let editor = AgentConfigEditor::new();
+    let prepared = editor
+        .prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, &home, None),
+            &operation,
+        )
+        .unwrap();
+    editor.apply(&prepared).unwrap();
+    let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(
+        document["permissions"]["deny"],
+        serde_json::json!(["mcp__docs__*"])
+    );
+    assert_eq!(document["theme"], "dark");
+}
+
+#[cfg(not(windows))]
+#[test]
+fn named_mcp_server_rejects_duplicate_or_unavailable_vendor_targets() {
+    let (_temporary, home, project) = roots();
+    write(
+        &home.join(".codex/config.toml"),
+        "[mcp_servers.docs]\nenabled = true\n",
+    );
+    write(
+        &project.join(".codex/config.toml"),
+        "[mcp_servers.docs]\nenabled = true\n",
+    );
+    let operation = ConfigOperation {
+        setting: ConfigSetting::McpServer,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "docs".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "docs".into(),
+            value: "false".into(),
+        },
+    };
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Codex, &home, Some(project.clone())),
+            &operation,
+        ),
+        Err(ConfigUnavailableReason::MissingTarget)
+    ));
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Cursor, home, Some(project)),
+            &operation,
+        ),
+        Err(ConfigUnavailableReason::UnsupportedSetting)
+    ));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn named_skill_edits_only_the_current_standard_definition_control() {
+    let cases = [
+        (
+            AgentKind::Claude,
+            ".claude/skills/review/SKILL.md",
+            ".claude/settings.json",
+            r#"{"skillOverrides":{},"theme":"dark"}"#,
+            "\"review\": \"off\"",
+        ),
+        (
+            AgentKind::Codex,
+            ".codex/skills/review/SKILL.md",
+            ".codex/config.toml",
+            "[skills.config.review]\nenabled = true\n",
+            "enabled = false",
+        ),
+        (
+            AgentKind::OpenCode,
+            ".config/opencode/skills/review/SKILL.md",
+            ".config/opencode/opencode.json",
+            r#"{"permissions":[]}"#,
+            r#""action": "skill""#,
+        ),
+    ];
+    for (agent, skill, config, contents, expected) in cases {
+        let (_temporary, home, project) = roots();
+        write(&home.join(skill), "---\nname: review\n---\n");
+        let path = home.join(config);
+        write(&path, contents);
+        let operation = ConfigOperation {
+            setting: ConfigSetting::Skill,
+            expected_value: ConfigOperationValue::MapEntry {
+                key: "review".into(),
+                value: "true".into(),
+            },
+            proposed_value: ConfigOperationValue::MapEntry {
+                key: "review".into(),
+                value: "false".into(),
+            },
+        };
+        let editor = AgentConfigEditor::new();
+        let prepared = editor
+            .prepare_operation(
+                &ConfigContext::native(agent, &home, Some(project)),
+                &operation,
+            )
+            .unwrap_or_else(|error| panic!("{agent:?}: {error:?}"));
+        editor.apply(&prepared).unwrap();
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains(expected), "{agent:?}: {updated}");
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn named_skill_requires_one_current_standard_definition() {
+    let (_temporary, home, project) = roots();
+    write(
+        &home.join(".claude/settings.json"),
+        r#"{"skillOverrides":{}}"#,
+    );
+    let operation = ConfigOperation {
+        setting: ConfigSetting::Skill,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "review".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "review".into(),
+            value: "false".into(),
+        },
+    };
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, home, Some(project)),
+            &operation,
+        ),
+        Err(ConfigUnavailableReason::MissingTarget)
+    ));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn built_in_tool_edits_are_exact_and_preserve_unrelated_permissions() {
+    let cases = [
+        (
+            AgentKind::Claude,
+            ".claude/settings.json",
+            r#"{"permissions":{"deny":["Read(./.env)"]}}"#,
+            "Bash",
+            r#"["Read(./.env)","Bash"]"#,
+        ),
+        (
+            AgentKind::OpenCode,
+            "opencode.json",
+            r#"{"permissions":[{"action":"read","resource":"*.env","effect":"deny"}]}"#,
+            "WebSearch",
+            r#""action":"websearch""#,
+        ),
+        (
+            AgentKind::Pi,
+            ".pi/agent/settings.json",
+            r#"{"defaultTools":["read","bash","edit"]}"#,
+            "bash",
+            r#"["read","edit"]"#,
+        ),
+    ];
+    for (agent, relative, contents, tool, expected_fragment) in cases {
+        let (_temporary, home, project) = roots();
+        let path = if agent == AgentKind::OpenCode {
+            project.join(relative)
+        } else {
+            home.join(relative)
+        };
+        write(&path, contents);
+        let operation = ConfigOperation {
+            setting: ConfigSetting::BuiltInTool,
+            expected_value: ConfigOperationValue::MapEntry {
+                key: tool.into(),
+                value: "true".into(),
+            },
+            proposed_value: ConfigOperationValue::MapEntry {
+                key: tool.into(),
+                value: "false".into(),
+            },
+        };
+        let editor = AgentConfigEditor::new();
+        let prepared = editor
+            .prepare_operation(
+                &ConfigContext::native(agent, &home, Some(project)),
+                &operation,
+            )
+            .unwrap_or_else(|error| panic!("{agent:?}: {error:?}"));
+        editor.apply(&prepared).unwrap();
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(
+            updated.replace([' ', '\n'], "").contains(expected_fragment),
+            "{agent:?}"
+        );
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn built_in_tool_rejects_broad_or_undocumented_controls() {
+    let (_temporary, home, project) = roots();
+    write(
+        &home.join(".claude/settings.json"),
+        r#"{"permissions":{"deny":[]}}"#,
+    );
+    let broad = ConfigOperation {
+        setting: ConfigSetting::BuiltInTool,
+        expected_value: ConfigOperationValue::MapEntry {
+            key: "*".into(),
+            value: "true".into(),
+        },
+        proposed_value: ConfigOperationValue::MapEntry {
+            key: "*".into(),
+            value: "false".into(),
+        },
+    };
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Claude, &home, Some(project.clone())),
+            &broad,
+        ),
+        Err(ConfigUnavailableReason::InvalidTarget)
+    ));
+    assert!(matches!(
+        AgentConfigEditor::new().prepare_operation(
+            &ConfigContext::native(AgentKind::Codex, home, Some(project)),
+            &operation(ConfigSetting::BuiltInTool, "shell", "disabled"),
+        ),
+        Err(ConfigUnavailableReason::UnsupportedSetting)
+    ));
+}
+
+#[cfg(not(windows))]
 fn operation(setting: ConfigSetting, expected: &str, proposed: &str) -> ConfigOperation {
     ConfigOperation {
         setting,

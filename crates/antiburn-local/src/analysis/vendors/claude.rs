@@ -453,6 +453,12 @@ impl SessionReader for ClaudeSessionReader {
                         path.display()
                     )
                 }
+                RawSource::ClineBundle { .. } => {
+                    anyhow::bail!("Cline bundle is not a Claude source")
+                }
+                RawSource::KiroCliV2Bundle { .. } => {
+                    anyhow::bail!("Kiro bundle is not a Claude source")
+                }
             };
             sink.finish(state.into_summary());
             Ok(VisitOutcome::Unvalidated)

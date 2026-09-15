@@ -20,9 +20,11 @@ impl VendorConfig for Codex {
             | ConfigSetting::Compaction
             | ConfigSetting::FastMode => VendorPolicy::AutomaticEdit,
             ConfigSetting::SubagentModel => VendorPolicy::AutomaticEdit,
-            ConfigSetting::McpServer | ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
+            ConfigSetting::McpServer => VendorPolicy::AutomaticEdit,
+            ConfigSetting::BuiltInTool => {
                 VendorPolicy::Unsupported(ConfigUnavailableReason::UnsupportedSetting)
             }
+            ConfigSetting::Skill => VendorPolicy::AutomaticEdit,
         }
     }
 
@@ -89,6 +91,18 @@ impl VendorConfig for Codex {
         workspace_cwd: Option<&Path>,
         trusted_workspace_root: Option<&Path>,
     ) -> Result<Target, ConfigUnavailableReason> {
+        if setting == ConfigSetting::McpServer {
+            let name = expected.ok_or(ConfigUnavailableReason::MissingTarget)?;
+            return self.mcp_target(name, home, workspace_cwd, trusted_workspace_root);
+        }
+        if setting == ConfigSetting::Skill {
+            return self.skill_target(
+                expected.ok_or(ConfigUnavailableReason::MissingTarget)?,
+                home,
+                workspace_cwd,
+                trusted_workspace_root,
+            );
+        }
         if setting != ConfigSetting::SubagentModel {
             return self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root);
         }
@@ -215,6 +229,8 @@ impl VendorConfig for Codex {
         let key = match operation {
             OperationSelector::TomlKey(key) => *key,
             OperationSelector::NamedTomlModel(_) => "model",
+            OperationSelector::NamedTomlMcpServer(name) => return mcp_value(&document, name),
+            OperationSelector::NamedTomlSkill(name) => return skill_value(&document, name),
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         };
         document
@@ -238,6 +254,38 @@ impl VendorConfig for Codex {
         let key = match operation {
             OperationSelector::TomlKey(key) => *key,
             OperationSelector::NamedTomlModel(_) => "model",
+            OperationSelector::NamedTomlMcpServer(name) => {
+                let mut document = parse_document(bytes)?;
+                reject_active_profile(&document)?;
+                let server = document
+                    .get_mut("mcp_servers")
+                    .and_then(|item| item.as_table_like_mut())
+                    .and_then(|servers| servers.get_mut(name))
+                    .and_then(|item| item.as_table_like_mut())
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                if server.get("enabled").and_then(toml_edit::Item::as_bool) != Some(true) {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                server.insert("enabled", value(false));
+                return Ok(document.to_string().into_bytes());
+            }
+            OperationSelector::NamedTomlSkill(name) => {
+                let mut document = parse_document(bytes)?;
+                reject_active_profile(&document)?;
+                let skill = document
+                    .get_mut("skills")
+                    .and_then(|item| item.as_table_like_mut())
+                    .and_then(|skills| skills.get_mut("config"))
+                    .and_then(|item| item.as_table_like_mut())
+                    .and_then(|skills| skills.get_mut(name))
+                    .and_then(|item| item.as_table_like_mut())
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                if skill.get("enabled").and_then(toml_edit::Item::as_bool) != Some(true) {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                skill.insert("enabled", value(false));
+                return Ok(document.to_string().into_bytes());
+            }
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         };
         let mut document = parse_document(bytes)?;
@@ -253,6 +301,159 @@ impl VendorConfig for Codex {
         };
         Ok(document.to_string().into_bytes())
     }
+}
+
+impl Codex {
+    fn skill_target(
+        &self,
+        name: &str,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        let (path, root, scope) =
+            self.current_skill_definition(name, home, workspace_cwd, trusted_workspace_root)?;
+        let document = parse_document(&read_checked(&path, &root)?.bytes)?;
+        let expected = format!("{name}=true");
+        if skill_value(&document, name)?.as_deref() != Some(expected.as_str()) {
+            return Err(ConfigUnavailableReason::MissingTarget);
+        }
+        Ok(Target {
+            path,
+            safety_root: root,
+            scope,
+            operation: OperationSelector::NamedTomlSkill(name.to_owned()),
+        })
+    }
+
+    fn current_skill_definition(
+        &self,
+        name: &str,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<(std::path::PathBuf, std::path::PathBuf, ConfigScope), ConfigUnavailableReason>
+    {
+        if let (Some(cwd), Some(root)) = (workspace_cwd, trusted_workspace_root)
+            && project_is_trusted(&home.join(".codex/config.toml"), home, root)?
+        {
+            let mut winner = None;
+            for directory in project_hierarchy(cwd, root)? {
+                let skill = directory.join(".codex/skills").join(name).join("SKILL.md");
+                if path_entry_exists(&skill)? {
+                    winner = Some((
+                        directory.join(".codex/config.toml"),
+                        root.to_owned(),
+                        ConfigScope::Project,
+                    ));
+                }
+            }
+            if let Some(value) = winner {
+                return Ok(value);
+            }
+        }
+        let skill = home.join(".codex/skills").join(name).join("SKILL.md");
+        if path_entry_exists(&skill)? {
+            Ok((
+                home.join(".codex/config.toml"),
+                home.to_owned(),
+                ConfigScope::Global,
+            ))
+        } else {
+            Err(ConfigUnavailableReason::MissingTarget)
+        }
+    }
+    fn mcp_target(
+        &self,
+        name: &str,
+        home: &Path,
+        workspace_cwd: Option<&Path>,
+        trusted_workspace_root: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        let global = home.join(".codex/config.toml");
+        let mut matches = Vec::new();
+        if path_entry_exists(&global)?
+            && mcp_value(&parse_document(&read_checked(&global, home)?.bytes)?, name)?.is_some()
+        {
+            matches.push((global, home.to_owned(), ConfigScope::Global));
+        }
+        if let (Some(cwd), Some(root)) = (workspace_cwd, trusted_workspace_root) {
+            if !project_is_trusted(&home.join(".codex/config.toml"), home, root)? {
+                return Err(ConfigUnavailableReason::MissingTarget);
+            }
+            for directory in project_hierarchy(cwd, root)? {
+                let path = directory.join(".codex/config.toml");
+                if path_entry_exists(&path)?
+                    && mcp_value(&parse_document(&read_checked(&path, root)?.bytes)?, name)?
+                        .is_some()
+                {
+                    matches.push((path, root.to_owned(), ConfigScope::Project));
+                }
+            }
+        }
+        if matches.len() != 1 {
+            return Err(ConfigUnavailableReason::MissingTarget);
+        }
+        let (path, safety_root, scope) = matches.pop().expect("one exact MCP server");
+        Ok(Target {
+            path,
+            safety_root,
+            scope,
+            operation: OperationSelector::NamedTomlMcpServer(name.to_owned()),
+        })
+    }
+}
+
+fn mcp_value(
+    document: &DocumentMut,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    reject_active_profile(document)?;
+    let Some(server) = document
+        .get("mcp_servers")
+        .and_then(toml_edit::Item::as_table_like)
+        .and_then(|servers| servers.get(name))
+    else {
+        return Ok(None);
+    };
+    let server = server
+        .as_table_like()
+        .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+    server
+        .get("enabled")
+        .map(|enabled| {
+            enabled
+                .as_bool()
+                .map(|enabled| format!("{name}={enabled}"))
+                .ok_or(ConfigUnavailableReason::MalformedConfig)
+        })
+        .transpose()
+}
+
+fn skill_value(
+    document: &DocumentMut,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    reject_active_profile(document)?;
+    let Some(skill) = document
+        .get("skills")
+        .and_then(toml_edit::Item::as_table_like)
+        .and_then(|skills| skills.get("config"))
+        .and_then(toml_edit::Item::as_table_like)
+        .and_then(|skills| skills.get(name))
+    else {
+        return Ok(None);
+    };
+    skill
+        .as_table_like()
+        .and_then(|skill| skill.get("enabled"))
+        .map(|enabled| {
+            enabled
+                .as_bool()
+                .map(|value| format!("{name}={value}"))
+                .ok_or(ConfigUnavailableReason::MalformedConfig)
+        })
+        .transpose()
 }
 
 fn project_hierarchy(

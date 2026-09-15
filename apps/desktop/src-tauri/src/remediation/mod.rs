@@ -552,11 +552,9 @@ impl RemediationController {
             ConfigSetting::Compaction => AutoFixSetting::Compaction,
             ConfigSetting::FastMode => AutoFixSetting::FastMode,
             ConfigSetting::SubagentModel => AutoFixSetting::SubagentModel,
-            ConfigSetting::McpServer | ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
-                return Err(ControllerError::AutoFixUnavailable(
-                    AutoFixUnavailableReason::UnsupportedOrUnprovenTarget,
-                ));
-            }
+            ConfigSetting::McpServer => AutoFixSetting::McpServer,
+            ConfigSetting::BuiltInTool => AutoFixSetting::BuiltInTool,
+            ConfigSetting::Skill => AutoFixSetting::Skill,
         };
         let review = AutoFixReview {
             prepared_operation_id: prepared_operation_id.clone(),
@@ -833,8 +831,14 @@ impl RemediationController {
                     .and_then(|effective| {
                         compaction_operation(finding.finding.cause(), &effective.value)
                     })
-            }) && let Ok(effective) = self.editor.effective(&context, operation.setting)
-                && operation.expected_value.display_value() == effective.value
+            }) && let Ok(effective) = self.editor.effective_for_value(
+                &context,
+                operation.setting,
+                operation
+                    .expected_value
+                    .scalar()
+                    .or_else(|| operation.expected_value.key()),
+            ) && operation.expected_value.display_value() == effective.value
             {
                 let selector_qualifier = physical_selector_qualifier(
                     &self.editor,
@@ -848,7 +852,10 @@ impl RemediationController {
                     selector_qualifier.as_deref(),
                 )
                 .map_err(|_| ControllerError::Internal)?;
-                if operation.setting == ConfigSetting::FastMode {
+                if matches!(
+                    operation.setting,
+                    ConfigSetting::FastMode | ConfigSetting::McpServer | ConfigSetting::Skill
+                ) {
                     identity.scope_kind = scope_name(effective.scope).to_owned();
                     identity.scope_key = if effective.scope == ConfigScope::Global {
                         key.clone()
@@ -949,9 +956,14 @@ impl RemediationController {
             .ok_or(ControllerError::TargetChanged)?;
         let effective = self
             .editor
-            .effective(
+            .effective_for_value(
                 &refreshed_config_context(&config.context),
                 config.operation.setting,
+                config
+                    .operation
+                    .expected_value
+                    .scalar()
+                    .or_else(|| config.operation.expected_value.key()),
             )
             .map_err(|_| ControllerError::Conflict)?;
         let selector_qualifier = physical_selector_qualifier(

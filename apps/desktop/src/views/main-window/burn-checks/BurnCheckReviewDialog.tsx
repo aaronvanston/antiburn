@@ -17,13 +17,28 @@ const settingLabels: Record<AutoFixReviewPayload["setting"], string> = {
 
 const effectDescriptions: Record<AutoFixReviewPayload["effect"], string> = {
   modelSelection: "This plan changes future model selection. Existing sessions do not change.",
-  reasoningEffort: "This plan lowers reasoning effort for future requests. Existing sessions do not change.",
-  sessionCompaction: "This plan changes future session compaction. Existing sessions do not change.",
-  workerModelSelection: "This plan changes future worker model selection. Existing sessions do not change.",
+  reasoningEffort:
+    "This plan lowers reasoning effort for future requests. Existing sessions do not change.",
+  sessionCompaction:
+    "This plan changes future session compaction. Existing sessions do not change.",
+  workerModelSelection:
+    "This plan changes future worker model selection. Existing sessions do not change.",
   mcpAvailability: "This plan changes MCP server availability for future requests.",
   toolAvailability: "This plan changes built-in tool availability for future requests.",
   skillAvailability: "This plan changes skill availability for future requests.",
   serviceTierSelection: "This plan changes the service tier for future requests.",
+}
+
+const sideEffectDescriptions: Record<AutoFixReviewPayload["sideEffect"], string> = {
+  modelBehaviorMayChange:
+    "Responses can change when future requests use the replacement model.",
+  responsesMayUseLessReasoning: "Future responses can use less reasoning.",
+  earlierSessionSummarization: "Future sessions can summarize earlier.",
+  workerBehaviorMayChange: "Future worker responses can change.",
+  serverWillNotBeAvailable: "This server will not be available for future requests.",
+  toolWillNotBeAvailable: "This built-in tool will not be available for future requests.",
+  skillWillNotBeAvailable: "This skill will not be available for future requests.",
+  responsesMayTakeLonger: "Future responses can take longer.",
 }
 
 export function BurnCheckReviewDialog({
@@ -81,28 +96,26 @@ export function BurnCheckReviewDialog({
         <p className="mt-2 type-body text-label-secondary">
           {effectDescriptions[review.effect]}
         </p>
-        <dl className="mt-5 grid grid-cols-2 gap-3 rounded-control bg-surface-secondary px-3 py-3">
+        <dl className="mt-5 grid grid-cols-1 gap-3 rounded-control bg-surface-secondary px-3 py-3 sm:grid-cols-2">
           <div>
             <dt className="type-footnote text-label-tertiary">Agent</dt>
             <dd className="mt-0.5 type-callout text-label">{agentDisplayName(review.agent)}</dd>
           </div>
           <div>
             <dt className="type-footnote text-label-tertiary">Setting</dt>
-            <dd className="mt-0.5 type-callout text-label">
-              {settingLabels[review.setting]}
-            </dd>
+            <dd className="mt-0.5 type-callout text-label">{settingLabels[review.setting]}</dd>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <dt className="type-footnote text-label-tertiary">Scope</dt>
             <dd className="mt-0.5 type-callout text-label">{scopeLabel(review.scope)}</dd>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <dt className="type-footnote text-label-tertiary">Config file</dt>
             <dd className="mt-0.5 break-all type-callout font-mono text-label">
               {review.configFile}
             </dd>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <dt className="type-footnote text-label-tertiary">Setting path</dt>
             <dd className="mt-0.5 break-all type-callout font-mono text-label">
               {review.selectorLabel}
@@ -115,6 +128,9 @@ export function BurnCheckReviewDialog({
             </dd>
           </div>
         </dl>
+        <p className="mt-4 type-callout text-label-secondary">
+          {sideEffectDescriptions[review.sideEffect]}
+        </p>
         {review.behaviorOverrideWarning && (
           <p role="alert" className="mt-4 type-callout text-system-yellow-text">
             An active override can keep current behavior unchanged after this edit.
@@ -125,7 +141,7 @@ export function BurnCheckReviewDialog({
             {status}
           </p>
         )}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             autoFocus

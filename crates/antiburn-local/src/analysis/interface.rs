@@ -26,6 +26,17 @@ pub enum RawSource {
     File(PathBuf),
     /// A SQLite database file (Codex, OpenCode, …).
     Sqlite(PathBuf),
+    /// The Cline v1 session database and the root session artifacts.
+    ClineBundle {
+        db_path: PathBuf,
+        manifest_path: PathBuf,
+        messages_path: PathBuf,
+    },
+    /// Kiro CLI V2 metadata and its matching append-only journal.
+    KiroCliV2Bundle {
+        metadata_path: PathBuf,
+        messages_path: PathBuf,
+    },
 }
 
 /// One unit of work handed to the analysis pipeline: a single live session.

@@ -9,7 +9,7 @@ use antiburn_local::analysis::{
     SourceCapabilities, SourceKind, TurnCounts, TurnFacts,
 };
 
-const SOURCE_FORMATS: [SourceFormat; 27] = [
+const SOURCE_FORMATS: [SourceFormat; 31] = [
     SourceFormat::ClaudeJsonl,
     SourceFormat::CodexRolloutJsonl,
     SourceFormat::OpenCodeJsonl,
@@ -29,8 +29,12 @@ const SOURCE_FORMATS: [SourceFormat; 27] = [
     SourceFormat::CopilotCliJsonl,
     SourceFormat::CopilotIdeChatJson,
     SourceFormat::ClineSessionJson,
+    SourceFormat::ClineMessagesContractV1,
     SourceFormat::KiroSessionJson,
     SourceFormat::KiroChat,
+    SourceFormat::KiroCliV2Bundle,
+    SourceFormat::KiroCliV3Bundle,
+    SourceFormat::KiroChatSaveExport,
     SourceFormat::AmpThreadJson,
     SourceFormat::AmpFileChanges,
     SourceFormat::WindsurfWorkspaceJson,

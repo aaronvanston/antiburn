@@ -79,6 +79,12 @@ impl SessionReader for OpenCodeSessionReader {
             RawSource::Sqlite(path) => {
                 self.visit_database(path, &input.session_id, &|| false, sink)?
             }
+            RawSource::ClineBundle { .. } => {
+                anyhow::bail!("Cline bundle is not an OpenCode source")
+            }
+            RawSource::KiroCliV2Bundle { .. } => {
+                anyhow::bail!("Kiro bundle is not an OpenCode source")
+            }
         };
         if input.fork_parent_session_id.is_some() {
             summary

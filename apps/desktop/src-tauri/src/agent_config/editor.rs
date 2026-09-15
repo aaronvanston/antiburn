@@ -83,11 +83,20 @@ impl AgentConfigEditor {
         }
         let home = canonical_root(&context.home_root)?;
         let (workspace_cwd, trusted_workspace_root) = canonical_workspace(context)?;
-        let targets = if operation.setting == ConfigSetting::SubagentModel {
+        let targets = if matches!(
+            operation.setting,
+            ConfigSetting::SubagentModel
+                | ConfigSetting::McpServer
+                | ConfigSetting::BuiltInTool
+                | ConfigSetting::Skill
+        ) {
             vendor
                 .resolve_target_for_value(
                     operation.setting,
-                    operation.expected_value.scalar(),
+                    operation
+                        .expected_value
+                        .scalar()
+                        .or_else(|| operation.expected_value.key()),
                     &home,
                     workspace_cwd.as_deref(),
                     trusted_workspace_root.as_deref(),
@@ -107,7 +116,14 @@ impl AgentConfigEditor {
             Ok(targets) => targets,
             Err(
                 ConfigUnavailableReason::MissingConfig | ConfigUnavailableReason::MissingTarget,
-            ) if operation.setting != ConfigSetting::SubagentModel => {
+            ) if !matches!(
+                operation.setting,
+                ConfigSetting::SubagentModel
+                    | ConfigSetting::McpServer
+                    | ConfigSetting::BuiltInTool
+                    | ConfigSetting::Skill
+            ) =>
+            {
                 let (path, bytes) =
                     vendor.standalone_global(operation.setting, &home, &proposed)?;
                 creations.push(super::config::PreparedCreation {
@@ -271,10 +287,22 @@ impl AgentConfigEditor {
     #[cfg(not(windows))]
     fn apply_change(&self, prepared: &PreparedChange) -> Result<(), ApplyError> {
         let vendor = vendor_for(prepared.agent);
+        let resource_name = match &prepared.operation {
+            super::vendors::OperationSelector::NamedClaudeMcpServer(name)
+            | super::vendors::OperationSelector::NamedTomlMcpServer(name)
+            | super::vendors::OperationSelector::NamedJsonMcpServer(name)
+            | super::vendors::OperationSelector::NamedClaudeBuiltInTool(name)
+            | super::vendors::OperationSelector::NamedOpenCodeBuiltInTool(name)
+            | super::vendors::OperationSelector::NamedPiDefaultTool(name)
+            | super::vendors::OperationSelector::NamedClaudeSkill(name)
+            | super::vendors::OperationSelector::NamedTomlSkill(name)
+            | super::vendors::OperationSelector::NamedOpenCodeSkill(name) => Some(name.as_str()),
+            _ => None,
+        };
         let current_target = vendor
             .resolve_target_for_value(
                 prepared.setting,
-                Some(&prepared.expected_value),
+                resource_name.or(Some(&prepared.expected_value)),
                 &prepared.resolution_home_root,
                 prepared.workspace_cwd.as_deref(),
                 prepared.trusted_workspace_root.as_deref(),
@@ -531,8 +559,35 @@ fn validate_value(setting: ConfigSetting, value: &str) -> Result<(), ConfigUnava
             }
             return Err(ConfigUnavailableReason::InvalidTarget);
         }
-        ConfigSetting::McpServer | ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
-            return Err(ConfigUnavailableReason::UnsupportedSetting);
+        ConfigSetting::McpServer => {
+            let Some((name, enabled)) = value.split_once('=') else {
+                return Err(ConfigUnavailableReason::InvalidTarget);
+            };
+            if matches!(enabled, "true" | "false")
+                && !name.is_empty()
+                && name.len() <= 256
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+            {
+                return Ok(());
+            }
+            return Err(ConfigUnavailableReason::InvalidTarget);
+        }
+        ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
+            let Some((name, enabled)) = value.split_once('=') else {
+                return Err(ConfigUnavailableReason::InvalidTarget);
+            };
+            if matches!(enabled, "true" | "false")
+                && !name.is_empty()
+                && name.len() <= 256
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                return Ok(());
+            }
+            return Err(ConfigUnavailableReason::InvalidTarget);
         }
     };
     if value.is_empty()

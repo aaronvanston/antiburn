@@ -25,14 +25,18 @@ impl VendorRemediationPolicy for CodexPolicy {
                     | ConfigSetting::Reasoning
                     | ConfigSetting::Compaction
                     | ConfigSetting::FastMode
-                    | ConfigSetting::SubagentModel,
+                    | ConfigSetting::SubagentModel
+                    | ConfigSetting::McpServer
+                    | ConfigSetting::Skill,
                 )
                 | RemediationAction::RecoverUncertainWrite(
                     ConfigSetting::Model
                     | ConfigSetting::Reasoning
                     | ConfigSetting::Compaction
                     | ConfigSetting::FastMode
-                    | ConfigSetting::SubagentModel,
+                    | ConfigSetting::SubagentModel
+                    | ConfigSetting::McpServer
+                    | ConfigSetting::Skill,
                 )
                 | RemediationAction::PublicationAttribution(
                     ConfigSetting::Model | ConfigSetting::Reasoning | ConfigSetting::Compaction,

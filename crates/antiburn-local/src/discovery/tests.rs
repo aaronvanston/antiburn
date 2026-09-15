@@ -229,11 +229,11 @@ fn supports_subagents_only_for_subagent_vendors() {
         (AgentKind::Claude, true),
         (AgentKind::Codex, true),
         (AgentKind::Antigravity, true),
+        (AgentKind::Kiro, true),
         (AgentKind::Cursor, false),
         (AgentKind::Copilot, false),
         (AgentKind::Cline, false),
         (AgentKind::OpenCode, false),
-        (AgentKind::Kiro, false),
         (AgentKind::AmpCode, false),
         (AgentKind::Windsurf, false),
         (AgentKind::Pi, false),
@@ -933,15 +933,14 @@ fn surface_paths_each_agent_returns_expected_shape() {
         );
     }
 
-    // IDE-only agents.
-    for ty in [AgentKind::Kiro, AgentKind::Windsurf] {
-        let sp = Explorers::DISK.surface_paths_for(&ty, &home);
-        assert!(sp.cli.is_empty(), "{ty:?} should not expose CLI roots");
-        assert!(
-            !sp.ide_desktop.is_empty(),
-            "{ty:?} should expose IDE/Desktop roots"
-        );
-    }
+    // Windsurf is IDE-only.
+    let ty = AgentKind::Windsurf;
+    let sp = Explorers::DISK.surface_paths_for(&ty, &home);
+    assert!(sp.cli.is_empty(), "{ty:?} should not expose CLI roots");
+    assert!(
+        !sp.ide_desktop.is_empty(),
+        "{ty:?} should expose IDE/Desktop roots"
+    );
 }
 
 #[test]

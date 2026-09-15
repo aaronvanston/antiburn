@@ -43,8 +43,12 @@ source_formats! {
     CopilotCliJsonl => "copilot_cli_jsonl",
     CopilotIdeChatJson => "copilot_ide_chat_json",
     ClineSessionJson => "cline_session_json",
+    ClineMessagesContractV1 => "cline_messages_contract_v1",
     KiroSessionJson => "kiro_session_json",
     KiroChat => "kiro_chat",
+    KiroCliV2Bundle => "kiro_cli_v2_bundle",
+    KiroCliV3Bundle => "kiro_cli_v3_bundle",
+    KiroChatSaveExport => "kiro_chat_save_export",
     AmpThreadJson => "amp_thread_json",
     AmpFileChanges => "amp_file_changes",
     WindsurfWorkspaceJson => "windsurf_workspace_json",
@@ -105,12 +109,16 @@ fn source_capabilities(format: SourceFormat) -> SourceCapabilities {
         | SourceFormat::ClineSessionJson
         | SourceFormat::KiroSessionJson
         | SourceFormat::KiroChat
+        | SourceFormat::KiroCliV2Bundle
+        | SourceFormat::KiroCliV3Bundle
+        | SourceFormat::KiroChatSaveExport
         | SourceFormat::AmpThreadJson
         | SourceFormat::AmpFileChanges
         | SourceFormat::WindsurfWorkspaceJson
         | SourceFormat::WindsurfMirrorJson
         | SourceFormat::WindsurfCascadeProtobuf
         | SourceFormat::Uncharacterized => SourceCapabilities::uncharacterized(format),
+        SourceFormat::ClineMessagesContractV1 => SourceCapabilities::cline_messages_contract_v1(),
     };
     capabilities.source_format = format;
     capabilities
@@ -194,6 +202,7 @@ fn source_formats_outside_the_clean_allowlist_deny_clean_with_synthetic_complete
                 | SourceFormat::OpenCodeJsonl
                 | SourceFormat::OpenCodeSqliteV2
                 | SourceFormat::PiV3Jsonl
+                | SourceFormat::CopilotCliJsonl
         ) {
             continue;
         }
@@ -263,13 +272,17 @@ fn public_burn_check_table_keeps_fail_closed_readers_unavailable() {
         })
         .collect();
 
-    for agent in ["GitHub Copilot", "Cline", "Kiro", "Amp", "Windsurf"] {
+    for agent in ["Cline", "Kiro", "Amp", "Windsurf"] {
         assert_eq!(
             results.get(agent),
             Some(&"Unavailable".to_owned()),
             "{agent}"
         );
     }
+    assert_eq!(
+        results.get("GitHub Copilot"),
+        Some(&"Supported S/O".to_owned())
+    );
 }
 
 fn markdown_table_rows(document: &str, start: &str, end: &str) -> Vec<Vec<String>> {

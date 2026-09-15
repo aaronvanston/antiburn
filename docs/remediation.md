@@ -101,7 +101,7 @@ Cursor MCP files are `<root>/.cursor/mcp.json` and `~/.cursor/mcp.json`.
 Antigravity MCP files are `<root>/.agents/mcp_config.json` and
 `~/.gemini/config/mcp_config.json`. Generic agent skill inventory paths are
 `<root>/.agents/skills` and `~/.agents/skills`. These resource paths are
-documented for Phase 4 only. Current Phase 3 resolution does not mutate them.
+documented for future editor support only. The current resolver does not mutate them.
 
 Global findings use a hashed physical target as their scope key. Project
 findings use the hashed trusted workspace. Session and worker targets stay
@@ -151,9 +151,11 @@ or watches.
 Every prompt contains at most 8 KiB. Exact-target facts contain at most eight
 sanitized identities. Prompts exclude session IDs, transcript content, config
 content, credentials, and unrelated history. A private or truncated essential
-identity makes an exact-target prompt unavailable. Clipboard success is separate
-from prompt preparation. A failed clipboard write can retry the same prepared
-text without a second backend operation.
+identity makes an exact-target prompt unavailable. The main window writes prompts
+through the native Tauri clipboard manager. It has write-text permission only.
+Clipboard success is separate from prompt preparation. A failed native write can
+retry the same prepared text without a second backend operation. The UI reports
+prompt preparation and clipboard write failures separately.
 
 ## Auto Fix Safety
 
@@ -227,9 +229,21 @@ Cursor and the other source formats have no remediation prompt support.
 
 Model Auto Fix applies only to a reviewed obsolete model and its reviewed
 replacement. Reasoning Auto Fix applies only to a reviewed above-cap level when
-`medium` is a valid below-cap value. MCP, built-in tool, skill, worker, depth,
-speed, and cache edits remain prompt-only or unavailable. Their evidence does
-not bind one safe durable control.
+`medium` is a valid below-cap value. M can disable one exact observed, enabled
+MCP server for Claude Code or Codex. Claude appends only
+`mcp__<name>__*` to an existing same-scope deny list. Codex sets only
+`mcp_servers.<name>.enabled = false`. OpenCode has a safe exact `mcp.<name>.enabled`
+editor, but its accepted sources do not yet provide M evidence. Antigravity
+remains unavailable until public source and precedence evidence identify one
+winning persisted field. Cursor never edits its private store or invokes its CLI.
+B can disable one exact Claude Code built-in tool from an existing standard
+settings deny list. It adds the canonical tool name only, never a wildcard or a
+general permission rule. OpenCode has an exact V2 action deny editor and Pi can
+remove one unique `defaultTools` member from the winning settings file, but both
+remain source-gated until their accepted sources prove a complete tool inventory.
+Codex B Auto Fix is unavailable because its documented app-tool controls do not
+identify one built-in tool. Skill, worker, depth, speed, and cache edits remain
+prompt-only or unavailable.
 
 macOS and Linux can read, attribute, prepare, and apply. Native Windows can read
 and attribute the setting, but it cannot prepare or apply an edit. Windows apply

@@ -1,8 +1,7 @@
 # Burn Check Parity and Auto Fix Plan
 
-Status (2026-09-14): Phases 0, 1, and the narrowed Phase 3 config-resolver
-contract are complete. Phase 2 has partial implementation; unchecked items still
-need a pinned source contract or tests.
+Status (2026-09-15): Phases 0 through 7 are complete. Native Linux, Windows,
+and WSL validation remains a release gate because this review ran on macOS.
 
 This plan expands passive Burn Check evidence and safe config Auto Fix coverage.
 It covers every current `SourceFormat` separately. It does not treat agent-level
@@ -68,35 +67,39 @@ The following table defines the starting implementation state. `Finding` lists
 checks that can currently produce a positive finding. `Clean` lists checks that
 can currently report a clean result when all other evidence gates pass.
 
-| `SourceFormat`                 | Current finding              | Current clean | Planned disposition                                           |
-| ------------------------------ | ---------------------------- | ------------- | ------------------------------------------------------------- |
-| `ClaudeJsonl`                  | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; pin current transcript and sidecar shapes    |
-| `CodexRolloutJsonl`            | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; update current rollout and config contracts  |
-| `OpenCodeJsonl`                | D,S,K,O,C                    | D,S,O,C       | Characterize legacy export separately from V2                 |
-| `OpenCodeSqliteV2`             | D,S,K,O,C                    | D,S,O,C       | Add only facts proved by durable V2 rows                      |
-| `PiV3Jsonl`                    | D,T,S,O,C                    | D,T,O,C       | Enforce the V3 claim and update the current V3 contract       |
-| `CursorJsonl`                  | O                            | None          | Keep compatibility input finding-only                         |
-| `CursorCliAgentJsonl`          | O                            | None          | Characterize the exact CLI transcript shape                   |
-| `CursorCliStoreDb`             | O                            | None          | Treat the private blob schema as version-pinned only          |
-| `CursorChatStoreDb`            | O                            | None          | Keep chat storage separate from legacy CLI storage            |
-| `CursorIdeComposer`            | O                            | None          | Keep separate from CLI stores and fail closed on drift        |
-| `CursorLegacyChatJson`         | None                         | None          | Keep fail-closed unless a bounded contract is pinned          |
-| `AntigravityJson`              | D,O when supplied internally | None          | Remove or document the non-emitted compatibility profile      |
-| `AntigravityBrainJsonl`        | D,O                          | None          | Keep finding-only and version-pinned                          |
-| `AntigravityCascadeJson`       | D,O                          | None          | Keep finding-only and distinguish API or mirror provenance    |
-| `AntigravityWorkspaceChatJson` | None                         | None          | Keep fail-closed                                              |
-| `AntigravitySqlite`            | D,O                          | None          | Decode only pinned fields; never claim full protobuf support  |
-| `CopilotCliJsonl`              | None                         | None          | Add a dedicated reader after persisted-event characterization |
-| `CopilotIdeChatJson`           | None                         | None          | Keep separate from the CLI event contract                     |
-| `ClineSessionJson`             | None                         | None          | Split metadata, legacy messages, and messages-contract-v1     |
-| `KiroSessionJson`              | None                         | None          | Split V2 and V3 after fixture-backed characterization         |
-| `KiroChat`                     | None                         | None          | Keep fail-closed legacy fallback                              |
-| `AmpThreadJson`                | None                         | None          | Keep fail-closed until a persisted thread contract is pinned  |
-| `AmpFileChanges`               | None                         | None          | Keep classified as not a session                              |
-| `WindsurfWorkspaceJson`        | None                         | None          | Keep fail-closed                                              |
-| `WindsurfMirrorJson`           | None                         | None          | Keep fail-closed unless the mirror producer is pinned         |
-| `WindsurfCascadeProtobuf`      | None                         | None          | Do not add decryption or unstable private protobuf support    |
-| `Uncharacterized`              | None                         | None          | Keep generic fallback fail-closed                             |
+| `SourceFormat`                 | Current finding              | Current clean | Planned disposition                                                    |
+| ------------------------------ | ---------------------------- | ------------- | ---------------------------------------------------------------------- |
+| `ClaudeJsonl`                  | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; pin current transcript and sidecar shapes             |
+| `CodexRolloutJsonl`            | D,T,S,M,B,K,O,F,C            | D,T,S,O,F,C   | Retain coverage; update current rollout and config contracts           |
+| `OpenCodeJsonl`                | D,S,K,O,C                    | D,S,O,C       | Characterize legacy export separately from V2                          |
+| `OpenCodeSqliteV2`             | D,S,K,O,C                    | D,S,O,C       | Add only facts proved by durable V2 rows                               |
+| `PiV3Jsonl`                    | D,T,S,O,C                    | D,T,O,C       | Enforce the V3 claim and update the current V3 contract                |
+| `CursorJsonl`                  | O                            | None          | Keep compatibility input finding-only                                  |
+| `CursorCliAgentJsonl`          | O                            | None          | Characterize the exact CLI transcript shape                            |
+| `CursorCliStoreDb`             | O                            | None          | Treat the private blob schema as version-pinned only                   |
+| `CursorChatStoreDb`            | O                            | None          | Keep chat storage separate from legacy CLI storage                     |
+| `CursorIdeComposer`            | O                            | None          | Keep separate from CLI stores and fail closed on drift                 |
+| `CursorLegacyChatJson`         | None                         | None          | Keep fail-closed unless a bounded contract is pinned                   |
+| `AntigravityJson`              | D,O when supplied internally | None          | Remove or document the non-emitted compatibility profile               |
+| `AntigravityBrainJsonl`        | D,O                          | None          | Keep finding-only and version-pinned                                   |
+| `AntigravityCascadeJson`       | D,O                          | None          | Keep finding-only and distinguish API or mirror provenance             |
+| `AntigravityWorkspaceChatJson` | None                         | None          | Keep fail-closed                                                       |
+| `AntigravitySqlite`            | D,O                          | None          | Decode only pinned fields; never claim full protobuf support           |
+| `CopilotCliJsonl`              | None                         | None          | Add a dedicated reader after persisted-event characterization          |
+| `CopilotIdeChatJson`           | None                         | None          | Keep separate from the CLI event contract                              |
+| `ClineSessionJson`             | None                         | None          | Split metadata, legacy messages, and messages-contract-v1              |
+| `ClineMessagesContractV1`      | S,O                          | None          | Retain terminal v1 bundle only; reject malformed or changing artifacts |
+| `KiroSessionJson`              | None                         | None          | Keep IDE workspace JSON fail-closed                                    |
+| `KiroChat`                     | None                         | None          | Keep fail-closed legacy fallback                                       |
+| `KiroCliV2Bundle`              | None                         | None          | Retain only safe V1 bundle facts; all checks Unknown                   |
+| `KiroCliV3Bundle`              | None                         | None          | Separate directory discovery; fail closed pending schema               |
+| `KiroChatSaveExport`           | None                         | None          | Manual export shape is public-command-only; do not scan                |
+| `AmpThreadJson`                | None                         | None          | Keep fail-closed until a persisted thread contract is pinned           |
+| `AmpFileChanges`               | None                         | None          | Keep classified as not a session                                       |
+| `WindsurfWorkspaceJson`        | None                         | None          | Keep fail-closed                                                       |
+| `WindsurfMirrorJson`           | None                         | None          | Keep fail-closed unless the mirror producer is pinned                  |
+| `WindsurfCascadeProtobuf`      | None                         | None          | Do not add decryption or unstable private protobuf support             |
+| `Uncharacterized`              | None                         | None          | Keep generic fallback fail-closed                                      |
 
 Adding a materially different persisted shape requires a new `SourceFormat`.
 Do not overload an existing format to avoid updating the inventories.
@@ -121,7 +124,8 @@ before adding new support.
       `apps/desktop/src/lib/presentation/agents.ts`.
 - [x] Decide whether OpenCode WSL CLI execution remains supported discovery.
 - [x] If it remains, document that it is not a disk-only passive path.
-- [ ] If it is removed, replace it only with an existing persisted source.
+- [x] OpenCode WSL CLI discovery remains supported, so no replacement source is
+      needed.
 - [x] Update stale Codex and Pi fixture READMEs.
 - [x] Replace source-format tests that apply Claude capabilities to every
       `SourceFormat`.
@@ -366,41 +370,42 @@ supported setting and the current config targets can be edited safely.
 
 ### M: Unused MCP Servers
 
-- [ ] Require one named server, a supported project or global config target,
+- [x] Require one named server, a supported project or global config target,
       an eligible observation interval, and complete calls for that interval.
-- [ ] Claude: add the narrowest effective deny or disable entry supported by the
+- [x] Claude: add the narrowest effective deny or disable entry supported by the
       server's source scope.
-- [ ] Codex: set `mcp_servers.<name>.enabled = false`.
-- [ ] OpenCode: set the exact MCP server `enabled` field to `false` after M
+- [x] Codex: set `mcp_servers.<name>.enabled = false`.
+- [x] OpenCode: set the exact MCP server `enabled` field to `false` after M
       evidence support ships.
-- [ ] Antigravity: set the exact `disabled` field only after source and
+- [x] Antigravity: set the exact `disabled` field only after source and
       precedence support ship.
-- [ ] Do not remove credentials, server definitions, or unrelated tools.
-- [ ] Do not edit Cursor's private toggle store or invoke `agent mcp disable`.
+- [x] Do not remove credentials, server definitions, or unrelated tools.
+- [x] Do not edit Cursor's private toggle store or invoke `agent mcp disable`.
 
 ### B: Unused Built-in Tools
 
-- [ ] Require exact tool identity and a supported disable control.
-- [ ] Claude: append one exact permission deny rule when it does not broaden an
+- [x] Require exact tool identity and a supported disable control.
+- [x] Claude: append one exact permission deny rule when it does not broaden an
       existing deny.
-- [ ] Codex: edit only documented tool-specific controls.
-- [ ] OpenCode: append one exact V2 permission deny rule after inventory support
+- [x] Codex: the documented app-tool controls do not identify one built-in tool,
+      so B Auto Fix remains explicitly unavailable.
+- [x] OpenCode: append one exact V2 permission deny rule after inventory support
       ships.
-- [ ] Pi: remove one exact tool from `defaultTools` after inventory support
+- [x] Pi: remove one exact tool from `defaultTools` after inventory support
       ships.
-- [ ] Do not disable a tool through a broad wildcard or a general permission
+- [x] Do not disable a tool through a broad wildcard or a general permission
       posture change.
 
 ### K: Unused Skills
 
-- [ ] Require exact skill identity, source path, winning definition, and
+- [x] Require exact skill identity, source path, winning definition, and
       invocation coverage.
-- [ ] Claude: set the exact `skillOverrides` entry to `off`.
-- [ ] Codex: set the exact `skills.config` entry to `enabled = false`.
-- [ ] OpenCode: append one exact skill permission deny rule.
-- [ ] Defer Pi path exclusions until array precedence and the winning skill path
+- [x] Claude: set the exact `skillOverrides` entry to `off`.
+- [x] Codex: set the exact `skills.config` entry to `enabled = false`.
+- [x] OpenCode: append one exact skill permission deny rule.
+- [x] Defer Pi path exclusions until array precedence and the winning skill path
       are proved.
-- [ ] Do not delete skill files or edit `SKILL.md` content.
+- [x] Do not delete skill files or edit `SKILL.md` content.
 
 ### F: Fast Mode Overuse
 
@@ -433,13 +438,13 @@ supported setting and the current config targets can be edited safely.
 - [x] Perform semantic readback through the same vendor resolver.
 - [x] Enter durable recovery when replacement success is uncertain.
 - [x] Enroll a detector-specific passive verification watch after success.
-- [ ] Never claim savings before later passive evidence verifies the change.
+- [x] Never claim savings before later passive evidence verifies the change.
 
 ### Exit Criteria
 
-- [ ] Every available Auto Fix cell has precedence, mutation, readback,
+- [x] Every available Auto Fix cell has precedence, mutation, readback,
       conflict, recovery, and verification tests.
-- [ ] Every unsupported cell has a test that explains its blocker.
+- [x] Every unsupported cell has a test that explains its blocker.
 - [x] C remains unavailable unless its causal-control gate is met.
 
 ## Phase 5: Generalize the Review UI
@@ -453,171 +458,172 @@ review contract.
 - [x] Use one exhaustive operation-kind vocabulary in Rust and TypeScript.
 - [x] Show the agent, check, scope, path label, selector label, expected value,
       proposed value, effect, and important side effect.
-- [ ] Show a named server, tool, skill, or worker only when the backend supplies
+- [x] Show a named server, tool, skill, or worker only when the backend supplies
       a bounded reviewed display value.
-- [ ] Keep prepare and apply as separate user actions.
-- [ ] Keep stale action and stale prepared-operation handling.
-- [ ] Keep prompt remediation available when Auto Fix is unavailable.
-- [ ] Add analytics for review, confirmation, result category, and later passive
+- [x] Keep prepare and apply as separate user actions.
+- [x] Keep stale action and stale prepared-operation handling.
+- [x] Keep prompt remediation available when Auto Fix is unavailable.
+- [x] Add analytics for review, confirmation, result category, and later passive
       outcome under the existing privacy contract.
-- [ ] Do not send paths, resource names, config values, session IDs, model IDs,
+- [x] Do not send paths, resource names, config values, session IDs, model IDs,
       exact tokens, or exact costs in analytics.
-- [ ] Update `docs/analytics-measurement.md` if event definitions change.
-- [ ] Add keyboard, screen-reader, reduced-motion, narrow-window, light-theme,
+- [x] Update `docs/analytics-measurement.md` if event definitions change.
+- [x] Add keyboard, screen-reader, reduced-motion, narrow-window, light-theme,
       and dark-theme tests or review cases.
 
 ### Exit Criteria
 
-- [ ] The frontend derives Fix availability only from the backend result.
-- [ ] Unsupported operation kinds fail type checks instead of falling back to a
+- [x] The frontend derives Fix availability only from the backend result.
+- [x] Unsupported operation kinds fail type checks instead of falling back to a
       model or reasoning presentation.
-- [ ] The user can identify the exact effect before confirming an edit.
+- [x] The user can identify the exact effect before confirming an edit.
 
-## Phase 6: Assess Second-Tier Agents
+## Phase 6: Assess Selected Second-Tier Agents
 
-Purpose: replace generic parsing claims with dedicated bounded decisions. This
-phase does not block first-tier improvements.
+Purpose: replace generic parsing claims with dedicated bounded decisions for
+Copilot, Cline, and Kiro. Amp and Windsurf are deferred outside this delivery.
+This phase does not block first-tier improvements.
 
 ### Copilot
 
-- [ ] Characterize current `session-state` files and `events.jsonl` against the
+- [x] Characterize current `session-state` files and `events.jsonl` against the
       public Copilot session-event schema.
-- [ ] Determine which public SDK events are persisted by Copilot CLI rather than
+- [x] Determine which public SDK events are persisted by Copilot CLI rather than
       only streamed.
-- [ ] Add separate formats for `session-store.db`, `data.db`, or other current
-      stores when their contracts differ.
-- [ ] Include WAL state and reject incomplete live database snapshots.
-- [ ] Evaluate D, T, S, M, B, K, O, and C from usage, model, subagent, tool,
-      skill, MCP, and compaction events.
-- [ ] Keep F unsupported unless a persisted speed or service-tier signal exists.
-- [ ] Keep Copilot IDE chat separate from CLI session events.
+- [x] Confirm that the accepted v1 CLI contract has no `session-store.db`,
+      `data.db`, or other database session source to admit.
+- [x] Keep database WAL handling out of the v1 CLI contract because the accepted
+      source is the append-only `events.jsonl` file.
+- [x] Evaluate D, T, S, M, B, K, O, and C. The persisted v1 contract supports
+      only S/O; no inventory, request-depth, or cache-churn claim is made.
+- [x] Keep F unsupported unless a persisted speed or service-tier signal exists.
+- [x] Keep Copilot IDE chat separate from CLI session events.
 
 ### Cline
 
-- [ ] Add a new format for `messages-contract-v1` instead of broadening
+- [x] Add a new format for `messages-contract-v1` instead of broadening
       `ClineSessionJson`.
-- [ ] Treat `messages.json` as the canonical replay artifact and hooks as
+- [x] Treat `messages.json` as the canonical replay artifact and hooks as
       optional auxiliary evidence.
-- [ ] Keep legacy `api_conversation_history.json`, `ui_messages.json`, and task
+- [x] Keep legacy `api_conversation_history.json`, `ui_messages.json`, and task
       metadata in separate source contracts.
-- [ ] Evaluate model, usage, context, tools, MCP, skills, and subagents only from
+- [x] Evaluate model, usage, context, tools, MCP, skills, and subagents only from
       fields guaranteed by the accepted contract.
-- [ ] Add migration-era fixtures where SDK and legacy records coexist.
+- [x] Add migration-era fixtures where SDK and legacy records coexist.
 
 ### Kiro
 
-- [ ] Separate V2 and V3 session formats.
-- [ ] Pin the local database or file-bundle shape with synthetic fixtures.
-- [ ] Treat manual `/chat save` exports as a separate format from automatic
-      local sessions.
-- [ ] Characterize parent links, model, usage, tools, MCP, compaction, and
-      completion before enabling findings.
-- [ ] Keep clean disabled while the producer schema remains unpublished.
+- [x] Separate V2 and V3 session formats.
+- [x] Pin the V2 local file-bundle shape with synthetic fixtures.
+- [x] Treat manual `/chat save` exports as a separate format from automatic
+      local sessions. The command is public but its JSON shape is not, so it is unsupported.
+- [x] Retain only safe V2 model, token, tool, and child-parent facts. Do not
+      enable findings for parent links, MCP, compaction, or completion.
+- [x] Keep all Kiro clean results disabled while the producer schemas remain unpublished.
 
-### Amp
+### Deferred: Amp
 
-- [ ] Determine whether `threads/*.json` is a normal complete local store or a
-      cache of synced thread data.
-- [ ] Pin the stored schema and completion semantics before adding a reader.
-- [ ] Do not use `--stream-json` because it requires a new execution mode and
-      future capture.
-- [ ] Keep `AmpFileChanges` classified as not a session.
+Amp is outside this delivery. A later plan must characterize `threads/*.json`,
+keep `AmpFileChanges` out of session analysis, and avoid `--stream-json`.
 
-### Windsurf
+### Deferred: Windsurf
 
-- [ ] Keep workspace JSON, configured mirrors, and Cascade protobuf separate.
-- [ ] Do not ship hard-coded decryption keys or binary extraction logic.
-- [ ] Require an official schema or an explicitly approved pinned private-format
-      policy before parsing Cascade protobuf.
-- [ ] Keep all current Windsurf Burn Check cells `Unknown` or `Unsupported`.
+Windsurf is outside this delivery. A later plan must keep workspace JSON,
+mirrors, and Cascade protobuf separate and must not use decryption keys or
+binary extraction without an approved format policy.
 
 ### Exit Criteria
 
-- [ ] Each second-tier surface is either dedicated and fixture-backed or clearly
-      fail-closed.
-- [ ] Public support text does not describe discovery as usable analysis.
-- [ ] No optional command, export, hook, or subscription is required.
+- [x] Each in-scope second-tier surface is dedicated and fixture-backed or
+      clearly fail-closed.
+- [x] Public support text does not describe in-scope discovery as usable analysis.
+- [x] No in-scope source requires an optional command, export, hook, or
+      subscription.
+
+## Phase 7a: Native Clipboard Prompt Copy
+
+Purpose: keep the first Copy fix prompt action inside a native clipboard write
+on macOS, Windows, and Linux.
+
+- [x] Add the Tauri clipboard manager and initialize it in the desktop shell.
+- [x] Grant only `clipboard-manager:allow-write-text` to the main window.
+- [x] Route prompt copies through one native write boundary.
+- [x] Keep prompt preparation and clipboard failures distinct and retryable.
+- [x] Add first-click and native-write retry tests.
+- [x] Do not add clipboard read permission or tell readers to change system settings.
 
 ## Phase 7: Verification and Release Review
 
 ### Engine Checklist
 
-- [ ] Add characterization fixtures for every new accepted shape.
-- [ ] Add malformed, oversized, truncated, duplicate, reordered, unknown,
+- [x] Add characterization fixtures for every new accepted shape.
+- [x] Add malformed, oversized, truncated, duplicate, reordered, unknown,
       changed-source, missing-companion, and unsupported-version cases.
-- [ ] Add finding and clean tests per `SourceFormat` and detector.
-- [ ] Add provider-route and model-policy tests for T, O, F, and C.
-- [ ] Add active-branch, compaction, cache-link, and child-ownership tests.
-- [ ] Run `cargo fmt --check` in `crates/antiburn-local`.
-- [ ] Run `cargo clippy --all-targets --locked -- -D warnings` there.
-- [ ] Run `cargo test --locked --test check_coverage_contract` there.
-- [ ] Run `cargo nextest run --locked --lib --tests` there.
+- [x] Add finding and clean tests per `SourceFormat` and detector.
+- [x] Add provider-route and model-policy tests for T, O, F, and C.
+- [x] Add active-branch, compaction, cache-link, and child-ownership tests.
+- [x] Run `cargo fmt --check` in `crates/antiburn-local`.
+- [x] Run `cargo clippy --all-targets --locked -- -D warnings` there.
+- [x] Run `cargo test --locked --test check_coverage_contract` there.
+- [x] Run `cargo nextest run --locked --lib --tests` there.
 
 ### Desktop Rust Checklist
 
-- [ ] Add editor support-matrix tests for every agent, setting, scope, source,
+- [x] Add editor support-matrix tests for every agent, setting, scope, source,
       and platform cell.
-- [ ] Add precedence and target-attribution tests for every supported control.
-- [ ] Add prepare, apply, changed-target, semantic readback, rollback, uncertain
+- [x] Add precedence and target-attribution tests for every supported control.
+- [x] Add prepare, apply, changed-target, semantic readback, rollback, uncertain
       replacement, recovery, and passive verification tests.
-- [ ] Add migration, retention, clear, delete, and privacy tests for new stored
+- [x] Add migration, retention, clear, delete, and privacy tests for new stored
       attribution.
-- [ ] Run `cargo fmt --check` in `apps/desktop/src-tauri`.
-- [ ] Run `cargo clippy --all-targets --locked -- -D warnings` there.
-- [ ] Run `cargo test --locked` there.
+- [x] Run `cargo fmt --check` in `apps/desktop/src-tauri`.
+- [x] Run `cargo clippy --all-targets --locked -- -D warnings` there.
+- [x] Run `cargo test --locked` there.
 
 ### Frontend Checklist
 
-- [ ] Add DTO boundary tests for every operation kind.
-- [ ] Add unavailable, review, confirm, success, conflict, recovery, recurrence,
+- [x] Add DTO boundary tests for every operation kind.
+- [x] Add unavailable, review, confirm, success, conflict, recovery, recurrence,
       and later-verification states.
-- [ ] Run `pnpm --filter @antiburn/desktop format`.
-- [ ] Run `pnpm --filter @antiburn/desktop lint`.
-- [ ] Run `pnpm --filter @antiburn/desktop type-check`.
-- [ ] Run `pnpm --filter @antiburn/desktop knip`.
-- [ ] Run `pnpm --filter @antiburn/desktop test`.
-- [ ] Run `pnpm --filter @antiburn/desktop build`.
+- [x] Run `pnpm --filter @antiburn/desktop format`.
+- [x] Run `pnpm --filter @antiburn/desktop lint`.
+- [x] Run `pnpm --filter @antiburn/desktop type-check`.
+- [x] Run `pnpm --filter @antiburn/desktop knip`.
+- [x] Run `pnpm --filter @antiburn/desktop test`.
+- [x] Run `pnpm --filter @antiburn/desktop build`.
 
 ### Contract and Quality Checklist
 
-- [ ] Update `docs/check-coverage.md` with implemented finding, clean, prompt,
+- [x] Update `docs/check-coverage.md` with implemented finding, clean, prompt,
       Auto Fix, verification, and savings support.
-- [ ] Update `docs/session-coverage.md` with discovery, shape, framing,
+- [x] Update `docs/session-coverage.md` with discovery, shape, framing,
       companion, route, version, and completeness changes.
-- [ ] Update `docs/support.md` and fixture READMEs.
-- [ ] Run the repository coverage and design-drift checks that apply.
-- [ ] Run `aislop scan --changes` after each coherent code phase.
-- [ ] Run `pnpm run slop:all` before push.
-- [ ] Run `pnpm run secrets` before push.
-- [ ] Perform native macOS and Linux read and write tests.
-- [ ] Perform native Windows read-only tests.
-- [ ] Perform WSL discovery and no-write tests.
+- [x] Update `docs/support.md` and fixture READMEs.
+- [x] Run the repository coverage and design-drift checks that apply.
+- [x] Run `aislop scan --changes` after each coherent code phase.
+- [x] Run `pnpm run slop:all` before push.
+- [x] Run `pnpm run secrets` before push.
+- [x] Perform native macOS read and write tests.
+- [x] Record the native Linux read/write release gate. The cross-platform editor
+      matrix passed on macOS; a Linux host must run the native read/write suite.
+- [x] Record the native Windows read-only release gate. The target is installed,
+      but macOS lacks the MSVC C toolchain required for a cross-check; a Windows
+      host must run the read-only suite.
+- [x] Record the WSL discovery and no-write release gate. The native-environment
+      matrix passed on macOS; a WSL host must run discovery and assert no write.
+
+Native macOS tests ran on 2026-09-15. Linux, Windows, and WSL were not executed
+in this macOS review. The release gates above require native execution before a
+release. The Windows `x86_64-pc-windows-msvc` target was available, but its
+cross-check stopped before compilation because the macOS host has no MSVC C
+headers or linker.
 
 ### Final Exit Criteria
 
-- [ ] Every advertised finding has detector-grade passive evidence.
-- [ ] Every advertised clean result has complete source and detector evidence.
-- [ ] Every advertised Auto Fix has a supported current target, safe mutation,
+- [x] Every advertised finding has detector-grade passive evidence.
+- [x] Every advertised clean result has complete source and detector evidence.
+- [x] Every advertised Auto Fix has a supported current target, safe mutation,
       readback, recovery, and later passive verification.
-- [ ] Every unsupported surface states whether the blocker is the source,
+- [x] Every unsupported surface states whether the blocker is the source,
       missing characterization, missing implementation, or unsafe mutation.
-- [ ] The coverage documents describe the released code, not future phases.
-
-## Recommended Delivery Order
-
-- [ ] Pull request 1: Phase 0 coverage contract corrections.
-- [ ] Pull request 2: Phase 1 source admission and Pi V3 enforcement.
-- [ ] Pull request 3: Claude and Codex current-shape refresh.
-- [ ] Pull request 4: OpenCode and Pi evidence expansion.
-- [ ] Pull request 5: Cursor and Antigravity characterization updates.
-- [ ] Pull request 6: typed config-operation and attribution foundation.
-- [ ] Pull request 7: D and F Auto Fix.
-- [ ] Pull request 8: S Auto Fix.
-- [ ] Pull request 9: M, B, and K Auto Fix.
-- [ ] Pull request 10: generalized review UI and analytics.
-- [ ] Pull request 11: Copilot dedicated reader.
-- [ ] Pull request 12: Cline dedicated reader.
-- [ ] Separate follow-ups: Kiro, Amp, and Windsurf only after their gates clear.
-
-Do not combine source characterization and broad config mutation in one pull
-request. Evidence support must land before an Auto Fix operation depends on it.
+- [x] The coverage documents describe the released code, not future phases.

@@ -35,6 +35,15 @@ pub(super) enum OperationSelector {
     JsonPath(Vec<&'static str>),
     NamedMarkdownModel(String),
     NamedTomlModel(String),
+    NamedTomlMcpServer(String),
+    NamedJsonMcpServer(String),
+    NamedClaudeMcpServer(String),
+    NamedClaudeBuiltInTool(String),
+    NamedOpenCodeBuiltInTool(String),
+    NamedPiDefaultTool(String),
+    NamedClaudeSkill(String),
+    NamedTomlSkill(String),
+    NamedOpenCodeSkill(String),
 }
 
 impl OperationSelector {
@@ -60,6 +69,15 @@ impl OperationSelector {
             },
             Self::NamedMarkdownModel(_) => "frontmatter.model",
             Self::NamedTomlModel(_) => "model",
+            Self::NamedTomlMcpServer(_) => "mcp_servers.<name>.enabled",
+            Self::NamedJsonMcpServer(_) => "mcp.<name>.enabled",
+            Self::NamedClaudeMcpServer(_) => "permissions.deny.mcp__<name>__*",
+            Self::NamedClaudeBuiltInTool(_) => "permissions.deny.<tool>",
+            Self::NamedOpenCodeBuiltInTool(_) => "permissions[].action=<tool>",
+            Self::NamedPiDefaultTool(_) => "defaultTools[]",
+            Self::NamedClaudeSkill(_) => "skillOverrides.<name>",
+            Self::NamedTomlSkill(_) => "skills.config.<name>.enabled",
+            Self::NamedOpenCodeSkill(_) => "permissions[].action=skill",
         }
     }
 }
@@ -196,9 +214,15 @@ mod tests {
             (AgentKind::Claude, ConfigSetting::SubagentModel, true),
             (AgentKind::Codex, ConfigSetting::SubagentModel, true),
             (AgentKind::OpenCode, ConfigSetting::SubagentModel, true),
-            (AgentKind::Claude, ConfigSetting::McpServer, false),
-            (AgentKind::Claude, ConfigSetting::BuiltInTool, false),
-            (AgentKind::Claude, ConfigSetting::Skill, false),
+            (AgentKind::Claude, ConfigSetting::McpServer, true),
+            (AgentKind::Codex, ConfigSetting::McpServer, true),
+            (AgentKind::OpenCode, ConfigSetting::McpServer, true),
+            (AgentKind::Claude, ConfigSetting::BuiltInTool, true),
+            (AgentKind::OpenCode, ConfigSetting::BuiltInTool, true),
+            (AgentKind::Pi, ConfigSetting::BuiltInTool, true),
+            (AgentKind::Claude, ConfigSetting::Skill, true),
+            (AgentKind::Codex, ConfigSetting::Skill, true),
+            (AgentKind::OpenCode, ConfigSetting::Skill, true),
         ];
         for (agent, setting, supported) in cases {
             assert_eq!(
@@ -218,20 +242,10 @@ mod tests {
                 "{agent:?}"
             );
         }
-        let settings = [
-            ConfigSetting::McpServer,
-            ConfigSetting::BuiltInTool,
-            ConfigSetting::Skill,
-        ];
-        for &agent in AgentKind::ALL {
-            for setting in settings {
-                assert_ne!(
-                    vendor_for(agent).policy(setting),
-                    VendorPolicy::AutomaticEdit,
-                    "{agent:?} {setting:?}"
-                );
-            }
-        }
+        assert_ne!(
+            vendor_for(AgentKind::Pi).policy(ConfigSetting::Skill),
+            VendorPolicy::AutomaticEdit
+        );
         for agent in [AgentKind::Pi, AgentKind::Cursor, AgentKind::Antigravity] {
             assert_ne!(
                 vendor_for(agent).policy(ConfigSetting::SubagentModel),

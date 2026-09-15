@@ -353,6 +353,39 @@ pub(super) fn reviewed_config_operation(
                 proposed_value: replacement.into(),
             })
         }
+        FindingCause::UnusedMcpServer { server, .. } => Some(ConfigOperation {
+            setting: ConfigSetting::McpServer,
+            expected_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: server.clone(),
+                value: "true".to_owned(),
+            },
+            proposed_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: server.clone(),
+                value: "false".to_owned(),
+            },
+        }),
+        FindingCause::UnusedBuiltInTool { tool, .. } => Some(ConfigOperation {
+            setting: ConfigSetting::BuiltInTool,
+            expected_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: tool.clone(),
+                value: "true".to_owned(),
+            },
+            proposed_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: tool.clone(),
+                value: "false".to_owned(),
+            },
+        }),
+        FindingCause::UnusedSkill { skill, .. } => Some(ConfigOperation {
+            setting: ConfigSetting::Skill,
+            expected_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: skill.clone(),
+                value: "true".to_owned(),
+            },
+            proposed_value: crate::agent_config::ConfigOperationValue::MapEntry {
+                key: skill.clone(),
+                value: "false".to_owned(),
+            },
+        }),
         FindingCause::OldModelUsage {
             provider,
             model,
@@ -466,6 +499,7 @@ pub(super) fn config_setting_from_name(value: &str) -> Option<ConfigSetting> {
         "compaction" => Some(ConfigSetting::Compaction),
         "fastMode" => Some(ConfigSetting::FastMode),
         "subagentModel" => Some(ConfigSetting::SubagentModel),
+        "skill" => Some(ConfigSetting::Skill),
         _ => None,
     }
 }

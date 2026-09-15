@@ -8,6 +8,7 @@ import {
   type AutoFixReviewAnalyticsOutcome,
   type PromptPreparationAnalyticsOutcome,
 } from "../../../lib/ipc"
+import { writeClipboardText } from "../../../lib/clipboard"
 import {
   applyPreparedBurnCheckOperation,
   copyPromptFixBurnCheckTarget,
@@ -310,7 +311,7 @@ export function BurnCheckTargetActions({
     let prompt = action.prompt
     let acceptedWatchId = action.acceptedWatchId
     try {
-      if (!prompt) {
+      if (prompt === null) {
         const outcome = await copyPromptFixBurnCheckTarget(target.actionId)
         const completedWatchId =
           outcome?.outcome === "promptReady" ? outcome.watch.watchId : null
@@ -331,8 +332,7 @@ export function BurnCheckTargetActions({
         prompt = outcome.prompt
         acceptedWatchId = outcome.watch.watchId
       }
-      if (!navigator.clipboard) throw new Error("Clipboard unavailable")
-      await navigator.clipboard.writeText(prompt)
+      await writeClipboardText(prompt)
       if (completionIsStale(startedAttemptKey, acceptedWatchId)) return
       noteInteraction({ kind: "burnCheckPromptCopied" })
       setAction((value) => ({
@@ -346,13 +346,17 @@ export function BurnCheckTargetActions({
       scheduleSuccessReset("copied", startedAttemptKey, acceptedWatchId)
       refresh()
     } catch {
-      if (!prompt) noteInteraction({ kind: "burnCheckPromptPrepared", outcome: "failed" })
+      const preparationFailed = prompt === null
+      if (preparationFailed)
+        noteInteraction({ kind: "burnCheckPromptPrepared", outcome: "failed" })
       if (completionIsStale(startedAttemptKey, acceptedWatchId)) return
       setAction((value) => ({
         ...value,
         busy: null,
         prompt,
-        status: "Could not copy the prompt. Check clipboard access and try again.",
+        status: preparationFailed
+          ? "Could not prepare the prompt. Try again."
+          : "Could not copy the prompt. Try again.",
       }))
     }
   }

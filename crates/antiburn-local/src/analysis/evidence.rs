@@ -371,8 +371,12 @@ pub enum SourceFormat {
     CopilotCliJsonl,
     CopilotIdeChatJson,
     ClineSessionJson,
+    ClineMessagesContractV1,
     KiroSessionJson,
     KiroChat,
+    KiroCliV2Bundle,
+    KiroCliV3Bundle,
+    KiroChatSaveExport,
     AmpThreadJson,
     AmpFileChanges,
     WindsurfWorkspaceJson,
@@ -796,6 +800,22 @@ impl SourceCapabilities {
         }
     }
 
+    /// Cline v1 bundles retain terminal assistant usage, model identity, tool
+    /// names, and direct database child rows. They do not prove request depth,
+    /// inventories, effort, speed, or cache accounting.
+    pub fn cline_messages_contract_v1() -> Self {
+        Self {
+            source_format: SourceFormat::ClineMessagesContractV1,
+            timestamps_and_order: true,
+            tool_invocations: true,
+            model_identity: true,
+            token_classes: true,
+            subagent_relationships: true,
+            subagent_models: true,
+            ..Self::generic()
+        }
+    }
+
     /// The generic JSONL fallback's profile: every field unset.
     ///
     /// An unknown vendor's transcript proves no vendor-specific contract —
@@ -859,6 +879,8 @@ impl From<&RawSource> for SourceKind {
             RawSource::Jsonl(_) => Self::Jsonl,
             RawSource::File(_) => Self::File,
             RawSource::Sqlite(_) => Self::Sqlite,
+            RawSource::ClineBundle { .. } => Self::Sqlite,
+            RawSource::KiroCliV2Bundle { .. } => Self::Jsonl,
         }
     }
 }

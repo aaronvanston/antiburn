@@ -9,6 +9,7 @@ import type {
   CopyPromptFixBurnCheckTargetOutcome,
   PrepareAutoFixBurnCheckTargetOutcome,
 } from "../../lib/insightsIpc"
+import type * as ClipboardModule from "../../lib/clipboard"
 import type * as InsightsIpcModule from "../../lib/insightsIpc"
 import type * as IpcModule from "../../lib/ipc"
 import { BurnChecksSession, type BurnChecksAdapter } from "./BurnChecksSession"
@@ -20,6 +21,7 @@ const commands = vi.hoisted(() => ({
   copy: vi.fn(),
   copyFallback: vi.fn(),
   copyBatch: vi.fn(),
+  writeClipboardText: vi.fn(),
   openSample: vi.fn(),
   noteInteraction: vi.fn(),
 }))
@@ -37,6 +39,11 @@ vi.mock("../../lib/insightsIpc", async (importOriginal) => ({
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof IpcModule>()),
   noteInteraction: commands.noteInteraction,
+}))
+
+vi.mock("../../lib/clipboard", async (importOriginal) => ({
+  ...(await importOriginal<typeof ClipboardModule>()),
+  writeClipboardText: commands.writeClipboardText,
 }))
 
 const report: ChecksReportPayload = {
@@ -207,9 +214,9 @@ beforeEach(() => {
       expiresAtEpoch: 100,
       agent: "claude-code",
       scope: "global",
-        setting: "model",
-        configFile: "~/.claude/settings.json",
-        selectorLabel: "model",
+      setting: "model",
+      configFile: "~/.claude/settings.json",
+      selectorLabel: "model",
       currentValue: "claude-opus-4-6",
       proposedValue: "claude-sonnet-5",
       effect: "modelSelection",
@@ -240,10 +247,7 @@ beforeEach(() => {
     prompt: "Batch backend prompt",
   })
   commands.openSample.mockResolvedValue({ outcome: "opened" })
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-  })
+  commands.writeClipboardText.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -252,6 +256,8 @@ afterEach(() => {
 
 describe("BurnChecksView", () => {
   it("uses one check detail and one batch prompt for a non-named check", async () => {
+    const pending = deferred<{ outcome: "promptReady"; prompt: string } | null>()
+    commands.copyBatch.mockReturnValueOnce(pending.promise)
     setup(target, false, aggregate, report)
 
     expect(
@@ -261,11 +267,15 @@ describe("BurnChecksView", () => {
     ).toBeVisible()
     expect(screen.queryByRole("heading", { name: "claude-opus-4-6" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
+    expect(commands.copyBatch).toHaveBeenCalledWith(["action-fresh"])
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
+    await act(async () =>
+      pending.resolve({ outcome: "promptReady", prompt: "Batch backend prompt" }),
+    )
 
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Batch backend prompt"),
+      expect(commands.writeClipboardText).toHaveBeenCalledWith("Batch backend prompt"),
     )
-    expect(commands.copyBatch).toHaveBeenCalledWith(["action-fresh"])
     expect(commands.copy).not.toHaveBeenCalled()
   })
 
@@ -563,7 +573,7 @@ describe("BurnChecksView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Backend prompt"),
+      expect(commands.writeClipboardText).toHaveBeenCalledWith("Backend prompt"),
     )
     expect(commands.copy).toHaveBeenCalledWith("action-fresh")
     const copied = screen.getByRole("button", { name: "Copied" })
@@ -744,9 +754,9 @@ describe("BurnChecksView", () => {
           expiresAtEpoch: 100,
           agent: "claude-code",
           scope: "global",
-        setting: "model",
-        configFile: "~/.claude/settings.json",
-        selectorLabel: "model",
+          setting: "model",
+          configFile: "~/.claude/settings.json",
+          selectorLabel: "model",
           currentValue: "claude-opus-4-6",
           proposedValue: "claude-sonnet-5",
           effect: "modelSelection",
@@ -831,7 +841,7 @@ describe("BurnChecksView", () => {
       })
     })
 
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckPromptPrepared",
@@ -946,8 +956,117 @@ describe("BurnChecksView", () => {
     expect(dialog).toHaveTextContent("This plan lowers reasoning effort for future requests")
   })
 
+  it.each([
+    ["model", "modelSelection", "modelBehaviorMayChange", "Model", "Responses can change"],
+    [
+      "reasoning",
+      "reasoningEffort",
+      "responsesMayUseLessReasoning",
+      "Reasoning effort",
+      "Future responses can use less reasoning",
+    ],
+    [
+      "compaction",
+      "sessionCompaction",
+      "earlierSessionSummarization",
+      "Compaction",
+      "Future sessions can summarize earlier",
+    ],
+    [
+      "subagentModel",
+      "workerModelSelection",
+      "workerBehaviorMayChange",
+      "Subagent model",
+      "Future worker responses can change",
+    ],
+    [
+      "mcpServer",
+      "mcpAvailability",
+      "serverWillNotBeAvailable",
+      "MCP server",
+      "This server will not be available",
+    ],
+    [
+      "builtInTool",
+      "toolAvailability",
+      "toolWillNotBeAvailable",
+      "Built-in tool",
+      "This built-in tool will not be available",
+    ],
+    [
+      "skill",
+      "skillAvailability",
+      "skillWillNotBeAvailable",
+      "Skill",
+      "This skill will not be available",
+    ],
+    [
+      "fastMode",
+      "serviceTierSelection",
+      "responsesMayTakeLonger",
+      "Fast mode",
+      "Future responses can take longer",
+    ],
+  ] as const)(
+    "renders the typed %s review without a presentation fallback",
+    async (setting, effect, sideEffect, settingLabel, sideEffectText) => {
+      commands.prepare.mockResolvedValueOnce({
+        outcome: "reviewReady",
+        review: {
+          preparedOperationId: `prepared-${setting}`,
+          expiresAtEpoch: 100,
+          agent: "claude-code",
+          scope: "project",
+          setting,
+          configFile: "~/.agent/config",
+          selectorLabel: `${setting}.reviewed`,
+          currentValue: "reviewed=true",
+          proposedValue: "reviewed=false",
+          behaviorOverrideWarning: false,
+          effect,
+          sideEffect,
+        },
+      })
+      setup()
+
+      fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toHaveTextContent(`Setting${settingLabel}`)
+      expect(dialog).toHaveTextContent(`${setting}.reviewed`)
+      expect(dialog).toHaveTextContent(sideEffectText)
+    },
+  )
+
+  it("shows a named resource only when the backend supplies one", async () => {
+    commands.prepare.mockResolvedValueOnce({
+      outcome: "reviewReady",
+      review: {
+        preparedOperationId: "prepared-mcp",
+        expiresAtEpoch: 100,
+        agent: "claude-code",
+        scope: "global",
+        setting: "mcpServer",
+        configFile: "~/.claude/settings.json",
+        selectorLabel: "mcp_servers.reviewed.enabled",
+        currentValue: "reviewed=true",
+        proposedValue: "reviewed=false",
+        behaviorOverrideWarning: false,
+        effect: "mcpAvailability",
+        sideEffect: "serverWillNotBeAvailable",
+      },
+    })
+    setup({ ...target, display: { ...target.display, resourceIdentity: null } })
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+
+    expect(
+      await screen.findByRole("dialog", { name: "Fix Old model usage" }),
+    ).toHaveTextContent("mcp_servers.reviewed.enabled")
+  })
+
   it("retries clipboard failure without creating a second backend action", async () => {
-    vi.mocked(navigator.clipboard.writeText)
+    commands.writeClipboardText
       .mockRejectedValueOnce(new Error("Denied"))
       .mockResolvedValueOnce(undefined)
     setup(target, false, aggregate, report)
@@ -957,7 +1076,8 @@ describe("BurnChecksView", () => {
     fireEvent.click(copy)
     await screen.findByRole("button", { name: "Copied" })
     expect(commands.copyBatch).toHaveBeenCalledOnce()
-    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2)
+    expect(commands.writeClipboardText).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/clipboard access/i)).not.toBeInTheDocument()
     expect(commands.noteInteraction.mock.calls).toEqual(
       expect.arrayContaining([
         [{ kind: "burnCheckPromptPrepared", outcome: "ready" }],
@@ -1099,7 +1219,7 @@ describe("BurnChecksView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy fix prompt" }))
 
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect(commands.writeClipboardText).toHaveBeenCalledWith(
         "Inspect representative evidence.",
       ),
     )
@@ -1133,8 +1253,9 @@ describe("BurnChecksView", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not copy the prompt")
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not prepare the prompt")
     expect(screen.getByRole("button", { name: "Copy fix prompt" })).toBeEnabled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(JSON.stringify(commands.noteInteraction.mock.calls)).not.toContain(
       "Private backend error",
     )
@@ -1151,7 +1272,7 @@ describe("BurnChecksView", () => {
     await screen.findByRole("heading", { name: "claude-opus-4-6" })
     await act(async () => pending.resolve({ outcome: "promptReady", prompt: "Stale prompt" }))
 
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    expect(commands.writeClipboardText).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckPromptPrepared",
@@ -1182,6 +1303,44 @@ describe("BurnChecksView", () => {
 
     resolveApply({ outcome: "appliedAwaitingVerification", watchId: "watch-1" })
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("traps keyboard focus in the review and restores it after Escape", async () => {
+    setup()
+    const fix = await screen.findByRole("button", { name: "Fix" })
+    fireEvent.click(fix)
+    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" })
+    const apply = within(dialog).getByRole("button", { name: "Apply change" })
+
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(cancel).toHaveFocus()
+    apply.focus()
+    fireEvent.keyDown(dialog, { key: "Tab" })
+    expect(cancel).toHaveFocus()
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(fix).toHaveFocus())
+  })
+
+  it("keeps review semantics usable with reduced motion, narrow width, and both themes", async () => {
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme
+      setup()
+      fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+      const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+
+      expect(dialog).toHaveClass("bg-surface-card", "text-label")
+      expect(dialog.querySelector("dl")).toHaveClass("grid-cols-1", "sm:grid-cols-2")
+      expect(within(dialog).getByRole("button", { name: "Cancel" }).parentElement).toHaveClass(
+        "flex-col-reverse",
+        "sm:flex-row",
+      )
+      expect(dialog.querySelector("[class*='animate-']")).toBeNull()
+
+      fireEvent.keyDown(dialog, { key: "Escape" })
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    }
+    delete document.documentElement.dataset.theme
   })
 
   it("hides the implied auto-fix reason when a prompt action is available", async () => {

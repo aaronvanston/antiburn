@@ -52,6 +52,10 @@ impl SessionReader for CursorSessionReader {
             RawSource::Sqlite(_) => {
                 anyhow::bail!("Cursor SQLite input requires a synthesized transcript")
             }
+            RawSource::ClineBundle { .. } => anyhow::bail!("Cline bundle is not a Cursor source"),
+            RawSource::KiroCliV2Bundle { .. } => {
+                anyhow::bail!("Kiro bundle is not a Cursor source")
+            }
         };
         sink.finish(summary);
         Ok(VisitOutcome::Unvalidated)

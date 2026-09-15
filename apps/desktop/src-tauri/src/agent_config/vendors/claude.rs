@@ -20,7 +20,7 @@ impl VendorConfig for Claude {
             | ConfigSetting::FastMode => VendorPolicy::AutomaticEdit,
             ConfigSetting::SubagentModel => VendorPolicy::AutomaticEdit,
             ConfigSetting::McpServer | ConfigSetting::BuiltInTool | ConfigSetting::Skill => {
-                VendorPolicy::Unsupported(ConfigUnavailableReason::UnsupportedSetting)
+                VendorPolicy::AutomaticEdit
             }
         }
     }
@@ -129,6 +129,27 @@ impl VendorConfig for Claude {
         workspace_cwd: Option<&Path>,
         trusted_workspace_root: Option<&Path>,
     ) -> Result<Target, ConfigUnavailableReason> {
+        if setting == ConfigSetting::McpServer {
+            return self.mcp_target(
+                expected.ok_or(ConfigUnavailableReason::MissingTarget)?,
+                home,
+                trusted_workspace_root,
+            );
+        }
+        if setting == ConfigSetting::BuiltInTool {
+            return self.built_in_tool_target(
+                expected.ok_or(ConfigUnavailableReason::MissingTarget)?,
+                home,
+                trusted_workspace_root,
+            );
+        }
+        if setting == ConfigSetting::Skill {
+            return self.skill_target(
+                expected.ok_or(ConfigUnavailableReason::MissingTarget)?,
+                home,
+                trusted_workspace_root,
+            );
+        }
         if setting != ConfigSetting::SubagentModel {
             return self.resolve_target(setting, home, workspace_cwd, trusted_workspace_root);
         }
@@ -285,6 +306,11 @@ impl VendorConfig for Claude {
                     .transpose()
             }
             OperationSelector::NamedMarkdownModel(_) => unreachable!(),
+            OperationSelector::NamedClaudeMcpServer(name) => claude_mcp_value(&document, name),
+            OperationSelector::NamedClaudeBuiltInTool(name) => {
+                claude_built_in_tool_value(&document, name)
+            }
+            OperationSelector::NamedClaudeSkill(name) => claude_skill_value(&document, name),
             _ => Err(ConfigUnavailableReason::UnsupportedSetting),
         }
     }
@@ -347,6 +373,59 @@ impl VendorConfig for Claude {
                 setting.insert("effortLevel".into(), Value::String(proposed.into()));
             }
             OperationSelector::NamedMarkdownModel(_) => unreachable!(),
+            OperationSelector::NamedClaudeMcpServer(name) => {
+                let root = root
+                    .as_object_mut()
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                let permissions = root
+                    .get_mut("permissions")
+                    .and_then(Value::as_object_mut)
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                let deny = permissions
+                    .get_mut("deny")
+                    .and_then(Value::as_array_mut)
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                let rule = format!("mcp__{name}__*");
+                if deny.iter().any(|value| value.as_str() == Some(&rule)) {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                if deny.iter().any(|value| !value.is_string()) {
+                    return Err(ConfigUnavailableReason::MalformedConfig);
+                }
+                deny.push(Value::String(rule));
+            }
+            OperationSelector::NamedClaudeBuiltInTool(name) => {
+                let root = root
+                    .as_object_mut()
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                let deny = root
+                    .get_mut("permissions")
+                    .and_then(Value::as_object_mut)
+                    .and_then(|permissions| permissions.get_mut("deny"))
+                    .and_then(Value::as_array_mut)
+                    .ok_or(ConfigUnavailableReason::MissingTarget)?;
+                if deny.iter().any(|value| value.as_str() == Some(name)) {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                if deny.iter().any(|value| !value.is_string()) {
+                    return Err(ConfigUnavailableReason::MalformedConfig);
+                }
+                deny.push(Value::String(name.clone()));
+            }
+            OperationSelector::NamedClaudeSkill(name) => {
+                let root = root
+                    .as_object_mut()
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                let overrides = root
+                    .entry("skillOverrides")
+                    .or_insert_with(|| Value::Object(Default::default()))
+                    .as_object_mut()
+                    .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+                if overrides.get(name).is_some_and(|value| value != "on") {
+                    return Err(ConfigUnavailableReason::CurrentValueMismatch);
+                }
+                overrides.insert(name.clone(), Value::String("off".into()));
+            }
             _ => return Err(ConfigUnavailableReason::UnsupportedSetting),
         }
         let mut output = serde_json::to_vec_pretty(&root)
@@ -354,6 +433,219 @@ impl VendorConfig for Claude {
         output.push(b'\n');
         Ok(output)
     }
+}
+
+impl Claude {
+    fn skill_target(
+        &self,
+        name: &str,
+        home: &Path,
+        project: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        let source = skill_definition(name, home, project)?;
+        let (path, root, scope) = match source {
+            ConfigScope::Project => {
+                let root = project.ok_or(ConfigUnavailableReason::MissingTarget)?;
+                let path = [
+                    root.join(".claude/settings.local.json"),
+                    root.join(".claude/settings.json"),
+                ]
+                .into_iter()
+                .find(|path| path_entry_exists(path).unwrap_or(false))
+                .ok_or(ConfigUnavailableReason::MissingConfig)?;
+                (path, root, ConfigScope::Project)
+            }
+            ConfigScope::Global => (
+                home.join(".claude/settings.json"),
+                home,
+                ConfigScope::Global,
+            ),
+        };
+        if !path_entry_exists(&path)? {
+            return Err(ConfigUnavailableReason::MissingConfig);
+        }
+        Ok(Target {
+            path,
+            safety_root: root.to_owned(),
+            scope,
+            operation: OperationSelector::NamedClaudeSkill(name.to_owned()),
+        })
+    }
+    fn built_in_tool_target(
+        &self,
+        name: &str,
+        home: &Path,
+        project: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        let candidates = [
+            project.map(|root| (root.join(".claude/settings.local.json"), root)),
+            project.map(|root| (root.join(".claude/settings.json"), root)),
+            Some((home.join(".claude/settings.json"), home)),
+        ];
+        for candidate in candidates {
+            let Some((path, root)) = candidate else {
+                continue;
+            };
+            if !path_entry_exists(&path)? {
+                continue;
+            }
+            let document = parse_strict(&read_checked(&path, root)?.bytes)?;
+            if claude_deny_list(&document)?.is_some() {
+                return Ok(Target {
+                    path,
+                    safety_root: root.to_owned(),
+                    scope: if root == home {
+                        ConfigScope::Global
+                    } else {
+                        ConfigScope::Project
+                    },
+                    operation: OperationSelector::NamedClaudeBuiltInTool(name.to_owned()),
+                });
+            }
+        }
+        Err(ConfigUnavailableReason::MissingTarget)
+    }
+
+    fn mcp_target(
+        &self,
+        name: &str,
+        home: &Path,
+        project: Option<&Path>,
+    ) -> Result<Target, ConfigUnavailableReason> {
+        let mut sources = Vec::new();
+        let mut inspect =
+            |path: PathBuf, root: &Path, scope| -> Result<(), ConfigUnavailableReason> {
+                if path_entry_exists(&path)?
+                    && parse_strict(&read_checked(&path, root)?.bytes)?
+                        .get("mcpServers")
+                        .and_then(Value::as_object)
+                        .is_some_and(|servers| servers.contains_key(name))
+                {
+                    sources.push((root.to_owned(), scope));
+                }
+                Ok(())
+            };
+        inspect(home.join(".claude.json"), home, ConfigScope::Global)?;
+        if let Some(project) = project {
+            inspect(project.join(".mcp.json"), project, ConfigScope::Project)?;
+        }
+        if sources.len() != 1 {
+            return Err(ConfigUnavailableReason::MissingTarget);
+        }
+        let (root, scope) = sources.pop().expect("one exact MCP source");
+        let paths: &[PathBuf] = if scope == ConfigScope::Project {
+            &[
+                root.join(".claude/settings.local.json"),
+                root.join(".claude/settings.json"),
+            ]
+        } else {
+            &[home.join(".claude/settings.json")]
+        };
+        let mut targets = paths
+            .iter()
+            .filter(|path| path_entry_exists(path).unwrap_or(false))
+            .collect::<Vec<_>>();
+        if targets.len() != 1 {
+            return Err(ConfigUnavailableReason::MissingTarget);
+        }
+        Ok(Target {
+            path: targets.pop().expect("one settings target").clone(),
+            safety_root: root,
+            scope,
+            operation: OperationSelector::NamedClaudeMcpServer(name.to_owned()),
+        })
+    }
+}
+
+fn claude_mcp_value(
+    document: &Value,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    let rule = format!("mcp__{name}__*");
+    let Some(deny) = document
+        .get("permissions")
+        .and_then(Value::as_object)
+        .and_then(|permissions| permissions.get("deny"))
+    else {
+        return Ok(None);
+    };
+    let deny = deny
+        .as_array()
+        .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+    if deny.iter().any(|value| !value.is_string()) {
+        return Err(ConfigUnavailableReason::MalformedConfig);
+    }
+    Ok(Some(format!(
+        "{name}={}",
+        !deny.iter().any(|value| value.as_str() == Some(&rule))
+    )))
+}
+
+fn claude_built_in_tool_value(
+    document: &Value,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    let Some(deny) = claude_deny_list(document)? else {
+        return Ok(None);
+    };
+    Ok(Some(format!(
+        "{name}={}",
+        !deny.iter().any(|value| value.as_str() == Some(name))
+    )))
+}
+
+fn claude_skill_value(
+    document: &Value,
+    name: &str,
+) -> Result<Option<String>, ConfigUnavailableReason> {
+    let Some(overrides) = document.get("skillOverrides") else {
+        return Ok(Some(format!("{name}=on")));
+    };
+    let overrides = overrides
+        .as_object()
+        .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+    match overrides.get(name) {
+        None => Ok(Some(format!("{name}=true"))),
+        Some(Value::String(value)) if value == "on" => Ok(Some(format!("{name}=true"))),
+        Some(Value::String(value)) if value == "off" => Ok(Some(format!("{name}=false"))),
+        Some(_) => Err(ConfigUnavailableReason::MalformedConfig),
+    }
+}
+
+fn skill_definition(
+    name: &str,
+    home: &Path,
+    project: Option<&Path>,
+) -> Result<ConfigScope, ConfigUnavailableReason> {
+    let project_path = project.map(|root| root.join(".claude/skills").join(name).join("SKILL.md"));
+    if let Some(path) = project_path
+        && path_entry_exists(&path)?
+    {
+        return Ok(ConfigScope::Project);
+    }
+    let global_path = home.join(".claude/skills").join(name).join("SKILL.md");
+    if path_entry_exists(&global_path)? {
+        Ok(ConfigScope::Global)
+    } else {
+        Err(ConfigUnavailableReason::MissingTarget)
+    }
+}
+
+fn claude_deny_list(document: &Value) -> Result<Option<&Vec<Value>>, ConfigUnavailableReason> {
+    let Some(deny) = document
+        .get("permissions")
+        .and_then(Value::as_object)
+        .and_then(|permissions| permissions.get("deny"))
+    else {
+        return Ok(None);
+    };
+    let deny = deny
+        .as_array()
+        .ok_or(ConfigUnavailableReason::MalformedConfig)?;
+    if deny.iter().any(|value| !value.is_string()) {
+        return Err(ConfigUnavailableReason::MalformedConfig);
+    }
+    Ok(Some(deny))
 }
 
 fn named_markdown_target(

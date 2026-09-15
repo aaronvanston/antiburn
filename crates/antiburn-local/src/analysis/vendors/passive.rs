@@ -43,11 +43,11 @@ mod tests {
     #[test]
     fn source_variants_keep_fail_closed_capabilities() {
         for (agent, path, format) in [
-            ("copilot", "events.jsonl", SourceFormat::CopilotCliJsonl),
             ("copilot", "chat.json", SourceFormat::CopilotIdeChatJson),
-            ("cline", "session.json", SourceFormat::ClineSessionJson),
             ("kiro", "session.json", SourceFormat::KiroSessionJson),
             ("kiro", "session.chat", SourceFormat::KiroChat),
+            ("kiro", "session.v3", SourceFormat::KiroCliV3Bundle),
+            ("kiro", "chat-save.json", SourceFormat::KiroChatSaveExport),
             ("amp-code", "thread.json", SourceFormat::AmpThreadJson),
             (
                 "amp-code",
