@@ -60,7 +60,7 @@ describe("OverviewAllowanceChart", () => {
     expect(container.querySelectorAll(".overview-block-mark")).toHaveLength(1)
   })
 
-  it("draws every account on one chart, each in its provider's color", () => {
+  it("draws every account on one chart, each at its own weight", () => {
     // Two accounts both read in percent of their own plan, so one scale holds
     // them both. Color is the only thing that names which is which.
     render(
@@ -79,8 +79,8 @@ describe("OverviewAllowanceChart", () => {
       "Today · Claude 15 points · Codex 15 points",
     )
     expect(buttons[29]!.querySelectorAll(".overview-series")).toHaveLength(2)
-    expect(buttons[29]!.querySelector(".bg-provider-anthropic")).toBeTruthy()
-    expect(buttons[29]!.querySelector(".bg-provider-openai")).toBeTruthy()
+    expect(buttons[29]!.querySelector(".bg-series-1")).toBeTruthy()
+    expect(buttons[29]!.querySelector(".bg-series-2")).toBeTruthy()
   })
 
   it("draws one column for a date only one account knows", () => {
@@ -107,19 +107,6 @@ describe("OverviewAllowanceChart", () => {
     expect(screen.getByRole("region", { name: "Allowance by day" }).textContent).toContain(
       "no meter readings",
     )
-  })
-
-  it("gives a second account of one provider a fallback color", () => {
-    // One brand color cannot name two accounts of the same provider. The
-    // first keeps the brand color and the next takes a fallback series.
-    render(
-      <OverviewAllowanceChart
-        accounts={[account(), account({ accountKey: "second", displayName: "Claude work" })]}
-      />,
-    )
-    const today = dayButtons()[29]!
-    expect(today.querySelector(".bg-provider-anthropic")).toBeTruthy()
-    expect(today.querySelector(".bg-series-1")).toBeTruthy()
   })
 
   it("walks the days with the arrow keys", () => {

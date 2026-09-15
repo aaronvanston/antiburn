@@ -3,25 +3,23 @@
 
    One color for each provider account charted on the Overview.
 
-   A provider antiburn knows draws in its own brand color, so the chart
-   names an account with the color the reader already knows it by. Anthropic
-   takes the Claude coral and OpenAI takes the graphite of its own mark.
+   Every account draws in the deep blue of a reading, at a different weight.
+   One hue keeps the chart calm and, more important, keeps it out of the way
+   of the red that marks a block. A block is the one mark on this chart that
+   a reader must not miss, so no series may approach red.
 
-   The numbered series are the fallback: they draw a provider with no brand
-   color here, and the second and later accounts of one provider, which
-   cannot share the one brand color and still name an account. The order
-   hands out the most separable pair first.
+   Weight, not hue, names an account. The first two weights sit at opposite
+   ends of the ramp, so the common case of two accounts gets the widest
+   separation the hue can give. The third and fourth fall between them.
 
-   A further account repeats a fallback color. A repeat is honest; an
-   invented hue does not stay separable.
+   A fifth account repeats the first weight. A repeat is honest; a fifth
+   step of one hue does not stay separable.
 
    Every token is presentation only: nothing here knows which account it
    draws. Tailwind v4 processes `@theme` in any file the build imports.
    ========================================================================== */
 
 @theme {
-  --color-provider-anthropic: var(--color-provider-anthropic-val);
-  --color-provider-openai: var(--color-provider-openai-val);
   --color-series-1: var(--color-series-1-val);
   --color-series-2: var(--color-series-2-val);
   --color-series-3: var(--color-series-3-val);
@@ -31,34 +29,31 @@
 /* --- Light (default and explicit) --- */
 :root,
 :root[data-theme="light"] {
-  --color-provider-anthropic-val: hsl(14.7 63% 59.6%); /* Claude coral */
-  --color-provider-openai-val: hsl(240 4% 42%); /* graphite */
-  --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
-  --color-series-2-val: hsl(258.3 89% 66.2%); /* violet */
-  --color-series-3-val: hsl(173.4 80% 40%); /* teal */
-  --color-series-4-val: hsl(330.3 81% 60.3%); /* pink */
+  --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue, full strength */
+  --color-series-2-val: hsl(201 48% 74%); /* deep blue, muted */
+  --color-series-3-val: hsl(201 62% 55%); /* deep blue, between the two */
+  --color-series-4-val: hsl(202 31% 88%); /* deep blue, palest */
 }
 
 /* --- Dark ---
    `@media` cannot share a selector list with a plain `:root` rule, so the
    system-preference branch and the explicit [data-theme='dark'] branch are
-   written separately, mirroring how tokens.css duplicates its dark palette. */
+   written separately, mirroring how tokens.css duplicates its dark palette.
+
+   The ramp inverts: the strong weight lifts off the dark surface and the
+   muted weight sinks toward it, which keeps the same order of emphasis. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-provider-anthropic-val: hsl(14.7 63% 59.6%); /* Claude coral, the same in both */
-    --color-provider-openai-val: hsl(240 12% 78%); /* graphite, inverted for the dark surface */
-    --color-series-1-val: hsl(201.6 77% 62.5%); /* deep blue, lifted */
-    --color-series-2-val: hsl(258 89% 69.8%); /* violet */
-    --color-series-3-val: hsl(173.5 78% 46.4%); /* teal */
-    --color-series-4-val: hsl(330.6 82% 64.5%); /* pink */
+    --color-series-1-val: hsl(201.6 77% 62.5%);
+    --color-series-2-val: hsl(201 38% 37%);
+    --color-series-3-val: hsl(201 50% 50%);
+    --color-series-4-val: hsl(201 28% 28%);
   }
 }
 
 :root[data-theme="dark"] {
-  --color-provider-anthropic-val: hsl(14.7 63% 59.6%);
-  --color-provider-openai-val: hsl(240 12% 78%);
   --color-series-1-val: hsl(201.6 77% 62.5%);
-  --color-series-2-val: hsl(258 89% 69.8%);
-  --color-series-3-val: hsl(173.5 78% 46.4%);
-  --color-series-4-val: hsl(330.6 82% 64.5%);
+  --color-series-2-val: hsl(201 38% 37%);
+  --color-series-3-val: hsl(201 50% 50%);
+  --color-series-4-val: hsl(201 28% 28%);
 }
