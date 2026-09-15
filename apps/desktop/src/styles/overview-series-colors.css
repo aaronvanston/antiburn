@@ -3,17 +3,17 @@
 
    One color for each provider account charted on the Overview.
 
-   The hues come from the palettes the app already draws with: the deep blue
-   of a reading, the brand orange, the violet of the output series, and the
-   teal of real work. A chart that borrows the product's own colors reads as
-   part of the product.
+   The colors come from the palettes the app already draws with: the deep
+   blue of a reading, the graphite of the label ink, the violet of the
+   output series, and the teal of real work. A chart that borrows the
+   product's own colors reads as part of the product.
 
    Color names an account here and nothing else. The order hands out the
    most separable pair first, so a reader with two accounts gets the blue
-   and the orange: they differ in warmth and in lightness, which no common
-   type of color vision deficiency collapses, and they hold apart in
-   greyscale. The violet and the teal follow, each a long way in lightness
-   from the color before it.
+   and the graphite. They differ in chroma and not only in hue: a neutral
+   carries no hue to confuse with another, so no type of color vision
+   deficiency collapses the pair. The violet and the teal follow, each a
+   long way in hue from the colors before it.
 
    A fifth account repeats the first color. A repeat is honest; an invented
    fifth hue does not stay separable.
@@ -33,7 +33,7 @@
 :root,
 :root[data-theme="light"] {
   --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
-  --color-series-2-val: hsl(17.6 100% 58.6%); /* brand orange */
+  --color-series-2-val: hsl(240 5% 20%); /* graphite, the label ink hue */
   --color-series-3-val: hsl(258.3 89% 66.2%); /* violet */
   --color-series-4-val: hsl(173.4 80% 40%); /* teal */
 }
@@ -45,7 +45,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --color-series-1-val: hsl(201.6 77% 62.5%); /* deep blue, lifted for the dark surface */
-    --color-series-2-val: hsl(17.6 100% 58.6%); /* brand orange, the same in both themes */
+    --color-series-2-val: hsl(240 12% 78%); /* graphite, inverted for the dark surface */
     --color-series-3-val: hsl(258 89% 69.8%); /* violet */
     --color-series-4-val: hsl(173.5 78% 46.4%); /* teal */
   }
@@ -53,7 +53,7 @@
 
 :root[data-theme="dark"] {
   --color-series-1-val: hsl(201.6 77% 62.5%);
-  --color-series-2-val: hsl(17.6 100% 58.6%);
+  --color-series-2-val: hsl(240 12% 78%);
   --color-series-3-val: hsl(258 89% 69.8%);
   --color-series-4-val: hsl(173.5 78% 46.4%);
 }

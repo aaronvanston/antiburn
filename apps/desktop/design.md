@@ -253,9 +253,9 @@ colors:
   series-1: # Overview account series, first: the deep blue of a reading, lifted on dark
     light: "hsl(201.5 100% 34.9%)"
     dark: "hsl(201.6 77% 62.5%)"
-  series-2: # Overview account series, second: the brand orange, the same in both
-    light: "hsl(17.6 100% 58.6%)"
-    dark: "hsl(17.6 100% 58.6%)"
+  series-2: # Overview account series, second: graphite, the label ink hue; inverted on dark
+    light: "hsl(240 5% 20%)"
+    dark: "hsl(240 12% 78%)"
   series-3: # Overview account series, third: the violet of the output series
     light: "hsl(258.3 89% 66.2%)"
     dark: "hsl(258 89% 69.8%)"
@@ -655,9 +655,9 @@ Notes for what isn't expressible as a token:
   too dark on the light surface to read as orange beside that red. Everything else stays greyscale
   until the pointer names a layer. The Overview allowance chart draws every provider account on
   one percent scale, so there color names an account: the `series-1` to `series-4` tokens hand out
-  the product's own hues in order, the deep blue of a reading and then the brand orange, which
-  differ in warmth and in lightness and so stay separable for every common type of color vision
-  deficiency and in greyscale. A fifth account repeats the first color, because a repeat is
+  the product's own colors in order, the deep blue of a reading and then the graphite of the
+  label ink, which differ in chroma and not only in hue: a neutral carries no hue to confuse,
+  so no common type of color vision deficiency collapses the pair. A fifth account repeats the first color, because a repeat is
   honest and an invented fifth hue is not separable. A block keeps the system red and its own
   shape, a dot over the bar ringed in the window surface, so it never depends on hue alone and
   never sinks into the bar beneath it. The wide Cost tab is a query
