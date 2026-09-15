@@ -473,6 +473,10 @@ pub struct SessionQuotaEvidence {
 pub enum ProviderIncidentKind {
     /// The provider refused the request because the model or server was at capacity.
     Capacity,
+    /// The provider returned a server-side failure (HTTP 5xx or an equivalent code).
+    ServerError,
+    /// The client could not reach the provider or the response stream broke off.
+    Connection,
 }
 
 /// One transcript-observed provider-side failure. The user's usage did not cause it.
@@ -554,6 +558,14 @@ impl SourceCapabilities {
     /// `context_sources.tool_definitions` still reports `Unsupported` when
     /// the catalogue cannot resolve either — this flag only says Claude
     /// carries the version and model signal the catalogue lookup needs.
+    ///
+    /// `quota_incidents` and `provider_incidents` are set: the reader maps
+    /// an `isApiErrorMessage` assistant record's `apiErrorStatus` and
+    /// `error` fields to a quota incident (`429` or `error: "rate_limit"`)
+    /// or a provider incident (`529`, another `5xx` status, or
+    /// `error: "server_error"` with no status). `ProviderIncidentKind::Connection`
+    /// stays unset for Claude: its `error: "unknown"` label is too broad to
+    /// claim a connection failure without reading the message text.
     pub fn claude() -> Self {
         Self {
             source_format: SourceFormat::ClaudeJsonl,
@@ -575,8 +587,8 @@ impl SourceCapabilities {
             thread_identity: true,
             record_identity: true,
             linear_record_order: false,
-            quota_incidents: false,
-            provider_incidents: false,
+            quota_incidents: true,
+            provider_incidents: true,
             harness_version: false,
             repeated_context_accounting: Some(RepeatedContextAccounting::CacheWrite),
         }
@@ -1211,14 +1223,14 @@ mod tests {
                 "threadIdentity": true,
                 "recordIdentity": true,
                 "linearRecordOrder": false,
-                "quotaIncidents": false,
-                "providerIncidents": false,
+                "quotaIncidents": true,
+                "providerIncidents": true,
                 "harnessVersion": false,
                 "repeatedContextAccounting": "cache_write"
             },
             "coverage": coverage,
             "provenance": {
-                "parserRevision": 37,
+                "parserRevision": 38,
                 "analyzerRevision": 24,
                 "evidenceSchemaRevision": 19,
                 "sourceKind": "file",
@@ -1247,8 +1259,8 @@ mod tests {
             "subagents": {"state": "complete", "value": {"spawnCount": 0, "delegatedTurns": 0, "delegatedModels": [], "children": [], "examples": []}},
             "cache": {"state": "complete", "value": {"cacheReadTokens": 0, "cacheCreationTokens": 0, "freshInputTokens": 0, "modelTransitions": [], "longestIdleGapMs": 0, "idleGapMsTotal": 0, "userControlledChurn": {"manualCompactions": 0}, "previousTurn": {"state": "complete", "value": null}, "providerEviction": {"state": "unsupported"}, "repeatedContext": {"state": "complete", "value": {"accounting": "cache_write", "repeatedTokens": 0, "pairsConsidered": 0, "pairsSkipped": 0, "paidTokens": 0}}}},
             "compactions": {"state": "complete", "value": {"boundaries": []}},
-            "quotaIncidents": {"state": "unsupported"},
-            "providerIncidents": {"state": "unsupported"}
+            "quotaIncidents": {"state": "complete", "value": {"incidents": []}},
+            "providerIncidents": {"state": "complete", "value": {"incidents": []}}
         })
     }
 

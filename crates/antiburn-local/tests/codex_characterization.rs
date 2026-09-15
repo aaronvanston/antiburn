@@ -758,11 +758,11 @@ fn claude_capabilities_still_match_published_evidence() {
     assert!(is_supported(&evidence.compactions));
     assert!(matches!(
         evidence.quota_incidents,
-        EvidenceValue::Unsupported
+        EvidenceValue::Complete(ref quota) if quota.incidents.is_empty()
     ));
     assert!(matches!(
         evidence.provider_incidents,
-        EvidenceValue::Unsupported
+        EvidenceValue::Complete(ref provider) if provider.incidents.is_empty()
     ));
     assert!(matches!(
         evidence.provenance.harness_version,
@@ -1071,16 +1071,20 @@ fn task_complete_errors_codex_fixture_matches_golden() {
     check_golden("task_complete_errors");
 }
 
-/// The fixture's three mapped `task_complete` errors become a `QuotaIncident`
-/// or a `ProviderIncident`, in file order, with the model from the request's
-/// own `turn_context`. `server_overloaded` is a provider incident, since a
-/// provider outage is not caused by the user's own usage; the other two
-/// reviewed codes are quota incidents. The other `task_complete` shapes (a
-/// clean turn, an unmapped code, a struct variant, a missing
-/// `codex_error_info`, and a missing top-level `timestamp`) produce none,
-/// and the record stays allowlisted-eventless.
+/// The fixture's mapped `task_complete` errors become a `QuotaIncident` or a
+/// `ProviderIncident`, in file order, with the model from the request's own
+/// `turn_context`. `server_overloaded` and `internal_server_error` are
+/// provider incidents, since a provider outage is not caused by the user's
+/// own usage; `rate_limit_exceeded` and `usage_limit_exceeded` are quota
+/// incidents. The four transport struct variants map by their
+/// `http_status_code`: a `5xx` status is a `ServerError`, an absent or
+/// `null` status is a `Connection` failure. Every other shape (a clean
+/// turn, a non-5xx or non-integer transport status, `context_window_exceeded`,
+/// `active_turn_not_steerable`, a missing `codex_error_info`, and a missing
+/// top-level `timestamp`) produces no observation, and the record stays
+/// allowlisted-eventless.
 #[test]
-fn task_complete_errors_map_only_the_three_reviewed_codes() {
+fn task_complete_errors_map_only_the_reviewed_codes() {
     let (evidence, _) = composite(&input("task_complete_errors"));
 
     assert_eq!(evidence.coverage, EvidenceCoverage::Complete);
@@ -1094,6 +1098,7 @@ fn task_complete_errors_map_only_the_three_reviewed_codes() {
         .iter()
         .map(|incident| {
             (
+                incident.ts_ms,
                 incident.limit_kind,
                 incident.severity,
                 incident.model.clone(),
@@ -1104,11 +1109,13 @@ fn task_complete_errors_map_only_the_three_reviewed_codes() {
         observed,
         vec![
             (
+                1_767_607_207_000,
                 QuotaLimitKind::RateLimit,
                 QuotaHitSeverity::HardHit,
                 Some("gpt-6-astra".to_owned())
             ),
             (
+                1_767_607_208_000,
                 QuotaLimitKind::UsageLimit,
                 QuotaHitSeverity::HardHit,
                 Some("gpt-6-astra".to_owned())
@@ -1122,14 +1129,42 @@ fn task_complete_errors_map_only_the_three_reviewed_codes() {
     let observed_provider: Vec<_> = provider
         .incidents
         .iter()
-        .map(|incident| (incident.kind, incident.model.clone()))
+        .map(|incident| (incident.ts_ms, incident.kind, incident.model.clone()))
         .collect();
     assert_eq!(
         observed_provider,
-        vec![(
-            ProviderIncidentKind::Capacity,
-            Some("gpt-6-astra".to_owned())
-        )]
+        vec![
+            (
+                1_767_607_206_000,
+                ProviderIncidentKind::Capacity,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                1_767_607_209_000,
+                ProviderIncidentKind::ServerError,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                1_767_607_212_000,
+                ProviderIncidentKind::ServerError,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                1_767_607_213_000,
+                ProviderIncidentKind::ServerError,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                1_767_607_214_000,
+                ProviderIncidentKind::Connection,
+                Some("gpt-6-astra".to_owned())
+            ),
+            (
+                1_767_607_215_000,
+                ProviderIncidentKind::Connection,
+                Some("gpt-6-astra".to_owned())
+            ),
+        ]
     );
 
     let rendered = serde_json::to_string(&evidence).unwrap();

@@ -187,7 +187,13 @@ pub use vendors::{has_dedicated_reader, reader_for};
 // `error` object now maps to a `QuotaIncident` for the three reviewed
 // `codex_error_info` codes, so a stored Codex session must reparse to
 // collect them (`vendors::codex::task_complete_incident`).
-pub const PARSER_REVISION: i64 = 37;
+// +1 for provider incident parity: Codex's remaining transport/server
+// `codex_error_info` codes now map to `ServerError`/`Connection`
+// (`vendors::codex::task_complete_observation`), and a Claude
+// `isApiErrorMessage` assistant record now maps to a quota or provider
+// incident (`vendors::claude::api_error_observation`), so a stored Claude
+// or Codex session must reparse to collect them.
+pub const PARSER_REVISION: i64 = 38;
 // +1 for turn row chart signals: `has_thinking`, `last_tool`, and
 // `subagent_launches` are now ingest-derived row columns
 // (`rows::turn_row_from_event`), so every session must reparse to

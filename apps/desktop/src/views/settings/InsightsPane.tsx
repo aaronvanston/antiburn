@@ -83,6 +83,8 @@ const LIMIT_KIND_LABELS: Record<string, string> = {
 /** Reader-facing names for the provider-incident kind identifiers. */
 const PROVIDER_INCIDENT_KIND_LABELS: Record<string, string> = {
   capacity: "Model or server at capacity",
+  server_error: "Provider server error",
+  connection: "Connection to provider failed",
 }
 
 export function InsightsPane({ analyticsVisible = true }: { analyticsVisible?: boolean }) {
@@ -462,7 +464,7 @@ function ProviderIncidentsSection({
   incidents: InsightsProviderIncidentsPayload
 }) {
   return (
-    <SectionGroup title="Provider capacity">
+    <SectionGroup title="Provider incidents">
       <Card>
         {!incidents.assessed || !incidents.findings ? (
           <p className="type-footnote px-4 py-3 text-label-secondary">
@@ -471,7 +473,7 @@ function ProviderIncidentsSection({
         ) : (
           <div className="space-y-2 px-4 py-3">
             <StatusText icon={CircleAlert} iconClassName="text-system-orange">
-              {incidents.findings.totalHits} capacity{" "}
+              {incidents.findings.totalHits} provider{" "}
               {incidents.findings.totalHits === 1 ? "failure" : "failures"} across{" "}
               {incidents.findings.affectedSessionCount}{" "}
               {incidents.findings.affectedSessionCount === 1 ? "session" : "sessions"}
