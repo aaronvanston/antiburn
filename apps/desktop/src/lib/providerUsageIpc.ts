@@ -214,9 +214,9 @@ export interface AllowanceUtilizationPayload {
   typicalPercent: number | null
   /** The highest figure any one period reached. */
   peakPercent: number
-  /** Each period's peak, oldest first. The figures above state the range;
-   * this states the shape, which a count of periods cannot show. */
-  periodPeaks: number[]
+  /** The mean peak across every period antiburn holds. It answers "how much
+   * of the plan do I use", where the peak answers "can the plan hold me". */
+  averagePercent: number
   periodCount: number
   /** How many of those periods reached 100%. A refusal happens there and at
    * nothing less, so there is no lower threshold to report. */

@@ -1121,7 +1121,7 @@ fn utilization_payload(
     AllowanceUtilization {
         typical_percent: utilization.typical_percent,
         peak_percent: utilization.peak_percent,
-        period_peaks: utilization.period_peaks,
+        average_percent: utilization.average_percent,
         period_count: u32::try_from(utilization.period_count).unwrap_or(u32::MAX),
         maxed_period_count: u32::try_from(utilization.maxed_period_count).unwrap_or(u32::MAX),
         window_kind: utilization.window_kind,

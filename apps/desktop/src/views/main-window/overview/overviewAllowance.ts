@@ -30,17 +30,14 @@ function percentFigure(percent: number): string {
 }
 
 /**
- * The utilization hero figure: a typical-to-peak range, or the peak alone.
+ * The utilization hero figure: the average share of the subscription the
+ * provider's meter reports, across every period antiburn holds.
  *
- * A peak answers "can this plan hold me". It does not answer "am I paying
- * for room I never use", which is why the pair reads as one figure. The
- * range collapses to the peak while the sample is too small for a typical
- * value, and the peak is honest at any sample size.
+ * One figure answers "am I paying for room I never use". A range of two
+ * figures asked the reader to hold two ideas to read one cell.
  */
 export function utilizationFigure(utilization: AllowanceUtilizationPayload): string {
-  const peak = percentFigure(utilization.peakPercent)
-  if (utilization.typicalPercent == null) return peak
-  return `${Math.round(utilization.typicalPercent)}-${peak}`
+  return percentFigure(utilization.averagePercent)
 }
 
 /**
@@ -56,25 +53,14 @@ function periodNoun(windowKind: string, count: number): string {
   return count === 1 ? "period" : "periods"
 }
 
-/** The heading over the utilization figure. It names the window measured. */
-export function utilizationLabel(utilization: AllowanceUtilizationPayload): string {
-  return `Busiest ${periodNoun(utilization.windowKind, 1)}`
-}
-
 /**
- * What the utilization figure measures, in the reader's words.
+ * What the utilization figure measures.
  *
- * The sparkline under the figure draws these periods, so this sentence is
- * the accessible name of that drawing. The word "across" names the span the
- * figure covers. The word "of" says the figure belongs to the span, which
- * is not what the figure means.
+ * The figure covers every period antiburn holds, so no count of periods
+ * belongs in these words. A count told the reader the size of the sample
+ * and nothing about the number over it.
  */
-export function utilizationCaption(utilization: AllowanceUtilizationPayload): string {
-  const count = utilization.periodCount
-  const periods = `${count} ${periodNoun(utilization.windowKind, count)}`
-  if (utilization.typicalPercent == null) return `peak across ${periods}`
-  return `typical to peak across ${periods}`
-}
+export const UTILIZATION_LABEL = "Average subscription utilization"
 
 /**
  * True when the blocks state enough resets to give a wait.

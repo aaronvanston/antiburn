@@ -36,7 +36,7 @@ function account(
     utilization: {
       typicalPercent: 40,
       peakPercent: 62,
-      periodPeaks: [22, 41, 39, 62, 44, 30, 51, 38, 47],
+      averagePercent: 41.4,
       periodCount: 9,
       maxedPeriodCount: 0,
       windowKind: "weekly",
@@ -46,7 +46,7 @@ function account(
     burst: {
       typicalPercent: 15,
       peakPercent: 100,
-      periodPeaks: [10, 12, 20, 100, 14, 9],
+      averagePercent: 27.5,
       periodCount: 18,
       maxedPeriodCount: 1,
       windowKind: "rolling",
@@ -130,18 +130,13 @@ describe("OverviewUsage", () => {
     expect(onMetricChange).toHaveBeenCalledWith("cost")
   })
 
-  it("states utilization as a range and the blocks beside it with their cause", () => {
+  it("states the average utilization and the blocks beside it with their cause", () => {
     renderTotals()
     const cell = screen.getByRole("region", { name: "Allowance" })
 
-    expect(within(cell).getByText("Busiest week")).toBeInTheDocument()
-    expect(within(cell).getByText("40-62%")).toBeInTheDocument()
-    // The caption is now the sparkline's accessible name, and the drawing
-    // carries one bar for each period the figure covers.
-    const sparkline = within(cell).getByRole("img", {
-      name: "typical to peak across 9 weeks",
-    })
-    expect(sparkline.querySelectorAll(".overview-sparkline-bar")).toHaveLength(9)
+    expect(within(cell).getByText("Average subscription utilization")).toBeInTheDocument()
+    expect(within(cell).getByText("41%")).toBeInTheDocument()
+    expect(within(cell).getByText("average subscription utilization")).toBeInTheDocument()
     expect(within(cell).getByText("11h")).toBeInTheDocument()
     expect(within(cell).getByText(/8 blocks in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()
@@ -175,7 +170,7 @@ describe("OverviewUsage", () => {
     renderTotals({ allowance: summary([account({ utilization: null })]) })
     const cell = screen.getByRole("region", { name: "Allowance" })
 
-    expect(within(cell).queryByText(/Busiest/)).not.toBeInTheDocument()
+    expect(within(cell).queryByText(/subscription utilization/i)).not.toBeInTheDocument()
     expect(within(cell).getByText("11h")).toBeInTheDocument()
   })
 

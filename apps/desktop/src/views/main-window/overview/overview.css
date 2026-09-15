@@ -317,30 +317,3 @@
   border-radius: 9999px;
   box-shadow: 0 0 0 1.5px var(--color-surface-window);
 }
-
-/* ==========================================================================
-   Utilization sparkline.
-
-   One bar for each period behind the utilization figure, oldest first. The
-   bars keep one width at every count, so a bar means the same thing in each
-   account and the width of the drawing tells the reader how many periods
-   the figure covers. The figure above states the range; the bars state the
-   shape.
-   ========================================================================== */
-
-.overview-sparkline {
-  --overview-sparkline-height: 20px;
-  --overview-sparkline-bar-width: 4px;
-  display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  block-size: var(--overview-sparkline-height);
-}
-
-/* A period at nearly nothing still draws, so the reader counts the periods
-   the figure covers. */
-.overview-sparkline-bar {
-  inline-size: var(--overview-sparkline-bar-width);
-  min-block-size: 1px;
-  border-radius: 1px;
-}

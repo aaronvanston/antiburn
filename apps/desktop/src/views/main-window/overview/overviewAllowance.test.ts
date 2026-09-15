@@ -13,9 +13,7 @@ import {
   blockedNote,
   causeLine,
   hasAllowanceFigures,
-  utilizationCaption,
   utilizationFigure,
-  utilizationLabel,
 } from "./overviewAllowance"
 
 function utilization(
@@ -24,7 +22,7 @@ function utilization(
   return {
     typicalPercent: 40,
     peakPercent: 62,
-    periodPeaks: [22, 41, 39, 62, 44, 30, 51, 38, 47],
+    averagePercent: 41.4,
     periodCount: 9,
     maxedPeriodCount: 0,
     windowKind: "weekly",
@@ -56,36 +54,18 @@ function account(
 }
 
 describe("utilizationFigure", () => {
-  it("states a typical-to-peak range once enough periods exist", () => {
-    expect(utilizationFigure(utilization())).toBe("40-62%")
+  it("states the average share of the subscription the meter reports", () => {
+    expect(utilizationFigure(utilization())).toBe("41%")
   })
 
-  it("states the peak alone while the sample is too small for a typical figure", () => {
-    expect(utilizationFigure(utilization({ typicalPercent: null, periodCount: 2 }))).toBe("62%")
-  })
-})
-
-describe("utilizationLabel and utilizationCaption", () => {
-  it("names the weekly window, which measures plan fit", () => {
-    const weekly = utilization()
-    expect(utilizationLabel(weekly)).toBe("Busiest week")
-    expect(utilizationCaption(weekly)).toBe("typical to peak across 9 weeks")
-  })
-
-  it("names the rolling window, which measures burstiness", () => {
-    const rolling = utilization({
-      windowKind: "rolling",
-      typicalPercent: null,
-      periodCount: 18,
-    })
-    expect(utilizationLabel(rolling)).toBe("Busiest window")
-    expect(utilizationCaption(rolling)).toBe("peak across 18 windows")
-  })
-
-  it("falls back to a neutral noun for a window it does not know", () => {
-    const other = utilization({ windowKind: "other:fortnightly", periodCount: 7 })
-    expect(utilizationLabel(other)).toBe("Busiest period")
-    expect(utilizationCaption(other)).toBe("typical to peak across 7 periods")
+  it("states a figure at any sample size, because a mean needs no sample floor", () => {
+    // The median collapses to null below six periods. The average does not,
+    // so one period still states what that period used.
+    expect(
+      utilizationFigure(
+        utilization({ typicalPercent: null, averagePercent: 62, periodCount: 1 }),
+      ),
+    ).toBe("62%")
   })
 })
 

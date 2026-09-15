@@ -195,9 +195,11 @@ pub struct Utilization {
     pub typical_percent: Option<f64>,
     /// The highest figure any one period reached.
     pub peak_percent: f64,
-    /// Each period's peak, oldest first. A sparkline draws the shape the
-    /// aggregates above describe; a count of periods does not show it.
-    pub period_peaks: Vec<f64>,
+    /// The mean peak across every period the store holds. It answers "how
+    /// much of the plan do I use", where the peak answers "can the plan
+    /// hold me". An idle period pulls this figure down and moves the
+    /// median above far less.
+    pub average_percent: f64,
     pub period_count: usize,
     /// How many periods reached [`MAXED_PERCENT`].
     pub maxed_period_count: usize,
@@ -236,10 +238,7 @@ pub fn utilization(rollups: &[ProviderUsagePeriodRollup]) -> Option<Utilization>
         .expect("the list is not empty")
         .2
         .to_owned();
-    // Collect the series in time order before the sort below reorders the
-    // list by value. The reader must see the periods as they happened.
-    peaks.sort_by_key(|entry| entry.0);
-    let period_peaks: Vec<f64> = peaks.iter().map(|entry| entry.1).collect();
+    let total: f64 = peaks.iter().map(|entry| entry.1).sum();
     peaks.sort_by(|left, right| left.1.total_cmp(&right.1));
     let period_count = peaks.len();
     let typical_percent =
@@ -248,7 +247,7 @@ pub fn utilization(rollups: &[ProviderUsagePeriodRollup]) -> Option<Utilization>
         window_kind,
         typical_percent,
         peak_percent: peaks[period_count - 1].1,
-        period_peaks,
+        average_percent: total / period_count as f64,
         period_count,
         maxed_period_count: peaks
             .iter()

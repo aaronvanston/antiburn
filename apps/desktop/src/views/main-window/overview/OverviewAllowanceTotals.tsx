@@ -4,10 +4,9 @@ import {
   blockedFigure,
   blockedNote,
   causeLine,
+  UTILIZATION_LABEL,
   utilizationFigure,
-  utilizationLabel,
 } from "./overviewAllowance"
-import { OverviewUtilizationSparkline } from "./OverviewUtilizationSparkline"
 
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
@@ -30,9 +29,9 @@ import "./overview.css"
  * figure would say the same thing twice. The label stays for a screen
  * reader, which needs a term for each figure in the list.
  *
- * Under the utilization figure a sparkline takes the caption's place. It
- * draws the periods the figure covers, which a count of periods cannot
- * show. The sentence stays as the accessible name of the drawing.
+ * The utilization caption repeats the label word for word, so a screen
+ * reader hears it once: the label carries it and the caption is drawn for
+ * the eye alone.
  */
 export function OverviewAllowanceTotals({
   accounts,
@@ -93,12 +92,15 @@ function AllowanceAccount({
       <dl className="overview-allowance-pair mt-[var(--space-sm)]">
         {utilization && (
           <div className="min-w-0">
-            <dt className="sr-only">{utilizationLabel(utilization)}</dt>
+            <dt className="sr-only">{UTILIZATION_LABEL}</dt>
             <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
               <SegmentFigure>{utilizationFigure(utilization)}</SegmentFigure>
             </dd>
-            <dd>
-              <OverviewUtilizationSparkline utilization={utilization} />
+            <dd
+              aria-hidden="true"
+              className="type-caption mt-[var(--space-xs)] text-label-tertiary"
+            >
+              {UTILIZATION_LABEL.toLowerCase()}
             </dd>
           </div>
         )}
