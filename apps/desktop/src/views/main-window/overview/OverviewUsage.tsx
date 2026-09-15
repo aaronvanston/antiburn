@@ -33,8 +33,9 @@ const METRICS: ReadonlyArray<{ value: OverviewMetric; label: string }> = [
  * because it changes both. A control at one edge would read as the control
  * of the block it sits nearest.
  *
- * The chart comes first: the shape of the last 30 days is the reason to
- * open this page, and the figures under it summarize that shape.
+ * The figures come first and the chart follows them. The figures answer
+ * "where do I stand" in one line, which is the first question. The chart
+ * answers "how did I get here", which the reader asks second.
  */
 export function OverviewUsage({
   metric,
@@ -68,18 +69,18 @@ export function OverviewUsage({
       />
       {metric === "cost" ? (
         <>
-          <OverviewSpendChart days={days} previousDays={previousDays} loading={loading} />
           <OverviewSpendTotals totals={totals} loading={loading} />
+          <OverviewSpendChart days={days} previousDays={previousDays} loading={loading} />
         </>
       ) : (
         <>
-          <OverviewAllowanceChart
-            accounts={allowanceAccounts(allowance)}
-            loading={loading && !allowance}
-          />
           <OverviewAllowanceTotals
             accounts={allowanceAccounts(allowance)}
             spanDays={allowance?.overageSpanDays ?? 0}
+            loading={loading && !allowance}
+          />
+          <OverviewAllowanceChart
+            accounts={allowanceAccounts(allowance)}
             loading={loading && !allowance}
           />
         </>
