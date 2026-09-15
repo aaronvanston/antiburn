@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed } from "lucide-react"
+import { ArrowRight, CheckCircle2, CircleDashed } from "lucide-react"
 
 import type { ChecksCategoryPayload, ChecksReportPayload } from "../../../lib/insightsIpc"
 import { checksPresentation } from "../../../lib/presentation/checks"
@@ -68,8 +68,9 @@ function overviewChecksSummary(report: ChecksReportPayload): OverviewChecksSumma
 /**
  * The Burn checks panel: at most two finding rows, each a button that opens
  * the full Burn checks section. A state with no finding shows one closing
- * line instead. The panel draws no card of its own; the Overview page's
- * stack card holds it above the recent sessions.
+ * line instead. The header matches the recent sessions header above the
+ * page's other panel. The panel draws no card of its own; the Overview
+ * page's stack card holds it above the recent sessions.
  */
 export function OverviewBurnChecks({
   report,
@@ -83,7 +84,22 @@ export function OverviewBurnChecks({
   const summary = report ? overviewChecksSummary(report) : null
   const FooterIcon = summary?.state === "passed" ? CheckCircle2 : CircleDashed
   return (
-    <section aria-label="Burn checks" aria-busy={loading || undefined} className="min-w-0">
+    <section
+      aria-label="Burn checks"
+      aria-busy={loading || undefined}
+      className="flex min-w-0 flex-col gap-[var(--space-sm)]"
+    >
+      <div className="flex items-baseline justify-between">
+        <h2 className="type-caption text-label-secondary">Checks</h2>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="inline-flex items-center gap-1 type-caption text-label-secondary hover:text-label hover:underline hover:underline-offset-[3px]"
+        >
+          All checks
+          <ArrowRight size={12} strokeWidth={2} aria-hidden="true" />
+        </button>
+      </div>
       {!summary && (
         // The rows keep their height while the report loads, so the panel
         // does not jump when the result arrives.
@@ -122,9 +138,7 @@ export function OverviewBurnChecks({
       {summary?.footer && (
         <p
           className={`flex items-center gap-[var(--space-sm)] type-callout ${
-            summary.rows.length > 0
-              ? "mt-[var(--space-md)] border-t border-separator pt-[var(--space-sm)]"
-              : ""
+            summary.rows.length > 0 ? "border-t border-separator pt-[var(--space-sm)]" : ""
           } ${summary.state === "passed" ? "text-burn-check-pass-fill" : "text-label-secondary"}`}
         >
           <FooterIcon size={14} strokeWidth={2} aria-hidden="true" />
