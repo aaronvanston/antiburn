@@ -26,6 +26,7 @@ mod history_tests {
         used_percent: Option<f64>,
     ) -> ProviderUsageSnapshot {
         ProviderUsageSnapshot {
+            refusal_kind: None,
             provider: "anthropic",
             account: Some(account.into()),
             account_uuid: None,

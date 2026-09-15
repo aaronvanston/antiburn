@@ -93,6 +93,9 @@ struct Reading<'a> {
     resets_at_epoch: Option<i64>,
     plan: Option<&'a str>,
     plan_tier: Option<&'a str>,
+    /// The refusal the provider stated on this reading. A used figure of
+    /// 100% is not a refusal; only this value is one.
+    refusal_kind: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -288,6 +291,7 @@ impl<'a> Reading<'a> {
             resets_at_epoch,
             plan: snapshot.plan.as_deref(),
             plan_tier: snapshot.plan_tier.as_deref(),
+            refusal_kind: snapshot.refusal_kind.as_deref(),
         }
     }
 }
@@ -510,8 +514,11 @@ fn write_observation(
                 period_id, provider, account_key, window_id, window_kind, window_role,
                 scope_key, scope_label, observed_at_epoch, used_percent, is_fresh,
                 is_authoritative, confidence, source_id, reported_starts_at_epoch,
-                reported_resets_at_epoch, plan, plan_tier
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?18, ?19)
+                reported_resets_at_epoch, plan, plan_tier, refusal_kind
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?18, ?19,
+                ?20
+            )
             ON CONFLICT (
                 provider, account_key, window_id, window_kind, window_role, scope_key,
                 observed_at_epoch
@@ -536,7 +543,12 @@ fn write_observation(
                     ELSE excluded.reported_resets_at_epoch
                 END,
                 plan = excluded.plan,
-                plan_tier = excluded.plan_tier",
+                plan_tier = excluded.plan_tier,
+                -- A refusal is a fact about the moment, not a figure that is
+                -- corrected later. A re-read that states none never erases one.
+                refusal_kind = COALESCE(
+                    excluded.refusal_kind, provider_usage_observation.refusal_kind
+                )",
         params![
             period_id,
             reading.provider,
@@ -557,6 +569,7 @@ fn write_observation(
             i64::from(detaches_existing),
             reading.plan,
             reading.plan_tier,
+            reading.refusal_kind,
         ],
     )?;
     if let Some(period_id) = period_id {

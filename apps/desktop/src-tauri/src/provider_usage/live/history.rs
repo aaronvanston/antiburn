@@ -212,6 +212,7 @@ mod tests {
 
     fn snapshot(observed: i64, percent: f64) -> ProviderUsageSnapshot {
         ProviderUsageSnapshot {
+            refusal_kind: None,
             provider: crate::provider_usage::providers::ANTHROPIC,
             account: Some("account-a".into()),
             account_uuid: None,
