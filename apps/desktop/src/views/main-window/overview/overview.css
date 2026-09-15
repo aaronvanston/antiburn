@@ -322,9 +322,12 @@
   block-size: 100%;
 }
 
-/* The ring keeps the mark crisp over any series color it lands on. */
+/* A block draws over every bar, never behind one. The bar is a later
+   sibling, so the mark needs the z-index to stay on top of a full-height
+   bar. The ring keeps it crisp over any series color it lands on. */
 .overview-block-mark {
   position: absolute;
+  z-index: 1;
   inset-block-start: 0;
   inset-inline-start: 50%;
   inline-size: var(--overview-bar-width);

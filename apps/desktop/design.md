@@ -254,7 +254,7 @@ colors:
     light: "hsl(201.5 100% 34.9%)"
     dark: "hsl(201.6 77% 62.5%)"
   series-2: # Overview account series, second: graphite, the label ink hue; inverted on dark
-    light: "hsl(240 5% 20%)"
+    light: "hsl(240 4% 30%)"
     dark: "hsl(240 12% 78%)"
   series-3: # Overview account series, third: the violet of the output series
     light: "hsl(258.3 89% 66.2%)"

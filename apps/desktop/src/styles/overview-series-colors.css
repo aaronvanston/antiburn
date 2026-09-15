@@ -33,7 +33,7 @@
 :root,
 :root[data-theme="light"] {
   --color-series-1-val: hsl(201.5 100% 34.9%); /* deep blue */
-  --color-series-2-val: hsl(240 5% 20%); /* graphite, the label ink hue */
+  --color-series-2-val: hsl(240 4% 30%); /* graphite, the label ink hue */
   --color-series-3-val: hsl(258.3 89% 66.2%); /* violet */
   --color-series-4-val: hsl(173.4 80% 40%); /* teal */
 }

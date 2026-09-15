@@ -227,9 +227,7 @@ export function OverviewAllowanceChart({
                               <Bar
                                 fraction={geometry.fraction}
                                 outline={geometry.outline}
-                                className={`${seriesColor(accountIndex)} ${
-                                  isToday ? "" : "opacity-70"
-                                }`}
+                                className={seriesColor(accountIndex)}
                               />
                             </span>
                           )
