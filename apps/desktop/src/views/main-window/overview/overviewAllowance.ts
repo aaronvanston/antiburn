@@ -69,28 +69,40 @@ export function utilizationCaption(utilization: AllowanceUtilizationPayload): st
   return `typical to peak of ${periods}`
 }
 
-/** The figure for a number antiburn does not hold. It is not a zero. */
-const UNKNOWN_FIGURE = "\u2014"
+/**
+ * True when the blocks state enough resets to give a wait.
+ *
+ * A block that states no usable reset adds no time. The figure and the
+ * caption both change with this answer, so they read it from one place.
+ */
+function statesWait(overage: AllowanceOveragePayload): boolean {
+  return overage.waitedSeconds > 0
+}
 
 /**
  * The overage hero figure: the time the reader waited on the provider.
  *
- * A block that states no usable reset contributes no time. When no block
- * states one, the wait is unknown and the figure says so. A zero there would
- * claim the reader waited no time, which is a different and false claim.
+ * The figure falls back to the count of blocks when no block states a
+ * reset. A zero there would say the reader waited no time, which is a
+ * different and false claim.
  */
 export function blockedFigure(overage: AllowanceOveragePayload): string {
-  if (overage.blockCount === 0) return "0h"
-  if (overage.waitedSeconds <= 0) return UNKNOWN_FIGURE
+  if (!statesWait(overage)) return `${overage.blockCount}`
   const hours = overage.waitedSeconds / SECONDS_PER_HOUR
   if (hours < 1) return `${Math.max(1, Math.round(overage.waitedSeconds / 60))}m`
   return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`
 }
 
-/** How many blocks the wait above covers, over the span it covers. */
+/**
+ * What the figure above counts, over the span it covers.
+ *
+ * The caption states the count when the figure states a wait. When the
+ * figure is already the count, the caption gives it its noun instead.
+ */
 export function blockedCaption(overage: AllowanceOveragePayload, spanDays: number): string {
   const blocks = overage.blockCount === 1 ? "block" : "blocks"
-  return `${overage.blockCount} ${blocks} in ${spanDays} days`
+  const span = `${blocks} in ${spanDays} days`
+  return statesWait(overage) ? `${overage.blockCount} ${span}` : span
 }
 
 /**

@@ -105,24 +105,25 @@ describe("blockedFigure", () => {
     expect(blockedFigure(overage({ blockCount: 12, waitedSeconds: 39_960 }))).toBe("11h")
   })
 
-  it("states an unknown wait rather than zero hours", () => {
+  it("counts the blocks when no block states a reset", () => {
     // A block that reports no usable reset is counted and adds no time.
     // "0h" would claim the reader waited no time, which is false.
     expect(
       blockedFigure(overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })),
-    ).toBe("\u2014")
-  })
-
-  it("states zero hours for an account no provider blocked", () => {
-    // No block is a fact the provider states, not a gap in the evidence.
-    expect(blockedFigure(overage({ blockCount: 0, waitedSeconds: 0 }))).toBe("0h")
+    ).toBe("1")
+    expect(blockedFigure(overage({ blockCount: 0, waitedSeconds: 0 }))).toBe("0")
   })
 })
 
 describe("blockedCaption and blockedNote", () => {
-  it("names the span the block count covers", () => {
+  it("names the span, and the count the wait covers", () => {
     expect(blockedCaption(overage(), 30)).toBe("2 blocks in 30 days")
     expect(blockedCaption(overage({ blockCount: 1 }), 30)).toBe("1 block in 30 days")
+  })
+
+  it("leaves the count to the figure when the figure is the count", () => {
+    const counted = overage({ blockCount: 1, waitedSeconds: 0, blocksWithoutWait: 1 })
+    expect(blockedCaption(counted, 30)).toBe("block in 30 days")
   })
 
   it("says nothing when every block states a reset", () => {

@@ -134,9 +134,9 @@ describe("OverviewUsageTotals", () => {
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()
   })
 
-  it("states an unknown wait, not zero, when no block states a reset", () => {
+  it("counts the blocks when no block states a reset", () => {
     // Codex refuses without naming a reset. The blocks still happened, so the
-    // count stays and only the wait is unknown.
+    // figure falls back to counting them.
     renderTotals({
       allowance: summary([
         account({
@@ -151,8 +151,8 @@ describe("OverviewUsageTotals", () => {
     })
     const cell = screen.getByRole("region", { name: "Allowance" })
 
-    expect(within(cell).getByText("\u2014")).toBeInTheDocument()
-    expect(within(cell).getByText(/1 block in 30 days/)).toBeInTheDocument()
+    expect(within(cell).getByText("1")).toBeInTheDocument()
+    expect(within(cell).getByText(/block in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText(/no stated reset/)).toBeInTheDocument()
   })
 
