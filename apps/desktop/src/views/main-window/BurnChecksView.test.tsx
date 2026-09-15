@@ -394,7 +394,7 @@ describe("BurnChecksView", () => {
       categories: [report.categories[2]!],
     })
 
-    await screen.findByText("1 check not assessed.")
+    expect(screen.queryByText("1 check not assessed.")).not.toBeInTheDocument()
     vi.mocked(adapter.getReport).mockResolvedValue({
       ...report,
       categories: [{ ...report.categories[1]!, finding: 0, clean: 3 }],
@@ -457,7 +457,7 @@ describe("BurnChecksView", () => {
       screen.getAllByText("Some sessions used an older model when a newer one was available."),
     ).toHaveLength(1)
     expect(action.parentElement).toContainElement(
-      screen.getByRole("button", { name: "Remind me later" }),
+      screen.getByRole("button", { name: "Snooze" }),
     )
     fireEvent.click(action)
     expect(commands.copyBatch).not.toHaveBeenCalled()
@@ -472,19 +472,14 @@ describe("BurnChecksView", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("shows Snoozed as an empty preview while reminders remain disabled", async () => {
+  it("shows Snoozed as an empty group", async () => {
     setup(target, false, aggregate, report)
     const snoozed = await screen.findByRole("button", { name: "Snoozed 0" })
     expect(snoozed).toHaveAttribute("aria-expanded", "false")
     fireEvent.click(snoozed)
     expect(snoozed).toHaveAttribute("aria-expanded", "true")
-    expect(
-      screen.getByText("Checks you defer will appear here. Reminders are coming soon."),
-    ).toBeVisible()
-    expect(screen.getByRole("button", { name: "Remind me later" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    )
+    expect(screen.queryByText(/Reminders are coming soon/)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Snooze" })).not.toHaveAttribute("aria-disabled")
     fireEvent.click(snoozed)
     expect(snoozed).toHaveAttribute("aria-expanded", "false")
   })
@@ -543,14 +538,10 @@ describe("BurnChecksView", () => {
     const trigger = await screen.findByRole("button", { name: "Assessment details" })
     expect(screen.getByRole("heading", { name: "Failed checks 1" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Passed checks 1" })).toBeVisible()
-    expect(screen.getByText("1 check not assessed.")).toBeVisible()
+    expect(screen.queryByText("1 check not assessed.")).not.toBeInTheDocument()
     expect(screen.queryByText("Estimated token burn")).not.toBeInTheDocument()
     expect(trigger.closest("header")).toContainElement(
       screen.getByRole("heading", { name: "Failed checks 1" }),
-    )
-    expect(screen.getByRole("button", { name: "Remind me later" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
     )
     fireEvent.click(trigger)
     const details = screen.getByRole("region", { name: "Assessment details" })
@@ -577,10 +568,10 @@ describe("BurnChecksView", () => {
     expect(commands.openSettings).toHaveBeenCalledExactlyOnceWith("insights")
   })
 
-  it("shows processing count in the assessment summary", async () => {
+  it("keeps processing count out of the collection header", async () => {
     setup(target, false, aggregate, { ...report, pendingEvidence: 2 })
 
-    expect(await screen.findByText("2 sessions processing.")).toBeVisible()
+    expect(screen.queryByText("2 sessions processing.")).not.toBeInTheDocument()
   })
 
   it("shows a pass-only outcome and opens its counted disclosure", async () => {

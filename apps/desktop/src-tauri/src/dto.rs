@@ -688,6 +688,23 @@ pub enum BurnCheckDetectorId {
     CacheChurn,
 }
 
+/// A reader-owned suppression for one entire burn check.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BurnCheckSnoozePayload {
+    pub detector: BurnCheckDetectorId,
+    /// This release supports the whole check. The field reserves target scope.
+    pub scope: BurnCheckSnoozeScope,
+    /// Milliseconds since the Unix epoch. `None` means the reader chose forever.
+    pub until: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BurnCheckSnoozeScope {
+    Check,
+}
+
 impl From<BurnCheckDetectorId> for DetectorId {
     fn from(value: BurnCheckDetectorId) -> Self {
         match value {

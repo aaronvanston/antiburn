@@ -1,6 +1,6 @@
 import "../../../styles/burn-checks-report.css"
 
-import { ChevronRight, Clock } from "lucide-react"
+import { BellRing, ChevronRight, Clock } from "lucide-react"
 import { useCallback, useRef, useState, type KeyboardEvent } from "react"
 
 import { BurnCheckFlame } from "../../../components/burn-checks/BurnCheckFlames"
@@ -13,6 +13,12 @@ import { cn } from "../../../lib/cn"
 import type { ChecksCategoryPayload, ChecksReportPayload } from "../../../lib/insightsIpc"
 import { isMacOS } from "../../../lib/platform"
 import { checksPresentation, formatTokenBurnPercent } from "../../../lib/presentation/checks"
+import {
+  formatSnoozeUntil,
+  snoozedDetectorIds,
+  unsnoozeBurnCheck,
+  useSnoozedBurnChecks,
+} from "../../../lib/snoozedBurnChecks"
 import { checkRowPresentation } from "../../checks/checkUi"
 import type { BurnChecksSession, BurnChecksSnapshot } from "../BurnChecksSession"
 import { BurnCheckDetail, CheckDetailActions, CHECK_SENTENCES } from "./BurnCheckDetail"
@@ -113,6 +119,7 @@ function CheckDetailContent({
           <BurnCheckTargetDetail
             key={target.findingId}
             target={target}
+            detector={check.id}
             refresh={session.refresh}
             reportRow
           />
@@ -135,12 +142,14 @@ function CheckDetail({
   check,
   visible,
   deliberate,
+  snoozed,
   session,
   state,
 }: {
   check: ChecksCategoryPayload
   visible: boolean
   deliberate: boolean
+  snoozed: boolean
   session: BurnChecksSession
   state: BurnChecksSnapshot
 }) {
@@ -193,7 +202,18 @@ function CheckDetail({
               targets={targetList.targets}
               refresh={session.refresh}
               reportRow
+              snoozed={snoozed}
             />
+          )}
+          {snoozed && (
+            <button
+              type="button"
+              onClick={() => void unsnoozeBurnCheck(check.id)}
+              className="burn-check-action type-callout gap-1"
+            >
+              <BellRing size={12} aria-hidden="true" />
+              Unsnooze
+            </button>
           )}
         </div>
       </header>
@@ -260,6 +280,7 @@ function CheckTrigger({
   onClick,
   onKeyDown,
   state,
+  snoozeLabel,
 }: {
   check: ChecksCategoryPayload
   selected: boolean
@@ -267,6 +288,7 @@ function CheckTrigger({
   onClick: () => void
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
   state: BurnChecksSnapshot
+  snoozeLabel?: string
 }) {
   const presentation = checkRowPresentation(check, state.targets[check.id]?.data?.targets)
   const { Icon } = presentation
@@ -317,6 +339,12 @@ function CheckTrigger({
           {presentation.label}
         </span>
         <CheckMetadata check={check} presentation={presentation} />
+        {snoozeLabel && (
+          <span className="mt-1 flex items-center gap-1 type-footnote text-label-secondary">
+            <Clock size={13} className="text-label-secondary" aria-hidden="true" />
+            {snoozeLabel}
+          </span>
+        )}
       </span>
     </button>
   )
@@ -332,10 +360,17 @@ export function BurnChecksReport({
   state: BurnChecksSnapshot
 }) {
   const presentation = checksPresentation(report)
+  const snoozed = useSnoozedBurnChecks()
+  const snoozedIds = snoozedDetectorIds(snoozed)
   const PassIcon = BURN_CHECK_MARKS.clean.Icon
-  const checks = [...presentation.failures, ...presentation.wins]
+  const activeFailures = presentation.failures.filter((check) => !snoozedIds.has(check.id))
+  const activeWins = presentation.wins.filter((check) => !snoozedIds.has(check.id))
+  const snoozedChecks = [...presentation.failures, ...presentation.wins].filter((check) =>
+    snoozedIds.has(check.id),
+  )
+  const checks = [...activeFailures, ...activeWins, ...snoozedChecks]
   const reportKey = checks.map((check) => check.id).join(":")
-  const initialId = presentation.failures[0]?.id ?? presentation.wins[0]?.id ?? null
+  const initialId = activeFailures[0]?.id ?? activeWins[0]?.id ?? snoozedChecks[0]?.id ?? null
   const [ui, setUi] = useState<ReportUiState>(() => ({
     reportKey,
     selectedId: initialId,
@@ -352,14 +387,21 @@ export function BurnChecksReport({
     }))
   }
   const [snoozedOpen, setSnoozedOpen] = useState(false)
-  const passedOpen = ui.passedPreference ?? presentation.failures.length === 0
+  const passedOpen = ui.passedPreference ?? activeFailures.length === 0
   const selectedId = checks.some((check) => check.id === ui.selectedId)
     ? ui.selectedId
     : initialId
-  const visibleChecks = [...presentation.failures, ...(passedOpen ? presentation.wins : [])]
+  const visibleChecks = [
+    ...activeFailures,
+    ...(passedOpen ? activeWins : []),
+    ...(snoozedOpen ? snoozedChecks : []),
+  ]
   const selectedVisibleId = visibleChecks.some((check) => check.id === selectedId)
     ? selectedId
-    : (presentation.failures[0]?.id ?? (passedOpen ? presentation.wins[0]?.id : null) ?? null)
+    : (activeFailures[0]?.id ??
+      (passedOpen ? activeWins[0]?.id : null) ??
+      (snoozedOpen ? snoozedChecks[0]?.id : null) ??
+      null)
   const rowRefs = useRef(new Map<ChecksCategoryPayload["id"], HTMLButtonElement>())
 
   const selectCheck = (id: ChecksCategoryPayload["id"], deliberate = true) => {
@@ -393,20 +435,24 @@ export function BurnChecksReport({
     rowRefs.current.get(next.id)?.focus()
   }
 
-  const renderCheck = (check: ChecksCategoryPayload) => (
-    <CheckTrigger
-      key={check.id}
-      check={check}
-      selected={check.id === selectedVisibleId}
-      state={state}
-      bindRef={(node) => {
-        if (node) rowRefs.current.set(check.id, node)
-        else rowRefs.current.delete(check.id)
-      }}
-      onClick={() => selectCheck(check.id)}
-      onKeyDown={(event) => handleRowKey(event, check)}
-    />
-  )
+  const renderCheck = (check: ChecksCategoryPayload) => {
+    const snooze = snoozed.find((item) => item.detector === check.id)
+    return (
+      <CheckTrigger
+        key={check.id}
+        check={check}
+        selected={check.id === selectedVisibleId}
+        state={state}
+        bindRef={(node) => {
+          if (node) rowRefs.current.set(check.id, node)
+          else rowRefs.current.delete(check.id)
+        }}
+        onClick={() => selectCheck(check.id)}
+        onKeyDown={(event) => handleRowKey(event, check)}
+        {...(snooze ? { snoozeLabel: formatSnoozeUntil(snooze.until) } : {})}
+      />
+    )
+  }
 
   return (
     <div className="burn-checks-report">
@@ -422,14 +468,14 @@ export function BurnChecksReport({
             viewportClassName="burn-checks-collection-scroll"
           >
             <div className="burn-checks-collection-content">
-              {presentation.failures.length > 0 && (
+              {activeFailures.length > 0 && (
                 <section className="burn-checks-group" aria-labelledby="burn-checks-failed">
                   <div className="burn-checks-group-body">
-                    {presentation.failures.map((check) => renderCheck(check))}
+                    {activeFailures.map((check) => renderCheck(check))}
                   </div>
                 </section>
               )}
-              {presentation.wins.length > 0 && (
+              {activeWins.length > 0 && (
                 <section className="burn-checks-group" aria-labelledby="burn-checks-passed">
                   <h2>
                     <button
@@ -442,8 +488,8 @@ export function BurnChecksReport({
                           const nextPassedOpen = !passedOpen
                           const nextSelected =
                             !nextPassedOpen &&
-                            presentation.wins.some((item) => item.id === value.selectedId)
-                              ? (presentation.failures[0]?.id ?? null)
+                            activeWins.some((item) => item.id === value.selectedId)
+                              ? (activeFailures[0]?.id ?? null)
                               : value.selectedId
                           return {
                             ...value,
@@ -464,7 +510,7 @@ export function BurnChecksReport({
                         Passed checks
                       </span>{" "}
                       <span className="burn-check-group-count type-footnote tabular-nums text-label-tertiary">
-                        {presentation.wins.length}
+                        {activeWins.length}
                       </span>
                       <ChevronRight
                         size={14}
@@ -481,7 +527,7 @@ export function BurnChecksReport({
                     className="burn-checks-group-body"
                     hidden={!passedOpen}
                   >
-                    {presentation.wins.map((check) => renderCheck(check))}
+                    {activeWins.map((check) => renderCheck(check))}
                   </div>
                 </section>
               )}
@@ -500,7 +546,7 @@ export function BurnChecksReport({
                       Snoozed
                     </span>{" "}
                     <span className="burn-check-group-count type-footnote tabular-nums text-label-tertiary">
-                      0
+                      {snoozedChecks.length}
                     </span>
                     <ChevronRight
                       size={14}
@@ -512,9 +558,13 @@ export function BurnChecksReport({
                 <div
                   id="burn-checks-snoozed-body"
                   hidden={!snoozedOpen}
-                  className="burn-check-snoozed-empty type-footnote text-label-secondary"
+                  className="burn-checks-group-body"
                 >
-                  Checks you defer will appear here. Reminders are coming soon.
+                  {snoozedChecks.map((check) => (
+                    <div key={check.id} className="animate-burn-check-snooze-in">
+                      {renderCheck(check)}
+                    </div>
+                  ))}
                 </div>
               </section>
               <BurnChecksSavings wins={state.aggregate?.wins ?? []} />
@@ -539,6 +589,7 @@ export function BurnChecksReport({
                 check={check}
                 visible={check.id === selectedVisibleId}
                 deliberate={ui.deliberateIds.has(check.id)}
+                snoozed={snoozedIds.has(check.id)}
                 session={session}
                 state={state}
               />

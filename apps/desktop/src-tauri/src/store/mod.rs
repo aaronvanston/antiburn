@@ -83,6 +83,7 @@ pub struct EvidenceBacklogCounts {
 /// to read.
 pub const DEFERRED_PERMISSION_DIRS_KEY: &str = "internal:deferredPermissionDirs";
 const PROVIDER_ACCOUNT_SECRET_KEY: &str = "internal:providerAccountHmacSecretV1";
+const BURN_CHECK_SNOOZES_KEY: &str = "internal:burnCheckSnoozesV1";
 
 fn encode_secret(secret: &[u8; 32]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
@@ -450,6 +451,24 @@ impl Store {
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
         );
+    }
+
+    /// Read the serialized burn-check snooze ledger.
+    pub fn burn_check_snoozes(&self) -> Result<String> {
+        Ok(self
+            .internal_value(BURN_CHECK_SNOOZES_KEY)
+            .unwrap_or_else(|| "[]".to_owned()))
+    }
+
+    /// Replace the bounded burn-check snooze ledger.
+    pub fn save_burn_check_snoozes(&self, value: &str) -> Result<()> {
+        let connection = self.lock();
+        connection.execute(
+            "INSERT INTO setting (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![BURN_CHECK_SNOOZES_KEY, value],
+        )?;
+        Ok(())
     }
 
     /// Return the durable random secret used for provider account keys.

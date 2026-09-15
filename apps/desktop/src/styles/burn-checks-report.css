@@ -129,6 +129,22 @@
   padding-inline: calc(var(--space-sm) * 2 + 14px) var(--space-xs);
 }
 
+@keyframes burn-check-snooze-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-burn-check-snooze-in {
+  animation: burn-check-snooze-in var(--duration-medium) var(--ease-out-quart);
+}
+
 .burn-check-detail-body {
   position: relative;
   isolation: isolate;

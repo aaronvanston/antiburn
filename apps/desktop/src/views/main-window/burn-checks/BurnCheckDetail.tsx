@@ -216,15 +216,17 @@ export function CheckDetailActions({
   targets,
   refresh,
   reportRow = false,
+  snoozed = false,
 }: {
   detector: BurnCheckDetectorId
   targets: BurnCheckTargetPayload[]
   refresh: () => void
   reportRow?: boolean
+  snoozed?: boolean
 }) {
   return (
     <div className="flex flex-wrap items-start gap-2">
-      {reportRow && <RemindLaterAction />}
+      {reportRow && !snoozed && <RemindLaterAction detector={detector} />}
       <CheckPromptAction
         comingSoon={reportRow}
         key={targets.map((target) => target.actionId).join(":")}

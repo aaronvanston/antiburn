@@ -1,5 +1,5 @@
 import { CollectionToolbar } from "../../../components/ui/CollectionToolbar"
-import { Info, LoaderCircle } from "lucide-react"
+import { Info } from "lucide-react"
 import { BURN_CHECK_MARKS } from "../../../components/burn-checks/burnCheckMarks"
 import { InfoPopover } from "../../../components/presentation/InfoPopover"
 
@@ -11,7 +11,6 @@ import { checksPresentation, formatTokenBurnPercent } from "../../../lib/present
 export function BurnChecksHeader({ report }: { report?: ChecksReportPayload }) {
   const failures = report ? checksPresentation(report).failures.length : 0
   const FailureIcon = BURN_CHECK_MARKS.finding.Icon
-  const unavailable = report ? checksPresentation(report).unavailable.length : 0
   const assessment = !report
     ? null
     : report.pendingEvidence > 0
@@ -19,7 +18,6 @@ export function BurnChecksHeader({ report }: { report?: ChecksReportPayload }) {
       : report.evidenceSettled
         ? "Assessment complete for available evidence."
         : "Assessment is updating."
-  const incomplete = report && (report.pendingEvidence > 0 || !report.evidenceSettled)
   return (
     <header
       className="burn-checks-collection-header"
@@ -77,23 +75,6 @@ export function BurnChecksHeader({ report }: { report?: ChecksReportPayload }) {
           </InfoPopover>
         )}
       </CollectionToolbar>
-      {(incomplete || unavailable > 0) && (
-        <div role="status" className="mx-3 mt-2 type-footnote text-label-secondary">
-          {incomplete && (
-            <p className="flex items-center gap-1.5">
-              {report.pendingEvidence > 0 && (
-                <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
-              )}
-              {assessment}
-            </p>
-          )}
-          {unavailable > 0 && (
-            <p>
-              {unavailable} {unavailable === 1 ? "check" : "checks"} not assessed.
-            </p>
-          )}
-        </div>
-      )}
     </header>
   )
 }
