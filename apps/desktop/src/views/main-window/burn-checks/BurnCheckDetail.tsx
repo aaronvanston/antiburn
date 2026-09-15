@@ -11,6 +11,7 @@ import {
 } from "../../../lib/insightsIpc"
 import { BurnCheckTargetActions } from "./BurnCheckTargetActions"
 import { SampleSessions, watchStatus } from "./BurnCheckTargetPresentation"
+import { BurnCheckTargetChooserDialog } from "./BurnCheckTargetChooserDialog"
 
 const CHECK_SENTENCES: Record<BurnCheckDetectorId, string> = {
   sessionsOverDepth: "Some sessions carried context after it stopped helping.",
@@ -159,9 +160,7 @@ function FixAction({
   refresh: () => void
 }) {
   const [choosing, setChoosing] = useState(false)
-  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null)
   const eligible = targets.filter((target) => target.autoFix.status === "available")
-  const selected = eligible.find((target) => target.findingId === selectedFindingId) ?? null
   if (eligible.length === 0) return null
   if (eligible.length === 1)
     return (
@@ -174,50 +173,20 @@ function FixAction({
     )
   return (
     <div>
-      {selected ? (
-        <>
-          <BurnCheckTargetActions
-            target={selected}
-            refresh={refresh}
-            showPromptFix={false}
-            embedded
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedFindingId(null)
-              setChoosing(true)
-            }}
-            className="mt-2 type-callout text-label-secondary hover:text-label"
-          >
-            Choose another change
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => setChoosing(true)}
-            className="ui-push-button burn-check-action type-callout gap-1"
-          >
-            <Wrench size={12} aria-hidden="true" />
-            Fix
-          </button>
-          {choosing && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {eligible.map((target) => (
-                <button
-                  key={target.actionId}
-                  type="button"
-                  onClick={() => setSelectedFindingId(target.findingId)}
-                  className="ui-push-button burn-check-action type-callout"
-                >
-                  {target.display.currentValue ?? "Review change"}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+      <button
+        type="button"
+        onClick={() => setChoosing(true)}
+        className="ui-push-button burn-check-action type-callout gap-1"
+      >
+        <Wrench size={12} aria-hidden="true" />
+        Fix
+      </button>
+      {choosing && (
+        <BurnCheckTargetChooserDialog
+          targets={eligible}
+          refresh={refresh}
+          close={() => setChoosing(false)}
+        />
       )}
     </div>
   )

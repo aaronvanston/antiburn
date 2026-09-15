@@ -1610,13 +1610,17 @@ pub async fn get_checks_report(
         .state::<InsightsController>()
         .checks_report(data_dir, request, consumer_id)
         .await?;
-    let mut payload = ChecksReportPayload::from_report(
+    let payload = ChecksReportPayload::from_report(
         &reduced.report,
         reduced.evidence_settled,
         reduced.pending_evidence,
     );
     #[cfg(debug_assertions)]
-    crate::tray::simulate_burn_checks(app, &mut payload);
+    let payload = {
+        let mut payload = payload;
+        crate::tray::simulate_burn_checks(app, &mut payload);
+        payload
+    };
     Ok(payload)
 }
 

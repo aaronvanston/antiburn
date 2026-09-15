@@ -558,12 +558,11 @@ describe("BurnChecksView", () => {
     fireEvent.click(fix)
     fireEvent.click(fix)
     expect(commands.prepare).toHaveBeenCalledOnce()
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
-    expect(dialog).toHaveTextContent("AgentClaude Code")
-    expect(dialog).toHaveTextContent("SettingModel")
-    expect(dialog).toHaveTextContent("Config file~/.claude/settings.json")
-    expect(dialog).toHaveTextContent("Config changeclaude-opus-4-6 → claude-sonnet-5")
-    expect(dialog).toHaveTextContent("This plan changes future model selection")
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
+    expect(dialog).toHaveTextContent("Claude Code · Model · Global scope")
+    expect(dialog).toHaveTextContent("~/.claude/settings.json · model")
+    expect(dialog).toHaveTextContent("claude-opus-4-6 → claude-sonnet-5")
+    expect(dialog).toHaveTextContent("Responses can change")
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Change applied" })).toBeDisabled(),
@@ -633,7 +632,7 @@ describe("BurnChecksView", () => {
     expect(screen.getByRole("button", { name: "Fix" })).toBeEnabled()
   })
 
-  it("returns to the chooser after the selected automatic fix changes", async () => {
+  it("reviews and applies all selected automatic fixes", async () => {
     const targets = Array.from({ length: 3 }, (_, index) => ({
       ...target,
       findingId: `finding-${index}`,
@@ -644,29 +643,30 @@ describe("BurnChecksView", () => {
         currentValue: `model-${index}`,
       },
     }))
-    const { adapter } = setup(targets, false, aggregate, report)
+    setup(targets, false, aggregate, report)
 
     const fix = await screen.findByRole("button", { name: "Fix" })
     const prompt = screen.getByRole("button", { name: "Copy fix prompt" })
     expect(fix.parentElement).not.toHaveClass("mt-3")
     expect(fix.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     fireEvent.click(fix)
-    fireEvent.click(screen.getByRole("button", { name: "model-0" }))
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix model-0" })
-    vi.mocked(adapter.getTargets).mockResolvedValueOnce({
-      targets: targets.slice(1),
-      truncated: false,
-    })
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
+    let dialog = await screen.findByRole("dialog", { name: "Choose changes" })
+    expect(within(dialog).getByRole("button", { name: "Review 0 changes" })).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select all" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review 3 changes" }))
 
-    await screen.findByRole("button", { name: "Fix" })
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    expect(screen.getByRole("button", { name: "model-1" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "model-2" })).toBeVisible()
+    dialog = await screen.findByRole("dialog", { name: "Review 3 changes" })
+    expect(within(dialog).getByText("model-0")).toBeVisible()
+    expect(within(dialog).getByText("model-1")).toBeVisible()
+    expect(within(dialog).getByText("model-2")).toBeVisible()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 3 changes" }))
+
+    dialog = await screen.findByRole("dialog", { name: "Changes applied" })
+    expect(within(dialog).getByRole("status")).toHaveTextContent("3 changes applied")
+    expect(commands.apply).toHaveBeenCalledTimes(3)
   })
 
-  it("lets the user choose a different automatic fix before applying", async () => {
+  it("applies only the selected automatic fixes", async () => {
     const targets = Array.from({ length: 2 }, (_, index) => ({
       ...target,
       findingId: `finding-${index}`,
@@ -680,12 +680,46 @@ describe("BurnChecksView", () => {
     setup(targets, false, aggregate, report)
 
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    fireEvent.click(screen.getByRole("button", { name: "model-0" }))
-    fireEvent.click(screen.getByRole("button", { name: "Choose another change" }))
-    fireEvent.click(screen.getByRole("button", { name: "model-1" }))
-    fireEvent.click(screen.getByRole("button", { name: "Fix" }))
+    let dialog = await screen.findByRole("dialog", { name: "Choose changes" })
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /model-1/ }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review 1 change" }))
+    dialog = await screen.findByRole("dialog", { name: "Review 1 change" })
+    expect(within(dialog).getByText("model-1")).toBeVisible()
+    expect(within(dialog).queryByText("model-0")).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 1 change" }))
 
-    await waitFor(() => expect(commands.prepare).toHaveBeenCalledWith("action-1"))
+    await screen.findByRole("dialog", { name: "Changes applied" })
+    expect(commands.prepare).toHaveBeenCalledTimes(2)
+    expect(commands.prepare).toHaveBeenNthCalledWith(1, "action-1")
+    expect(commands.prepare).toHaveBeenNthCalledWith(2, "action-1")
+    expect(commands.apply).toHaveBeenCalledOnce()
+  })
+
+  it("names resource targets in the automatic fix chooser", async () => {
+    const targets = ["Bash", "Read"].map((name, index) => ({
+      ...target,
+      findingId: `finding-${index}`,
+      actionId: `action-${index}`,
+      display: {
+        ...target.display,
+        resourceKind: "builtInTool" as const,
+        resourceIdentity: name,
+        currentValue: null,
+        replacementValue: null,
+        scopeKind: "project" as const,
+      },
+    }))
+    setup(targets, false, aggregate, report)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
+    const chooser = await screen.findByRole("dialog", { name: "Choose changes" })
+
+    expect(
+      within(chooser).getByRole("checkbox", { name: /Bash.*Disable this built-in tool/ }),
+    ).toBeVisible()
+    expect(
+      within(chooser).getByRole("checkbox", { name: /Read.*Disable this built-in tool/ }),
+    ).toBeVisible()
   })
 
   it("restores named target actions after their brief success state", async () => {
@@ -694,7 +728,7 @@ describe("BurnChecksView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Copy fix prompt" }))
     await screen.findByRole("button", { name: "Copied" })
     fireEvent.click(screen.getByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     await screen.findByRole("button", { name: "Change applied" })
 
@@ -724,7 +758,7 @@ describe("BurnChecksView", () => {
   it("keeps an open review when the expiring action handle rotates", async () => {
     const { adapter, session } = setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     vi.mocked(adapter.getTargets).mockResolvedValueOnce({
       targets: [{ ...target, actionId: "action-rotated" }],
       truncated: false,
@@ -770,7 +804,7 @@ describe("BurnChecksView", () => {
       })
     })
 
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toBeVisible()
+    expect(screen.getByRole("dialog", { name: "Review change" })).toBeVisible()
   })
 
   it("ignores a deferred prepare from an attempt that recurred", async () => {
@@ -863,7 +897,7 @@ describe("BurnChecksView", () => {
     commands.apply.mockReturnValueOnce(pending.promise)
     const { adapter, session } = setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
     vi.mocked(adapter.getTargets).mockResolvedValueOnce({
       targets: [recurredTarget("action-after-recurrence")],
@@ -957,7 +991,7 @@ describe("BurnChecksView", () => {
     setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
     const dialog = await screen.findByRole("dialog")
-    expect(dialog).toHaveTextContent("This plan lowers reasoning effort for future requests")
+    expect(dialog).toHaveTextContent("Future responses can use less reasoning")
   })
 
   it.each([
@@ -1036,7 +1070,7 @@ describe("BurnChecksView", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
 
       const dialog = await screen.findByRole("dialog")
-      expect(dialog).toHaveTextContent(`Setting${settingLabel}`)
+      expect(dialog).toHaveTextContent(`Claude Code · ${settingLabel} · Project scope`)
       expect(dialog).toHaveTextContent(`${setting}.reviewed`)
       expect(dialog).toHaveTextContent(sideEffectText)
     },
@@ -1064,9 +1098,9 @@ describe("BurnChecksView", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
 
-    expect(
-      await screen.findByRole("dialog", { name: "Fix Old model usage" }),
-    ).toHaveTextContent("mcp_servers.reviewed.enabled")
+    expect(await screen.findByRole("dialog", { name: "Review change" })).toHaveTextContent(
+      "mcp_servers.reviewed.enabled",
+    )
   })
 
   it("retries clipboard failure without creating a second backend action", async () => {
@@ -1099,13 +1133,13 @@ describe("BurnChecksView", () => {
     commands.apply.mockRejectedValueOnce(new Error("Private backend error"))
     setup(target, false, aggregate, report)
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not confirm the result. Check the setting before you try again.",
     )
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toBeVisible()
+    expect(screen.getByRole("dialog", { name: "Review change" })).toBeVisible()
     expect(commands.noteInteraction).toHaveBeenCalledWith({
       kind: "burnCheckAutoFixCompleted",
       outcome: "failed",
@@ -1293,13 +1327,13 @@ describe("BurnChecksView", () => {
     )
     setup()
     fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled()
     fireEvent.keyDown(dialog, { key: "Escape" })
     fireEvent.mouseDown(dialog.parentElement!)
-    expect(screen.getByRole("dialog", { name: "Fix claude-opus-4-6" })).toHaveAttribute(
+    expect(screen.getByRole("dialog", { name: "Review change" })).toHaveAttribute(
       "aria-busy",
       "true",
     )
@@ -1313,7 +1347,7 @@ describe("BurnChecksView", () => {
     setup()
     const fix = await screen.findByRole("button", { name: "Fix" })
     fireEvent.click(fix)
-    const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+    const dialog = await screen.findByRole("dialog", { name: "Review change" })
     const cancel = within(dialog).getByRole("button", { name: "Cancel" })
     const apply = within(dialog).getByRole("button", { name: "Apply change" })
 
@@ -1331,10 +1365,11 @@ describe("BurnChecksView", () => {
       document.documentElement.dataset.theme = theme
       setup()
       fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-      const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+      const dialog = await screen.findByRole("dialog", { name: "Review change" })
 
       expect(dialog).toHaveClass("bg-surface-card", "text-label")
-      expect(dialog.querySelector("dl")).toHaveClass("grid-cols-1", "sm:grid-cols-2")
+      expect(dialog.querySelector("dl")).toBeNull()
+      expect(dialog).toHaveTextContent("~/.claude/settings.json · model")
       expect(within(dialog).getByRole("button", { name: "Cancel" }).parentElement).toHaveClass(
         "flex-col-reverse",
         "sm:flex-row",
@@ -1391,7 +1426,7 @@ describe("BurnChecksView", () => {
       commands.apply.mockResolvedValueOnce(outcome)
       setup()
       fireEvent.click(await screen.findByRole("button", { name: "Fix" }))
-      const dialog = await screen.findByRole("dialog", { name: "Fix claude-opus-4-6" })
+      const dialog = await screen.findByRole("dialog", { name: "Review change" })
       fireEvent.click(within(dialog).getByRole("button", { name: "Apply change" }))
 
       expect(await within(dialog).findByRole("alert")).toHaveTextContent(text)
