@@ -11,6 +11,7 @@ import {
   type SessionAnalysisPayload,
 } from "../../lib/ipc"
 import { agentSupportsAnalysis } from "../../lib/presentation/agents"
+import { sessionDiscussionPrompt } from "../../lib/presentation/sessionDiscussionPrompt"
 import type { SessionSubject } from "../../lib/sessionSubject"
 import {
   inclusiveCostSubject,
@@ -222,6 +223,12 @@ export function SessionPane({
     void revealSource(sourcePath)
   }, [sourcePath])
 
+  const handleCopyPath = useCallback(async () => {
+    if (!sourcePath) throw new Error("No source path")
+    if (!navigator.clipboard) throw new Error("Clipboard unavailable")
+    await navigator.clipboard.writeText(sourcePath)
+  }, [sourcePath])
+
   const hygieneIdentity = {
     agent: subject.agent,
     sessionId: subject.sessionId,
@@ -229,6 +236,19 @@ export function SessionPane({
   }
   const hygieneBySession = useSessionHygiene(active ? [hygieneIdentity] : [])
   const hygiene = sessionHygieneFor(hygieneBySession, hygieneIdentity)
+  const handleCopyDiscussionPrompt = useCallback(async () => {
+    if (!sourcePath) throw new Error("No source path")
+    if (!navigator.clipboard) throw new Error("Clipboard unavailable")
+    const prompt = sessionDiscussionPrompt({
+      subject,
+      payload,
+      hygiene,
+      loading,
+      refreshing,
+      error,
+    })
+    await navigator.clipboard.writeText(prompt)
+  }, [sourcePath, subject, payload, hygiene, loading, refreshing, error])
   const { cost, costSplit } = payload
     ? toLocalCost(subject, payload)
     : { cost: null, costSplit: null }
@@ -325,7 +345,13 @@ export function SessionPane({
       onOpenOrchestrator={openOrchestrator}
       onOpenRelatedSession={openRelated}
       onDeleteSession={() => void handleDelete()}
-      {...(sourcePath ? { onRevealSource: handleReveal } : {})}
+      {...(sourcePath
+        ? {
+            onRevealSource: handleReveal,
+            onCopySourcePath: handleCopyPath,
+            onCopyDiscussionPrompt: handleCopyDiscussionPrompt,
+          }
+        : {})}
       renderAgentIcon={renderAgentIcon}
       embedded={embedded}
       active={active}
