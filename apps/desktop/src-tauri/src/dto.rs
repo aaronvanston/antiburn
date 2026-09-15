@@ -454,6 +454,9 @@ pub struct AllowanceUtilization {
     pub typical_percent: Option<f64>,
     /// The highest figure any one period reached.
     pub peak_percent: f64,
+    /// Each period's peak, oldest first, so a sparkline can draw the shape
+    /// the aggregates describe.
+    pub period_peaks: Vec<f64>,
     pub period_count: u32,
     /// How many of those periods reached 100%. A refusal happens there and
     /// at nothing less, so there is no lower threshold to report.

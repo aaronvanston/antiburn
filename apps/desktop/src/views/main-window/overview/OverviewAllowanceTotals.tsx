@@ -4,10 +4,10 @@ import {
   blockedFigure,
   blockedNote,
   causeLine,
-  utilizationCaption,
   utilizationFigure,
   utilizationLabel,
 } from "./overviewAllowance"
+import { OverviewUtilizationSparkline } from "./OverviewUtilizationSparkline"
 
 import { SegmentFigure } from "../../../components/ui/SegmentFigure"
 import { Skeleton } from "../../../components/ui/Skeleton"
@@ -29,6 +29,10 @@ import "./overview.css"
  * Each caption names what the figure over it measures, so a label above the
  * figure would say the same thing twice. The label stays for a screen
  * reader, which needs a term for each figure in the list.
+ *
+ * Under the utilization figure a sparkline takes the caption's place. It
+ * draws the periods the figure covers, which a count of periods cannot
+ * show. The sentence stays as the accessible name of the drawing.
  */
 export function OverviewAllowanceTotals({
   accounts,
@@ -93,8 +97,8 @@ function AllowanceAccount({
             <dd className="type-hero-figure whitespace-nowrap font-mono text-measure">
               <SegmentFigure>{utilizationFigure(utilization)}</SegmentFigure>
             </dd>
-            <dd className="type-caption mt-[var(--space-xs)] text-label-tertiary">
-              {utilizationCaption(utilization)}
+            <dd>
+              <OverviewUtilizationSparkline utilization={utilization} />
             </dd>
           </div>
         )}

@@ -38,7 +38,9 @@ export function OverviewView({
     session.getSnapshot,
     session.getSnapshot,
   )
-  const [metric, setMetric] = useState<OverviewMetric>("cost")
+  // The page opens on the subscription, because the plan is the limit a
+  // reader meets. A dollar estimate is the second question.
+  const [metric, setMetric] = useState<OverviewMetric>("allowance")
   const usage = state.usage
   const loading = !usage && !state.usageError
   return (

@@ -36,6 +36,7 @@ function account(
     utilization: {
       typicalPercent: 40,
       peakPercent: 62,
+      periodPeaks: [22, 41, 39, 62, 44, 30, 51, 38, 47],
       periodCount: 9,
       maxedPeriodCount: 0,
       windowKind: "weekly",
@@ -45,6 +46,7 @@ function account(
     burst: {
       typicalPercent: 15,
       peakPercent: 100,
+      periodPeaks: [10, 12, 20, 100, 14, 9],
       periodCount: 18,
       maxedPeriodCount: 1,
       windowKind: "rolling",
@@ -134,7 +136,12 @@ describe("OverviewUsage", () => {
 
     expect(within(cell).getByText("Busiest week")).toBeInTheDocument()
     expect(within(cell).getByText("40-62%")).toBeInTheDocument()
-    expect(within(cell).getByText("typical to peak of 9 weeks")).toBeInTheDocument()
+    // The caption is now the sparkline's accessible name, and the drawing
+    // carries one bar for each period the figure covers.
+    const sparkline = within(cell).getByRole("img", {
+      name: "typical to peak across 9 weeks",
+    })
+    expect(sparkline.querySelectorAll(".overview-sparkline-bar")).toHaveLength(9)
     expect(within(cell).getByText("11h")).toBeInTheDocument()
     expect(within(cell).getByText(/8 blocks in 30 days/)).toBeInTheDocument()
     expect(within(cell).getByText("1 of 18 windows reached 100%")).toBeInTheDocument()

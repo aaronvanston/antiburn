@@ -24,6 +24,7 @@ function utilization(
   return {
     typicalPercent: 40,
     peakPercent: 62,
+    periodPeaks: [22, 41, 39, 62, 44, 30, 51, 38, 47],
     periodCount: 9,
     maxedPeriodCount: 0,
     windowKind: "weekly",
@@ -68,7 +69,7 @@ describe("utilizationLabel and utilizationCaption", () => {
   it("names the weekly window, which measures plan fit", () => {
     const weekly = utilization()
     expect(utilizationLabel(weekly)).toBe("Busiest week")
-    expect(utilizationCaption(weekly)).toBe("typical to peak of 9 weeks")
+    expect(utilizationCaption(weekly)).toBe("typical to peak across 9 weeks")
   })
 
   it("names the rolling window, which measures burstiness", () => {
@@ -78,13 +79,13 @@ describe("utilizationLabel and utilizationCaption", () => {
       periodCount: 18,
     })
     expect(utilizationLabel(rolling)).toBe("Busiest window")
-    expect(utilizationCaption(rolling)).toBe("peak of 18 windows")
+    expect(utilizationCaption(rolling)).toBe("peak across 18 windows")
   })
 
   it("falls back to a neutral noun for a window it does not know", () => {
     const other = utilization({ windowKind: "other:fortnightly", periodCount: 7 })
     expect(utilizationLabel(other)).toBe("Busiest period")
-    expect(utilizationCaption(other)).toBe("typical to peak of 7 periods")
+    expect(utilizationCaption(other)).toBe("typical to peak across 7 periods")
   })
 })
 

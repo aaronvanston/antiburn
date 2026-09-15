@@ -240,6 +240,22 @@ fn the_newest_period_names_the_window() {
     assert_eq!(reduced.peak_percent, 62.0);
 }
 
+#[test]
+fn the_period_peaks_stay_in_time_order() {
+    // A sparkline draws the periods as they happened. The aggregates sort
+    // the periods by value, so the series must be taken before that sort.
+    let rollups = vec![
+        kinded_rollup(3_000, Some(20.0), "weekly"),
+        kinded_rollup(1_000, Some(90.0), "weekly"),
+        kinded_rollup(2_000, Some(55.0), "weekly"),
+    ];
+
+    let reduced = utilization(&rollups).expect("three periods report a figure");
+
+    assert_eq!(reduced.period_peaks, vec![90.0, 55.0, 20.0]);
+    assert_eq!(reduced.peak_percent, 90.0);
+}
+
 fn reading(period_id: i64, observed_at_epoch: i64, used_percent: f64) -> ProviderUsageReading {
     ProviderUsageReading {
         provider: "openai".to_string(),

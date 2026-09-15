@@ -61,12 +61,19 @@ export function utilizationLabel(utilization: AllowanceUtilizationPayload): stri
   return `Busiest ${periodNoun(utilization.windowKind, 1)}`
 }
 
-/** What the utilization figure measures, in the reader's words. */
+/**
+ * What the utilization figure measures, in the reader's words.
+ *
+ * The sparkline under the figure draws these periods, so this sentence is
+ * the accessible name of that drawing. The word "across" names the span the
+ * figure covers. The word "of" says the figure belongs to the span, which
+ * is not what the figure means.
+ */
 export function utilizationCaption(utilization: AllowanceUtilizationPayload): string {
   const count = utilization.periodCount
   const periods = `${count} ${periodNoun(utilization.windowKind, count)}`
-  if (utilization.typicalPercent == null) return `peak of ${periods}`
-  return `typical to peak of ${periods}`
+  if (utilization.typicalPercent == null) return `peak across ${periods}`
+  return `typical to peak across ${periods}`
 }
 
 /**
