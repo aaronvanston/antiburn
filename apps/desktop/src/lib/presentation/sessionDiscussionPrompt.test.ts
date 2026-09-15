@@ -97,6 +97,19 @@ describe("sessionDiscussionPrompt", () => {
       "Transcript contents are not included.",
     ])
       expect(result).toContain(expected)
+    expect(
+      result.startsWith(
+        "# antiburn session context\n\nSession metadata and analysis evidence. Transcript contents are not included.\n",
+      ),
+    ).toBe(true)
+    expect(result.split("\n").filter((line) => line.startsWith("## "))).toEqual([
+      "## Session",
+      "## Scope and activity",
+      "## API-equivalent cost and billable tokens",
+      "## Freshness and coverage",
+      "## Per-session burn-check evidence",
+      "## Question / requirement for analysis",
+    ])
     expect(result).not.toContain("List title")
     expect(result).not.toContain("Investigate the findings")
     expect(result).not.toContain("Prioritize supported findings")
@@ -201,7 +214,16 @@ describe("sessionDiscussionPrompt", () => {
       ],
     }
     const result = prompt({ hygiene })
-    expect(result).toContain("Session overdepth: Finding — Session went too deep")
+    expect(result.split("\n").filter((line) => line.startsWith("### "))).toEqual([
+      "### Session overdepth — Session went too deep",
+      "### Fast mode overuse — Fast mode overused",
+      "### Other checks",
+    ])
+    const [findings, otherChecks] = result.split("### Other checks")
+    expect(findings).not.toContain("- Passed —")
+    expect(findings).not.toContain("- Not assessed —")
+    expect(otherChecks).not.toContain("- Evidence:")
+    expect(otherChecks).toContain("- Passed — Model overthinking.")
     expect(result).toContain("deepest request carried 250,000 tokens")
     expect(result).toContain("reviewed limit is 200,000")
     expect(result.split("\n")).toContain("- Passed — Model overthinking.")
@@ -247,7 +269,7 @@ describe("sessionDiscussionPrompt", () => {
         ],
       },
     })
-    const evidence = result.split("  - Evidence: ")[1]?.split("\n")[0]
+    const evidence = result.split("- Evidence: ")[1]?.split("\n")[0]
     expect(evidence).toBeTruthy()
     expect(evidence).not.toContain("Unavailable")
     const expected = {
@@ -274,6 +296,73 @@ describe("sessionDiscussionPrompt", () => {
     expect(result).toContain(`Burn-check evidence: ${evidenceState}`)
     expect(result).not.toContain("- Passed —")
     expect(result.match(/no result available/g)).toHaveLength(6)
+  })
+
+  it.each(["stale", "activelyGrowing"] as const)(
+    "retains loaded findings and passes with %s coverage limits",
+    (evidenceState) => {
+      const result = prompt({
+        hygiene: {
+          evidenceState,
+          badges: [
+            { id: "modelOverthinking", status: "clean", notAssessedReason: null },
+            {
+              id: "fastModeOveruse",
+              status: "finding",
+              notAssessedReason: null,
+              findingEvidence: { kind: "fastModeOveruse", delegatedTurns: 7 },
+            },
+          ],
+        },
+      })
+      expect(result).toContain("### Fast mode overuse — Fast mode overused")
+      expect(result).toContain("7 delegated turns")
+      expect(result).toContain("- Passed — Model overthinking.")
+      expect(result).toContain("Stale or growing evidence can describe an earlier transcript")
+      expect(result).toContain("Passed applies only to the assessed check and stored scope")
+      expect(result).not.toContain("no current completed assessment")
+      expect(result.match(/no result available/g)).toHaveLength(4)
+    },
+  )
+
+  it.each(["cacheWrite", "uncachedInput"] as const)(
+    "reports %s accounting as evidence, not prescribed guidance",
+    (accounting) => {
+      const result = prompt({
+        hygiene: {
+          evidenceState: "ready",
+          badges: [
+            {
+              id: "excessCacheRehydration",
+              status: "finding",
+              notAssessedReason: null,
+              accounting,
+              findingEvidence: {
+                kind: "excessCacheRehydration",
+                paidTokens: 12000,
+                repeatedTokens: 10000,
+                thresholdMultiple: 4,
+              },
+            },
+          ],
+        },
+      })
+      expect(result).toContain("10,000 of 12,000 paid context tokens repeated")
+      expect(result).toContain("finding threshold is 4×")
+      expect(result).toContain(
+        `Repeated paid context accounting: ${accounting === "cacheWrite" ? "cache writes" : "uncached input"}.`,
+      )
+      expect(result).not.toContain("Accounting guidance")
+      expect(result).not.toContain("Reduce ")
+    },
+  )
+
+  it("omits irrelevant freshness caveats for completed ready evidence", () => {
+    const result = prompt({ hygiene: { evidenceState: "ready", badges: [] } })
+    expect(result).not.toContain("Pending analysis metrics")
+    expect(result).not.toContain("Pending or processing evidence")
+    expect(result).not.toContain("Stale or growing evidence")
+    expect(result).toContain("exact revision and assessment time are unavailable")
   })
 
   it("does not present pending placeholders as metrics or clean evidence", () => {
@@ -345,6 +434,43 @@ describe("sessionDiscussionPrompt", () => {
     const result = prompt({ payload: { ...payload, sourcePath } })
     const encoded = result.split("```json\n")[1]!.split("\n```")[0]!
     expect(JSON.parse(encoded)).toBe(sourcePath)
+  })
+
+  it("uses the selected identity and loaded metadata rather than fixture values", () => {
+    const result = prompt({
+      subject: {
+        agent: "codex",
+        sessionId: "session-2",
+        title: "New list title",
+        repo: "Another synthetic repo",
+        wslDistro: "Synthetic Linux",
+      },
+      payload: {
+        ...payload,
+        title: "New stored title",
+        relations: { title: "Current relation title", parent: null, children: [] },
+        models: ["synthetic-model"],
+        modelRuns: [],
+        sourcePath: "/tmp/synthetic/second.jsonl",
+        summary: {
+          ...payload.summary!,
+          sessions: [
+            metrics,
+            { ...metrics, agent: "codex", sessionId: "session-2", eventCount: 73 },
+          ],
+        },
+      },
+    })
+    expect(result).toContain("Title: Current relation title")
+    expect(result).toContain("ID: session-2")
+    expect(result).toContain("Agent: Codex (codex)")
+    expect(result).toContain("Repository label: Another synthetic repo")
+    expect(result).toContain("Origin: WSL (Synthetic Linux)")
+    expect(result).toContain("Models / thinking modes: synthetic-model")
+    expect(result).toContain("Inclusive events: 73")
+    expect(result).not.toContain("Inclusive events: 42")
+    expect(result).not.toContain("session-1")
+    expect(result).not.toContain("claude-sonnet-4")
   })
 
   it("retains real zeros and unknown optional metrics separately", () => {

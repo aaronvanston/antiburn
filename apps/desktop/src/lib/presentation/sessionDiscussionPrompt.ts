@@ -76,43 +76,52 @@ export function sessionDiscussionPrompt({
     : "Selected session plus locally linked subagents (inclusive)"
   const activityScope = subject.subagent ? "Selected-transcript" : "Merged"
   const countScope = subject.subagent ? "Selected-transcript" : "Inclusive"
-  const checks = sessionHygieneChecks(hygiene).flatMap((check) => {
+  const findings: string[] = []
+  const otherChecks: string[] = []
+  for (const check of sessionHygieneChecks(hygiene)) {
     const badge = hygiene.badges.find((item) => item.id === check.id)
-    if (!badge) return [`- Not assessed — ${check.name} (no result available).`]
-    if (badge.status === "notAssessed") {
+    if (!badge) {
+      otherChecks.push(`- Not assessed — ${check.name} (no result available).`)
+    } else if (badge.status === "notAssessed") {
       const reason = badge.notAssessedReason
         ? notAssessedReasonLabel(badge.notAssessedReason)
         : "reason unavailable"
-      return [`- Not assessed — ${check.name} (${reason}).`]
+      otherChecks.push(`- Not assessed — ${check.name} (${reason}).`)
+    } else if (badge.status === "clean") {
+      otherChecks.push(`- Passed — ${check.name}.`)
+    } else {
+      const details = sessionHygieneDocumentation(check).findingDetails
+      findings.push(
+        "",
+        `### ${check.name} — ${check.title}`,
+        "",
+        ...(details.length > 0
+          ? details.map((detail) => `- Evidence: ${text(detail)}`)
+          : ["- Evidence: Unavailable in the loaded payload."]),
+        ...(badge.accounting
+          ? [
+              `- Repeated paid context accounting: ${badge.accounting === "cacheWrite" ? "cache writes" : "uncached input"}.`,
+            ]
+          : []),
+      )
     }
-    if (badge.status === "clean") {
-      return [`- Passed — ${check.name}.`]
-    }
-    const details = sessionHygieneDocumentation(check).findingDetails
-    return [
-      `- ${check.name}: Finding — ${check.title}.`,
-      ...(details.length > 0
-        ? details.map((detail) => `  - Evidence: ${text(detail)}`)
-        : ["  - Evidence: Unavailable in the loaded payload."]),
-      ...(check.detail ? [`  - Accounting guidance: ${check.detail}.`] : []),
-    ]
-  })
+  }
 
   return [
     "# antiburn session context",
     "",
-    "Session metadata and loaded analysis results. Transcript contents are not included.",
+    "Session metadata and analysis evidence. Transcript contents are not included.",
     "",
     "## Session",
     `- Title: ${title ? text(title) : "Unavailable"}`,
     `- ID: ${text(subject.sessionId)}`,
     `- Agent: ${text(agentDisplayName(subject.agent))} (${text(subject.agent)})`,
     `- Models / thinking modes: ${models.length ? models.map(text).join(", ") : data?.models.length ? data.models.map(text).join(", ") : "Unavailable"}`,
+    `- Repository label: ${subject.repo ? text(subject.repo) : "Unavailable"}`,
+    `- Origin: ${subject.wslDistro ? `WSL (${text(subject.wslDistro)})` : "Native"}`,
     ...(payload?.sourcePath
       ? ["- Source path (JSON string):", "```json", JSON.stringify(payload.sourcePath), "```"]
       : ["- Source path (JSON string): Unavailable"]),
-    `- Repository label: ${subject.repo ? text(subject.repo) : "Unavailable"}`,
-    `- Origin: ${subject.wslDistro ? `WSL (${text(subject.wslDistro)})` : "Native"}`,
     "",
     "## Scope and activity",
     `- Cost and billable-token scope: ${scope}.`,
@@ -170,13 +179,27 @@ export function sessionDiscussionPrompt({
     `- Analysis loading: ${loading}; refreshing: ${refreshing}; load error: ${error}.`,
     `- Analysis pending: ${payload ? String(payload.analysisPending) : "Unavailable"}; analysis stale: ${payload ? String(payload.analysisStale) : "Unavailable"}; analysis supported: ${payload ? String(payload.supportsAnalysis) : "Unavailable"}.`,
     `- Burn-check evidence: ${hygiene.evidenceState}${sessionHygieneStateLabel(hygiene.evidenceState) ? ` (${sessionHygieneStateLabel(hygiene.evidenceState)})` : ""}.`,
-    "- Analysis and check evidence load independently. Their exact revision and assessment time are unavailable here. Pending analysis metrics are placeholders and are omitted.",
-    "- Pending or processing evidence has no current completed assessment; not-assessed reasons may be placeholders.",
-    "- Stale or growing evidence can describe an earlier transcript. Confirmed clean applies only to the assessed check and stored scope; not assessed is not a pass.",
+    "- Analysis and check evidence load independently; their exact revision and assessment time are unavailable.",
+    ...(payload?.analysisPending
+      ? ["- Pending analysis metrics are placeholders and are omitted."]
+      : []),
+    ...(hygiene.evidenceState === "pending" || hygiene.evidenceState === "processing"
+      ? [
+          "- Pending or processing evidence has no current completed assessment; not-assessed reasons may be placeholders.",
+        ]
+      : []),
+    ...(payload?.analysisStale ||
+    hygiene.evidenceState === "stale" ||
+    hygiene.evidenceState === "activelyGrowing"
+      ? ["- Stale or growing evidence can describe an earlier transcript."]
+      : []),
+    "- Passed applies only to the assessed check and stored scope; not assessed is not a pass.",
     "",
-    "## Per-session burn checks",
-    "These are this session's loaded badges, not global aggregate counts or an independently rerun assessment.",
-    ...checks,
+    "## Per-session burn-check evidence",
+    "",
+    "Loaded per-session badges, not global counts or a new assessment.",
+    ...findings,
+    ...(otherChecks.length ? ["", "### Other checks", "", ...otherChecks] : []),
     "",
     "## Question / requirement for analysis",
     "",
