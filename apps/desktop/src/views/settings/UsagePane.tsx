@@ -17,16 +17,14 @@ import {
 } from "../../lib/ipc"
 import { HudVisibilitySession } from "../../lib/overlayWindow"
 import { isMacOS } from "../../lib/platform"
-import { agentProvider } from "../../lib/presentation/agents"
 import {
   liveDetectionNote,
   liveDisplayableProviders,
   liveErrorNote,
   liveGraceNote,
   liveProviderStatus,
-  liveSourceNote,
+  liveSourceAge,
 } from "../../lib/presentation/liveUsage"
-import { scanStatusStore } from "../../lib/scanStatusStore"
 import type { AppSettingsController } from "./useAppSettings"
 
 /**
@@ -72,23 +70,6 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
     }),
   )
   const live = useSyncExternalStore(store.subscribe, store.getSnapshot)
-  // The discovery scanner's per-agent session counts: the one signal that
-  // tells a desktop-app reader apart from a reader with no tool at all.
-  const scanStatus = useSyncExternalStore(
-    scanStatusStore.subscribe,
-    scanStatusStore.getSnapshot,
-  )
-  const sessionsByProvider = new Map<string, number>()
-  for (const entry of scanStatus?.agents ?? []) {
-    const provider = agentProvider(entry.agent)
-    if (provider) {
-      sessionsByProvider.set(
-        provider,
-        (sessionsByProvider.get(provider) ?? 0) + entry.sessionsSeen,
-      )
-    }
-  }
-
   const on = settings?.liveUsageEnabled ?? false
   const hidden = settings?.liveUsageHiddenProviders ?? []
   const meters = roster(live)
@@ -145,9 +126,9 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
         </SectionGroup>
       )}
 
-      <SectionGroup title="Providers antiburn asks">
+      <SectionGroup title="Track Limits for">
         <p className="px-1 type-footnote text-label-secondary">
-          antiburn never signs you in. It reuses the login your coding tools already have.
+          Sign in inside each tool to track its limits.
         </p>
         <Card>
           {meters.map((meter) => {
@@ -167,7 +148,6 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
                   failure,
                   meter,
                   generatedAt: live.generatedAt,
-                  sessionsSeen: sessionsByProvider.get(meter.provider) ?? 0,
                 })}
                 dimmed={!on}
                 trailing={
@@ -178,13 +158,7 @@ export function UsagePane({ settings, update }: UsagePaneProps) {
                     disabled={!on}
                   />
                 }
-              >
-                {shown && reading && (
-                  <p className="type-caption tabular-nums text-label-tertiary">
-                    {liveSourceNote(reading)}
-                  </p>
-                )}
-              </Row>
+              ></Row>
             )
           })}
         </Card>
@@ -241,7 +215,6 @@ function meterNote({
   failure,
   meter,
   generatedAt,
-  sessionsSeen,
 }: {
   shown: boolean
   on: boolean
@@ -250,8 +223,6 @@ function meterNote({
   meter: LiveUsageMeterPayload
   /** The snapshot's own moment, for measuring a grace-period reading's age. */
   generatedAt: string
-  /** Sessions the scanner has seen for this provider's agent. */
-  sessionsSeen: number
 }): string {
   const { provider, displayName: name } = meter
   if (!shown) {
@@ -263,10 +234,9 @@ function meterNote({
   // correctly.
   const parts: string[] = []
   if (reading) {
+    const count = reading.windows.length
     parts.push(
-      `${reading.sourceLabel}. ${reading.windows.length} limit${
-        reading.windows.length === 1 ? "" : "s"
-      } reported.`,
+      `Signed in · ${count} limit${count === 1 ? "" : "s"} · checked ${liveSourceAge(reading)}`,
     )
   }
   if (failure) {
@@ -282,11 +252,5 @@ function meterNote({
     )
   }
   if (parts.length > 0) return parts.join(" ")
-  return liveDetectionNote(
-    provider,
-    meter.detection ?? "unknown",
-    on,
-    meter.carrierLabel,
-    sessionsSeen,
-  )
+  return liveDetectionNote(provider, meter.detection ?? "unknown", on, meter.carrierLabel)
 }

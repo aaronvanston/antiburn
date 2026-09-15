@@ -1035,7 +1035,7 @@ describe("UsageView — plan limits layered over local estimates", () => {
         category: "unavailable",
         detail: "keychainUnreadable",
       },
-      note: "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry.",
+      note: "Couldn't read Claude Code's login from the Keychain. If a prompt appears, choose Always Allow.",
     },
     {
       error: {
@@ -1045,7 +1045,7 @@ describe("UsageView — plan limits layered over local estimates", () => {
         category: "authentication",
         detail: "refreshUnsupported",
       },
-      note: "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry.",
+      note: "Antigravity's login has expired. Sign in inside Antigravity again.",
     },
   ])("shows qualified guidance for $error.detail", ({ error, note }) => {
     render(

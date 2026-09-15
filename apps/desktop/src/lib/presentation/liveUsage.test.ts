@@ -673,25 +673,22 @@ describe("live detection notes", () => {
       "notInstalled",
       "Couldn't find Claude Code or Claude Code usage on this computer.",
     ],
-    [
-      "anthropic",
-      "installedNotSignedIn",
-      "Couldn't find a Claude Code login on this computer.",
-    ],
+    ["anthropic", "installedNotSignedIn", "Found Claude Code, but it isn't signed in."],
     ["anthropic", "signedIn", "Signed in."],
-    ["anthropic", "unknown", "No readings yet from the Claude Code CLI."],
+    ["anthropic", "unknown", "Not checked yet."],
     [
       "google",
       "notInstalled",
       "Couldn't find Antigravity or Antigravity usage on this computer.",
     ],
-    ["google", "installedNotSignedIn", "Couldn't find an Antigravity login on this computer."],
-    ["google", "signedIn", "Signed in."],
-    ["google", "unknown", "No readings yet from the Antigravity IDE or `agy` CLI."],
+    ["google", "installedNotSignedIn", "Found Antigravity, but it isn't signed in."],
     ["openai", "notInstalled", "Couldn't find Codex or Codex usage on this computer."],
-    ["openai", "installedNotSignedIn", "Couldn't find a Codex login on this computer."],
-    ["openai", "signedIn", "Signed in."],
-    ["openai", "unknown", "No readings yet from the Codex CLI."],
+    ["openai", "installedNotSignedIn", "Found Codex, but it isn't signed in."],
+    [
+      "unrecognized",
+      "notInstalled",
+      "Couldn't find this tool or this tool usage on this computer.",
+    ],
   ]
 
   it.each(cases)("keeps the %s %s note to one line", (provider, detection, note) => {
@@ -704,38 +701,19 @@ describe("live detection notes", () => {
     )
   })
 
-  it("names the tool the login came from", () => {
-    expect(
-      liveDetectionNote("anthropic", "signedIn", true, "the Claude Code CLI (Keychain)"),
-    ).toBe("Signed in through the Claude Code CLI (Keychain).")
+  it("names the tool the login came from, never a command", () => {
+    expect(liveDetectionNote("anthropic", "signedIn", true, "Claude Code (Keychain)")).toBe(
+      "Signed in through Claude Code (Keychain).",
+    )
     expect(liveDetectionNote("openai", "signedIn", true, "Pi")).toBe("Signed in through Pi.")
-  })
-
-  it("says what Pi has, and when it has not been asked yet", () => {
-    expect(liveDetectionNote("anthropic", "unknown", true, "Pi")).toBe(
-      "Found Pi — checking for a Claude Code login.",
-    )
     expect(liveDetectionNote("anthropic", "installedNotSignedIn", true, "Pi")).toBe(
-      "Couldn't find a Claude Code login on this computer (Pi has none).",
+      "Found Pi, but it isn't signed in to Claude Code.",
     )
   })
 
-  it("names the desktop app when sessions exist but no login does", () => {
-    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 12)).toBe(
-      "Couldn't find a Claude Code login on this computer (the Claude desktop app keeps its own).",
-    )
-    expect(liveDetectionNote("openai", "notInstalled", true, undefined, 3)).toContain(
-      "the ChatGPT app keeps its own",
-    )
-    expect(liveDetectionNote("anthropic", "notInstalled", true, undefined, 0)).toBe(
-      "Couldn't find Claude Code or Claude Code usage on this computer.",
-    )
-  })
-
-  it("defaults absent detection to unknown for an unrecognised provider", () => {
-    const note = "No readings yet from your coding tool."
-    expect(liveDetectionNote("unrecognized", undefined, true)).toBe(note)
-    expect(liveDetectionNote("unrecognized", "unknown", true)).toBe(note)
+  it("defaults absent detection to not checked", () => {
+    expect(liveDetectionNote("anthropic", undefined, true)).toBe("Not checked yet.")
+    expect(liveDetectionNote("anthropic", "unknown", true, "Pi")).toBe("Not checked yet.")
   })
 })
 
@@ -810,7 +788,7 @@ describe("the failure surface", () => {
   }>([
     {
       error: sourceError({ category: "unavailable", detail: "keychainUnreadable" }),
-      note: "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry.",
+      note: "Couldn't read Claude Code's login from the Keychain. If a prompt appears, choose Always Allow.",
     },
     {
       error: sourceError({
@@ -819,19 +797,19 @@ describe("the failure surface", () => {
         category: "authentication",
         detail: "refreshUnsupported",
       }),
-      note: "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry.",
+      note: "Antigravity's login has expired. Sign in inside Antigravity again.",
     },
     {
       error: sourceError({ category: "authentication", detail: "cliMissing" }),
-      note: "Claude's stored login is stale. antiburn refreshes it when the Claude Code CLI is installed; the Claude desktop app keeps its own copy. Install the CLI and run `claude` once.",
+      note: "Claude Code's login has expired and there's nothing here to refresh it. Sign in inside Claude Code.",
     },
     {
       error: sourceError({ category: "authentication", detail: "signInRequired" }),
-      note: "Claude sign-in expired. Run `claude` in a terminal and sign in again, then retry.",
+      note: "Claude Code's login has expired. Sign in inside Claude Code again.",
     },
     {
       error: sourceError({ category: "authentication", detail: "refreshPending" }),
-      note: "Claude's login expired. antiburn asks the Claude Code CLI to refresh it on the next check.",
+      note: "Claude Code's login has expired. It refreshes on the next check.",
     },
   ])("qualifies $error.detail and preserves it for the HUD", ({ error, note }) => {
     expect(liveErrorNote(error.category, error.provider, error.detail)).toBe(note)
@@ -969,7 +947,7 @@ describe("the grace period", () => {
       detail: "refreshPending",
     })
     expect(liveGraceNote("authentication", "anthropic", 11 * 60_000, "refreshPending")).toBe(
-      "Claude login expired; antiburn asks the CLI to refresh it on the next check. Reading from 11 min ago.",
+      "Claude login expired; it refreshes on the next check. Reading from 11 min ago.",
     )
   })
 

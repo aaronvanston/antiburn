@@ -1074,7 +1074,7 @@ fn the_roster_labels_the_carrier_for_the_views() {
     assert_eq!(meters[0].carrier, Some(LoginCarrier::ClaudeKeychain));
     assert_eq!(
         meters[0].carrier_label.as_deref(),
-        Some("the Claude Code CLI (Keychain)")
+        Some("Claude Code (Keychain)")
     );
     let unlabelled = roster(&sources, &HiddenMeters::default(), &DetectionMap::default());
     assert_eq!(unlabelled[0].carrier_label, None);

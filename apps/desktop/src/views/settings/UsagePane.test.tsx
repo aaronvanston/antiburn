@@ -7,17 +7,12 @@ import type {
   LiveUsageMeterPayload,
   LiveUsageSourceErrorPayload,
   LiveUsageSummaryPayload,
-  ScanStatus,
 } from "../../lib/ipc"
 import { UsagePane } from "./UsagePane"
 
 const getLiveUsage = vi.hoisted(() => vi.fn())
 const refreshLiveUsage = vi.hoisted(() => vi.fn())
 const onLiveUsageChanged = vi.hoisted(() => vi.fn(async () => () => {}))
-const getScanStatus = vi.hoisted(() =>
-  vi.fn<() => Promise<ScanStatus | null>>(async () => null),
-)
-const onScanEvent = vi.hoisted(() => vi.fn(async () => () => {}))
 
 const platform = vi.hoisted(() => ({ mac: false }))
 vi.mock("../../lib/platform", async (importOriginal) => {
@@ -62,8 +57,6 @@ vi.mock("../../lib/ipc", async () => {
     getLiveUsage,
     refreshLiveUsage,
     onLiveUsageChanged,
-    getScanStatus,
-    onScanEvent,
   }
 })
 
@@ -122,13 +115,11 @@ describe("UsagePane", () => {
     await waitFor(() => expect(refreshLiveUsage).toHaveBeenCalled())
   })
 
-  it("explains which providers antiburn asks and where their login comes from", () => {
+  it("says the switches show meters and that sign-in happens in the tool", () => {
     pane()
-    expect(screen.getByRole("heading", { name: "Providers antiburn asks" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Track Limits for" })).toBeInTheDocument()
     expect(
-      screen.getByText(
-        "antiburn never signs you in. It reuses the login your coding tools already have.",
-      ),
+      screen.getByText("Sign in inside each tool to track its limits."),
     ).toBeInTheDocument()
   })
 
@@ -149,7 +140,7 @@ describe("UsagePane", () => {
         shown: true,
         detection: "installedNotSignedIn",
       },
-      note: "Couldn't find a Claude Code login on this computer.",
+      note: "Found Claude Code, but it isn't signed in.",
     },
     {
       meter: {
@@ -162,7 +153,7 @@ describe("UsagePane", () => {
     },
     {
       meter: { provider: "anthropic", displayName: "Claude", shown: true },
-      note: "No readings yet from the Claude Code CLI.",
+      note: "Not checked yet.",
     },
   ])(
     "explains $meter.provider detection $meter.detection without a reading",
@@ -195,37 +186,6 @@ describe("UsagePane", () => {
     expect(await screen.findByText("Signed in through Pi.")).toBeInTheDocument()
   })
 
-  it("points at the desktop app when the scanner sees sessions but no CLI login", async () => {
-    getScanStatus.mockResolvedValueOnce({
-      running: false,
-      completedAgents: 1,
-      totalAgents: 1,
-      sessions: 7,
-      finishedAt: null,
-      cancelled: false,
-      error: null,
-      agents: [{ agent: "claude-code", lastCompletedAt: null, sessionsSeen: 7 }],
-      listChanged: false,
-      reDescribed: 0,
-    })
-    getLiveUsage.mockResolvedValue(
-      summary({
-        meters: [
-          {
-            provider: "anthropic",
-            displayName: "Claude",
-            shown: true,
-            detection: "notInstalled",
-          },
-        ],
-      }),
-    )
-    pane({ liveUsageEnabled: true })
-    expect(
-      await screen.findByText(/Couldn't find a Claude Code login on this computer/),
-    ).toBeInTheDocument()
-  })
-
   it.each<{ error: LiveUsageSourceErrorPayload; note: string }>([
     {
       error: {
@@ -235,7 +195,7 @@ describe("UsagePane", () => {
         category: "unavailable",
         detail: "keychainUnreadable",
       },
-      note: "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry.",
+      note: "Couldn't read Claude Code's login from the Keychain. If a prompt appears, choose Always Allow.",
     },
     {
       error: {
@@ -245,7 +205,7 @@ describe("UsagePane", () => {
         category: "authentication",
         detail: "refreshUnsupported",
       },
-      note: "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry.",
+      note: "Antigravity's login has expired. Sign in inside Antigravity again.",
     },
   ])("shows $error.detail guidance before the detection note", async ({ error, note }) => {
     getLiveUsage.mockResolvedValue(
@@ -289,9 +249,7 @@ describe("UsagePane", () => {
     await waitFor(() => expect(screen.getByText("Google")).toBeInTheDocument())
     const toggle = screen.getByRole("switch", { name: "Show Google meter" })
     expect(toggle).toBeChecked()
-    expect(
-      screen.getByText("No readings yet from the Antigravity IDE or `agy` CLI."),
-    ).toBeInTheDocument()
+    expect(screen.getByText("Not checked yet.")).toBeInTheDocument()
 
     fireEvent.click(toggle)
 
@@ -346,8 +304,8 @@ describe("UsagePane", () => {
     )
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(screen.getByText(/Asked Claude directly/)).toBeInTheDocument()
-    expect(screen.getByText("Live 5m ago")).toBeInTheDocument()
+    expect(screen.getByText("Signed in · 0 limits · checked 5m ago")).toBeInTheDocument()
+    expect(screen.queryByText(/Asked Claude directly/)).not.toBeInTheDocument()
   })
 
   it("lists every provider it can meter, with nothing to report yet", async () => {
@@ -479,7 +437,7 @@ describe("UsagePane — the grace period", () => {
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
     expect(
       screen.getByText(
-        "Asked Claude directly. 0 limits reported. Claude rate limited the last check; reading from 4 min ago.",
+        "Signed in · 0 limits · checked just now Claude rate limited the last check; reading from 4 min ago.",
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
@@ -501,7 +459,7 @@ describe("UsagePane — the grace period", () => {
     getLiveUsage.mockResolvedValue(withGracedReading("2027-01-15T11:50:00Z"))
     pane()
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument())
-    expect(screen.getByText(/Asked Claude directly/)).toBeInTheDocument()
+    expect(screen.getByText(/^Signed in · 0 limits · checked/)).toBeInTheDocument()
     expect(screen.queryByText(/Wait, then retry/)).not.toBeInTheDocument()
   })
 })

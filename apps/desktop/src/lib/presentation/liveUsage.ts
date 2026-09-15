@@ -313,6 +313,12 @@ export function liveSourceNote(provider: LiveProviderUsagePayload): string {
   return `Live ${relativeTime(provider.observedAt)}`
 }
 
+/** "3m ago", or "just now" when the reading carries no time. */
+export function liveSourceAge(provider: LiveProviderUsagePayload): string {
+  if (!provider.observedAt) return "just now"
+  return relativeTime(provider.observedAt)
+}
+
 /**
  * Tailwind classes for the provenance line. Orange only once a reading has
  * gone stale — a fresh reading is not news.
@@ -525,7 +531,7 @@ export function liveGraceNote(
 ): string {
   const name = liveProviderDisplayName(provider) ?? "Your provider"
   if (detail === "refreshPending") {
-    return `${name} login expired; antiburn asks the CLI to refresh it on the next check. Reading from ${formatGraceAge(ageMs)} ago.`
+    return `${name} login expired; it refreshes on the next check. Reading from ${formatGraceAge(ageMs)} ago.`
   }
   return `${name} ${graceVerb(category)}; reading from ${formatGraceAge(ageMs)} ago.`
 }
@@ -610,48 +616,19 @@ function liveProviderDisplayName(provider?: string): string | null {
 }
 
 /**
- * What each metered provider's login tool is called, for the detection
- * copy. One row per provider: add a provider here and every sentence
- * below learns it. Carrier names are not here — they ride the wire as
- * `carrierLabel`, named by the backend enum that owns them.
+ * What each metered provider's login tool is called. One row per provider.
+ * Carrier names are not here — they ride the wire as `carrierLabel`, named
+ * by the backend enum that owns them.
  */
 interface LiveTool {
   /** The tool, as a noun: "Claude Code". */
   tool: string
-  /** Where antiburn reads the login from: "the Claude Code CLI". */
-  source: string
-  /** The app people confuse it with, which keeps its own login. */
-  desktopApp: string | null
-  /** The article before `tool`: "an Antigravity", "a Codex". */
-  article: "a" | "an"
 }
 
 const LIVE_TOOLS: Readonly<Record<string, LiveTool>> = {
-  [ANTHROPIC]: {
-    tool: "Claude Code",
-    source: "the Claude Code CLI",
-    desktopApp: "the Claude desktop app",
-    article: "a",
-  },
-  [GOOGLE]: {
-    tool: "Antigravity",
-    source: "the Antigravity IDE or `agy` CLI",
-    desktopApp: "the Gemini app",
-    article: "an",
-  },
-  [OPENAI]: {
-    tool: "Codex",
-    source: "the Codex CLI",
-    desktopApp: "the ChatGPT app",
-    article: "a",
-  },
-}
-
-const FALLBACK_TOOL: LiveTool = {
-  tool: "your coding tool",
-  source: "your coding tool",
-  desktopApp: null,
-  article: "a",
+  [ANTHROPIC]: { tool: "Claude Code" },
+  [GOOGLE]: { tool: "Antigravity" },
+  [OPENAI]: { tool: "Codex" },
 }
 
 /** The tool's name for a detection marker, or the meter's own display name. */
@@ -679,40 +656,29 @@ export function liveDetectionMarker(
 }
 
 /**
- * The one sentence a meter with no reading needs: which tool antiburn did
- * or did not find, where the login came from, and what to do.
- *
- * `sessionsSeen` is the discovery scanner's count for this provider's
- * agent, when the caller has it. It answers the one case detection cannot:
- * sessions on disk with no CLI login usually means the desktop app.
+ * The one line a meter with no reading needs: found and signed in, found
+ * but not signed in, or not found. Signing in happens in the tool, so the
+ * note never names a command.
  */
 export function liveDetectionNote(
   provider: string,
   detection: LiveUsageDetection | undefined,
   shown: boolean,
   carrierLabel?: string,
-  sessionsSeen?: number,
 ): string {
   if (!shown) return "Turn the switch above back on to ask for current plan limits."
-  const t = LIVE_TOOLS[provider] ?? FALLBACK_TOOL
-  const viaPi = carrierLabel === "Pi"
+  const tool = LIVE_TOOLS[provider]?.tool ?? "this tool"
   switch (detection) {
     case "signedIn":
-      return carrierLabel ? `Signed in through ${carrierLabel}.` : `Signed in.`
+      return carrierLabel ? `Signed in through ${carrierLabel}.` : "Signed in."
     case "installedNotSignedIn":
-      return viaPi
-        ? `Couldn't find ${t.article} ${t.tool} login on this computer (Pi has none).`
-        : `Couldn't find ${t.article} ${t.tool} login on this computer.`
+      return carrierLabel === "Pi"
+        ? `Found Pi, but it isn't signed in to ${tool}.`
+        : `Found ${tool}, but it isn't signed in.`
     case "notInstalled":
-      // Sessions on disk with no login is the desktop-app case: name it.
-      if ((sessionsSeen ?? 0) > 0 && t.desktopApp) {
-        return `Couldn't find ${t.article} ${t.tool} login on this computer (${t.desktopApp} keeps its own).`
-      }
-      return `Couldn't find ${t.tool} or ${t.tool} usage on this computer.`
+      return `Couldn't find ${tool} or ${tool} usage on this computer.`
     default:
-      return viaPi
-        ? `Found Pi — checking for a ${t.tool} login.`
-        : `No readings yet from ${t.source}.`
+      return "Not checked yet."
   }
 }
 
@@ -724,20 +690,20 @@ export function liveErrorNote(
 ): string {
   if (category === "authentication" && provider === ANTHROPIC) {
     if (detail === "cliMissing") {
-      return "Claude's stored login is stale. antiburn refreshes it when the Claude Code CLI is installed; the Claude desktop app keeps its own copy. Install the CLI and run `claude` once."
+      return "Claude Code's login has expired and there's nothing here to refresh it. Sign in inside Claude Code."
     }
     if (detail === "signInRequired") {
-      return "Claude sign-in expired. Run `claude` in a terminal and sign in again, then retry."
+      return "Claude Code's login has expired. Sign in inside Claude Code again."
     }
     if (detail === "refreshPending") {
-      return "Claude's login expired. antiburn asks the Claude Code CLI to refresh it on the next check."
+      return "Claude Code's login has expired. It refreshes on the next check."
     }
   }
   if (category === "unavailable" && detail === "keychainUnreadable") {
-    return "antiburn couldn't read Claude Code's login from the macOS Keychain. If a Keychain prompt appears, choose 'Always Allow'; otherwise run `claude` again, then retry."
+    return "Couldn't read Claude Code's login from the Keychain. If a prompt appears, choose Always Allow."
   }
   if (category === "authentication" && provider === GOOGLE && detail === "refreshUnsupported") {
-    return "Antigravity's login has expired and this antiburn build can't refresh it. Sign in again in Antigravity or run `agy`, then retry."
+    return "Antigravity's login has expired. Sign in inside Antigravity again."
   }
   const providerName = liveProviderDisplayName(provider)
   switch (category) {
