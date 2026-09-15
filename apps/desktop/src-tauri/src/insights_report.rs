@@ -63,8 +63,8 @@ SELECT bucket, COUNT(*), SUM(awaiting_provider_support), SUM(evidence_pending)
            END AS bucket,
            CASE WHEN s.started_at_epoch IS NOT NULL AND e.status IS NULL
                  THEN 1 ELSE 0 END AS awaiting_provider_support,
-           CASE WHEN e.status IS NULL OR e.status = 'pending' OR e.status = 'processing'
-                THEN 1 ELSE 0 END AS evidence_pending
+            CASE WHEN e.status = 'pending' OR e.status = 'processing'
+                 THEN 1 ELSE 0 END AS evidence_pending
       FROM session s
       LEFT JOIN session_evidence e
         ON e.environment_key = s.environment_key

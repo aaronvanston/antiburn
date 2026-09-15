@@ -867,8 +867,8 @@ Unknown estimates say “Unavailable”. Never sum category percentages. A separ
 contains “Coverage details”, which opens Insights settings. Outside press, focus leaving,
 and Escape dismiss the panel; Escape restores focus to its trigger.
 
-Pending processing and updating status remain visible below the collection header.
-Keep an explicit count of not-assessed checks visible even when evidence settles.
+Do not show processing or not-assessed status in the collection header. Assessment
+details can describe current worker activity and incomplete coverage.
 Settled reports without coverage gaps need no permanent assessment sentence.
 Keep savings, dollar estimates, verification state, retry paths, and report-backed actions.
 Verified savings appear below the check groups in the collection viewport.
@@ -878,12 +878,13 @@ circle badges. Badges have a 16px minimum width and height, tabular numerals,
 and a radius of half `space-lg`; larger counts can expand horizontally.
 Prefix failed checks with `CircleAlert` and passed checks with `CircleCheck`.
 Use `burn-check-failure-fill` for failed icons and `burn-check-pass-fill` for passed icons. The passed group retains its disclosure chevron and keyboard behavior.
-Place a collapsed Snoozed group below Passed checks with a neutral Clock and zero count badge.
+Place a collapsed Snoozed group below Passed checks with a neutral Clock and a current count badge.
 Separate adjacent collection groups with a semantic separator aligned to the card edges,
 with 16px above and below the line.
-Its empty state explains that deferred checks will appear here and reminders are coming soon.
-Indent that text 30px to align with the section label after its 14px icon and spacing.
-The reminder action remains disabled; no timer, persistence, or movement animation runs.
+Snoozed rows retain their check card and show a 13px Clock in secondary ink beside the
+Snoozed-until or Snoozed-forever label. The selected detail heading provides the direct
+BellRing Unsnooze action. A newly snoozed row enters once over `--duration-medium`;
+reduced motion disables that movement through the shared motion rule.
 Category rows use `rounded-popover`, a 10px gap derived from half `space-xl`,
 and the Session-card state recipe: `session-card` at rest,
 `surface-secondary/50` on unselected hover, and `surface-selected/60` when selected.
@@ -945,9 +946,10 @@ Named findings retain provider marks, names, scopes, and resource-header actions
 Generic copy actions appear beside the finding description with `aria-disabled` and a
 “Coming soon” tooltip on hover or focus. They have no activation handler and
 cannot prepare or copy prompts. Keep them focusable so the tooltip is accessible.
-Add a quiet “Remind me later” action beside each finding’s Copy fix prompt, including single findings.
-Do not repeat it in the category header. It has `aria-disabled`, no activation handler, a Clock icon, and a “Coming soon” tooltip.
-Its face stays transparent.
+Add a quiet “Snooze” action beside each finding’s Copy fix prompt, including single findings.
+It opens the shared menu material with one week, one month, and forever choices.
+Its face stays transparent. A snoozed selected check shows the same `burn-check-action`
+Unsnooze control in the detail heading.
 Named-resource actions remain in their resource headers. Preserve their status and copy feedback.
 Loaded details use no enclosing card. Loading, retry, empty, and passed states keep
 contained cards. Named findings use quiet separators with no additional horizontal inset.

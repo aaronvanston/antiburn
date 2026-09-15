@@ -1,6 +1,6 @@
 import { Folder } from "lucide-react"
 import { InfoPopover } from "../../../components/presentation/InfoPopover"
-import type { BurnCheckTargetPayload } from "../../../lib/insightsIpc"
+import type { BurnCheckDetectorId, BurnCheckTargetPayload } from "../../../lib/insightsIpc"
 import { renderAgentIcon } from "../../../lib/agentIcon"
 import { formatApiEquivalentUsd } from "../../../lib/presentation/checks"
 import { CHECK_UI } from "../../checks/checkUi"
@@ -28,10 +28,12 @@ export function targetCostLine(target: BurnCheckTargetPayload): string | null {
 
 export function BurnCheckTargetDetail({
   target,
+  detector,
   refresh,
   reportRow = false,
 }: {
   target: BurnCheckTargetPayload
+  detector?: BurnCheckDetectorId
   refresh: () => void
   reportRow?: boolean
 }) {
@@ -84,7 +86,7 @@ export function BurnCheckTargetDetail({
         </div>
         {reportRow && (
           <div className="flex flex-wrap items-start justify-end gap-2">
-            <RemindLaterAction />
+            {detector && <RemindLaterAction detector={detector} />}
             <BurnCheckTargetActions target={target} refresh={refresh} compact embedded />
           </div>
         )}

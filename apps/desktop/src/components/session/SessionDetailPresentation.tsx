@@ -1,4 +1,9 @@
 import { isMacOS } from "../../lib/platform"
+import {
+  snoozedDetectorIds,
+  useSnoozedBurnChecks,
+  visibleSessionHygieneChecks,
+} from "../../lib/snoozedBurnChecks"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
   Check,
@@ -760,7 +765,10 @@ export function SessionDetailPresentation({
     [],
   )
   const modelPairs = modelRunShortPairs(modelRuns)
-  const hygieneChecks = sessionHygieneChecks(hygiene)
+  const hygieneChecks = visibleSessionHygieneChecks(
+    sessionHygieneChecks(hygiene),
+    snoozedDetectorIds(useSnoozedBurnChecks()),
+  )
   const hasAssessedHygieneChecks = hygieneChecks.some((check) => check.status !== "notAssessed")
 
   const handleAdjacentKey = (event: KeyboardEvent | ReactKeyboardEvent<HTMLDivElement>) => {

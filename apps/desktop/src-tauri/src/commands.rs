@@ -35,13 +35,13 @@ use crate::consent;
 use crate::dto::{
     ActivityEntry, AgentScanState, AggregateWinsPayload, AppInfo,
     ApplyPreparedBurnCheckOperationOutcome, AutoFixUnavailableReason, BurnCheckDetectorId,
-    BurnCheckTargetListPayload, ChecksReportPayload, CopyPromptFixBurnCheckOutcome,
-    CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir, HygieneSummaryPayload,
-    InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary, OrchestrationStatus,
-    PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason, ProviderUsageSummary,
-    RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload, SessionHygieneRequest,
-    SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary, SessionRelation,
-    SessionRelations, SubagentMember,
+    BurnCheckSnoozePayload, BurnCheckTargetListPayload, ChecksReportPayload,
+    CopyPromptFixBurnCheckOutcome, CopyPromptFixBurnCheckTargetOutcome, DeferredPermissionDir,
+    HygieneSummaryPayload, InsightsReportPayload, InsightsStatusPayload, LiveUsageSummary,
+    OrchestrationStatus, PrepareAutoFixBurnCheckTargetOutcome, PromptFixUnavailableReason,
+    ProviderUsageSummary, RepositoryItem, ScanStatus, SessionAnalysis, SessionHygienePayload,
+    SessionHygieneRequest, SessionIdentity, SessionLimitAllocation, SessionLimitAllocationSummary,
+    SessionRelation, SessionRelations, SubagentMember,
 };
 use crate::insights_ipc::InsightsController;
 use crate::insights_report::ReportRequest;
@@ -1604,6 +1604,7 @@ pub async fn get_checks_report(
         return Err(fail("the Checks consumer ID is invalid"));
     }
     let app = window.app_handle();
+    crate::insights_worker::wake(app);
     let data_dir = app.state::<Store>().state_dir().to_path_buf();
     let request = insights_report_request(epoch_now());
     let reduced = app
@@ -1622,6 +1623,66 @@ pub async fn get_checks_report(
         payload
     };
     Ok(payload)
+}
+
+fn current_burn_check_snoozes(store: &Store) -> CommandResult<Vec<BurnCheckSnoozePayload>> {
+    let now_ms = epoch_now() * 1_000;
+    let stored = store.burn_check_snoozes().map_err(fail)?;
+    let snoozes: Vec<BurnCheckSnoozePayload> = serde_json::from_str(&stored).unwrap_or_default();
+    Ok(snoozes
+        .into_iter()
+        .filter(|snooze| snooze.until.is_none_or(|until| until > now_ms))
+        .collect())
+}
+
+/// List active reader-owned burn-check snoozes.
+#[tauri::command]
+pub async fn list_burn_check_snoozes(
+    app: tauri::AppHandle,
+) -> CommandResult<Vec<BurnCheckSnoozePayload>> {
+    let store = app.state::<Store>().inner().clone();
+    run_blocking(move || current_burn_check_snoozes(&store)).await
+}
+
+/// Save or replace one check-level snooze.
+#[tauri::command]
+pub async fn set_burn_check_snooze(
+    app: tauri::AppHandle,
+    snooze: BurnCheckSnoozePayload,
+) -> CommandResult<Vec<BurnCheckSnoozePayload>> {
+    let store = app.state::<Store>().inner().clone();
+    let saved = run_blocking(move || {
+        let mut snoozes = current_burn_check_snoozes(&store)?;
+        snoozes.retain(|current| current.detector != snooze.detector);
+        snoozes.push(snooze);
+        store
+            .save_burn_check_snoozes(&serde_json::to_string(&snoozes).map_err(fail)?)
+            .map_err(fail)?;
+        Ok(snoozes)
+    })
+    .await?;
+    let _ = app.emit(BURN_CHECK_SNOOZES_CHANGED_EVENT, &saved);
+    Ok(saved)
+}
+
+/// Remove one check-level snooze.
+#[tauri::command]
+pub async fn clear_burn_check_snooze(
+    app: tauri::AppHandle,
+    detector: BurnCheckDetectorId,
+) -> CommandResult<Vec<BurnCheckSnoozePayload>> {
+    let store = app.state::<Store>().inner().clone();
+    let saved = run_blocking(move || {
+        let mut snoozes = current_burn_check_snoozes(&store)?;
+        snoozes.retain(|snooze| snooze.detector != detector);
+        store
+            .save_burn_check_snoozes(&serde_json::to_string(&snoozes).map_err(fail)?)
+            .map_err(fail)?;
+        Ok(snoozes)
+    })
+    .await?;
+    let _ = app.emit(BURN_CHECK_SNOOZES_CHANGED_EVENT, &saved);
+    Ok(saved)
 }
 
 /// Restricts burn-check remediation to the current Checks surface.
@@ -2275,6 +2336,7 @@ pub const SESSIONS_INVALIDATED_EVENT: &str = "sessions:invalidated";
 /// popover can update the one row without a re-query.
 pub const SESSION_ENTRY_CHANGED_EVENT: &str = "sessions:entry-changed";
 pub const CHECKS_REPORT_CHANGED_EVENT: &str = "checks:report-changed";
+pub const BURN_CHECK_SNOOZES_CHANGED_EVENT: &str = "checks:snoozes-changed";
 
 /// Re-derive the repository list from what is on disk right now.
 #[tauri::command]
