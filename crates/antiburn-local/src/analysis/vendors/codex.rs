@@ -1067,6 +1067,7 @@ fn task_complete_observation(value: &Value, model: Option<&str>) -> Option<Evide
             severity: QuotaHitSeverity::HardHit,
             model: model.map(ToOwned::to_owned),
             reset_ts_ms: None,
+            reset_clock: None,
             utilization_pct: None,
             confidence: QuotaConfidence::Observed,
         })),
@@ -1076,6 +1077,7 @@ fn task_complete_observation(value: &Value, model: Option<&str>) -> Option<Evide
             severity: QuotaHitSeverity::HardHit,
             model: model.map(ToOwned::to_owned),
             reset_ts_ms: None,
+            reset_clock: None,
             utilization_pct: None,
             confidence: QuotaConfidence::Observed,
         })),
@@ -2500,7 +2502,10 @@ mod tests {
         // variants' `http_status_code` to a `ServerError` or `Connection`
         // provider incident, through the new `transport_incident_kind`
         // helper; this changed the fingerprinted byte range.
-        const EXPECTED_FINGERPRINT: u64 = 5_782_876_435_163_781_937;
+        // `QuotaIncident` gained a `reset_clock` field. The two Codex quota
+        // branches set it to `None`: a Codex rollout states no local reset
+        // clock, so this reads no new key.
+        const EXPECTED_FINGERPRINT: u64 = 11_296_625_701_617_750_811;
         let source = include_str!("codex.rs").replace("\r\n", "\n");
         let start = source.find("fn observe_model_and_effort").unwrap();
         let end = source.find("\n#[cfg(test)]\nmod tests").unwrap();

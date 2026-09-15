@@ -204,7 +204,7 @@
     },
     "provenance": {
       "analyzerRevision": 24,
-      "evidenceSchemaRevision": 19,
+      "evidenceSchemaRevision": 20,
       "harnessVersion": {
         "state": "unsupported"
       },
@@ -231,7 +231,7 @@
         "reason": "malformed_record"
       }
     },
-    "schemaRevision": 19,
+    "schemaRevision": 20,
     "subagents": {
       "state": "partial",
       "value": {

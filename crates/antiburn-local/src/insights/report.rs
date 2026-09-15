@@ -3831,6 +3831,7 @@ mod tests {
             severity: QuotaHitSeverity::HardHit,
             model: Some("model-a".to_owned()),
             reset_ts_ms: Some(900),
+            reset_clock: None,
             utilization_pct: None,
             confidence: QuotaConfidence::Observed,
         };
