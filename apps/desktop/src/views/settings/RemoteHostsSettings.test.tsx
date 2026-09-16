@@ -1,11 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 
-import { getRemoteHosts, getRemoteSessions, setRemoteHosts } from "../../lib/remoteSessionsIpc"
+import {
+  getRemoteHosts,
+  getRemoteSessions,
+  setRemoteHosts,
+  setRemoteSyncInterval,
+} from "../../lib/remoteSessionsIpc"
 import { RemoteHostsSettings } from "./RemoteHostsSettings"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
-  onRemoteSyncProgress: async () => () => {},
+  onRemoteSyncStatus: vi.fn(async () => () => {}),
+  getRemoteSyncStatus: async () => ({ intervalSecs: 300, progress: null, errors: {} }),
+  setRemoteSyncInterval: vi.fn(),
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),
@@ -43,11 +50,11 @@ it("syncs only the chosen host and shows connection failures", async () => {
   vi.mocked(getRemoteHosts).mockResolvedValue(["build-one", "build-two"])
   render(<RemoteHostsSettings />)
   await screen.findByText("build-two")
-  fireEvent.click(screen.getByRole("button", { name: "Sync sessions to build-two" }))
+  fireEvent.click(screen.getByRole("button", { name: "Scan build-two now" }))
   await screen.findByText("Synced · 0 recent sessions")
   expect(getRemoteSessions).toHaveBeenLastCalledWith("build-two", true)
   vi.mocked(getRemoteSessions).mockRejectedValueOnce(new Error("Permission denied"))
-  fireEvent.click(screen.getByRole("button", { name: "Sync sessions to build-one" }))
+  fireEvent.click(screen.getByRole("button", { name: "Scan build-one now" }))
   await screen.findByText("Error: Permission denied")
 })
 
@@ -60,4 +67,17 @@ it("retains the alias and saved hosts when persistence fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("Duplicate SSH host alias")
   expect(screen.getByRole("textbox")).toHaveValue("build-one")
   expect(screen.getAllByRole("button", { name: /Remove/ })).toHaveLength(1)
+})
+
+it("saves the automatic scan frequency and supports manual mode", async () => {
+  render(<RemoteHostsSettings />)
+  await screen.findByText("build-one")
+  const frequency = screen.getByRole("combobox", { name: "Rescan remote sessions" })
+  expect(frequency).toHaveValue("300")
+  fireEvent.change(frequency, { target: { value: "900" } })
+  await waitFor(() => expect(setRemoteSyncInterval).toHaveBeenCalledWith(900))
+  await waitFor(() => expect(frequency).toHaveValue("900"))
+  fireEvent.change(frequency, { target: { value: "0" } })
+  await screen.findByText(/Automatic scans are off/)
+  expect(setRemoteSyncInterval).toHaveBeenLastCalledWith(0)
 })

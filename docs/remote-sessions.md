@@ -8,8 +8,14 @@ view display them alongside local sessions. No server or background daemon is ne
 ## Current behaviour
 
 - Configure SSH aliases under **Settings → Sources → Remote hosts** (up to eight).
-- Press **Sync sessions** beside a host, or **Sync remote sessions** in Sessions.
-  Progress reports completed sessions. Changing the Machine filter does not connect.
+- Scans run on app launch and automatically every five minutes after each host's
+  previous scan finishes, including failed attempts. Added hosts scan on the next scheduler pass, after any active scan.
+- Set **Rescan remote sessions** in Settings to one, five, fifteen or thirty minutes,
+  hourly, or manual. The preference survives restarts. Manual mode stops future
+  automatic scans; an active scan finishes. The app must be running.
+- **Scan now**, progress, connection errors and cached snapshot times live in Settings.
+  Scans never overlap or queue behind an active scan. Changing the Machine filter
+  does not connect. Cached sessions remain usable while scans run or hosts are offline.
 - **Machine** offers All machines, This machine, All remote hosts and individual hosts.
   Session rows and detail headers retain their source host.
 - The usual session filters, context history, tools, model and token breakdowns,
@@ -46,7 +52,7 @@ Bundles contain at most 512 files and 1 GiB of content. Sync stops when existing
 transcript caches exceed 14 GiB, leaving up to 2 GiB for staged transfer and extraction.
 Remove an unused host in Settings to reclaim space. A session larger than the bundle
 limit reports an error; it is not silently truncated. Unused generations for a session
-are removed on its next sync. Connections are explicit; no background SSH polling runs.
+are removed on its next sync. Background scans use the saved frequency and do not require an open window.
 
 ## Build and install the Linux helper
 
@@ -121,6 +127,6 @@ to this repository.
 
 - Agree on stable source identity independent of SSH aliases.
 - Extend global reports and remote configuration remediation with explicit machine scopes.
-- Add per-file deltas and capability negotiation before continuous polling.
+- Add per-file deltas and capability negotiation to reduce transfer costs.
 - Extend archived-session discovery and review additional agent formats.
 - Review a user-facing SSH setup flow and Linux binary release packaging.

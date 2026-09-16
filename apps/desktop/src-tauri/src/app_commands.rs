@@ -3,6 +3,8 @@ macro_rules! with_app_commands {
         $callback! {
             commands::add_scan_root => "add_scan_root",
             commands::app_info => "app_info",
+            remote_sync::get_remote_sync_status => "get_remote_sync_status",
+            remote_sync::set_remote_sync_interval => "set_remote_sync_interval",
             remote_sessions::get_remote_hosts => "get_remote_hosts",
             remote_sessions::set_remote_hosts => "set_remote_hosts",
             remote_sessions::get_remote_sessions => "get_remote_sessions",

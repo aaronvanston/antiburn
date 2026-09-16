@@ -1,6 +1,8 @@
 import {
   getRemoteHosts,
-  onRemoteSyncProgress,
+  onRemoteSyncStatus,
+  getRemoteSyncStatus,
+  setRemoteSyncInterval,
   type RemoteSyncProgress,
   getRemoteSessions,
   setRemoteHosts,
@@ -16,9 +18,11 @@ type State = {
   loaded: boolean
   error: string | null
   progress: RemoteSyncProgress | null
+  intervalSecs: number
+  hostErrors: Record<string, string>
 }
 
-/** Load cached snapshots when the remote view subscribes. Connections require a refresh action. */
+/** Observe cached sessions and the app-owned scan scheduler. */
 export class RemoteSessionsStore {
   private state: State = {
     hosts: [],
@@ -29,12 +33,15 @@ export class RemoteSessionsStore {
     loaded: false,
     error: null,
     progress: null,
+    intervalSecs: 300,
+    hostErrors: {},
   }
   private listeners = new Set<() => void>()
   private unlisten: (() => void) | null = null
   private started = false
   private reloadPending = false
   private generation = 0
+  private statusRevision = 0
   private onFocus = () => {
     void this.load()
   }
@@ -44,7 +51,16 @@ export class RemoteSessionsStore {
     if (!this.started) {
       this.started = true
       const generation = this.generation
-      void onRemoteSyncProgress((progress) => this.publish({ progress }))
+      void onRemoteSyncStatus((status) => {
+        if (!this.started || generation !== this.generation) return
+        this.statusRevision++
+        this.publish({
+          progress: status.progress,
+          intervalSecs: status.intervalSecs,
+          hostErrors: status.errors,
+        })
+        if (!status.progress) void this.load()
+      })
         .then((unlisten) => {
           if (this.started && generation === this.generation) this.unlisten = unlisten
           else unlisten()
@@ -76,11 +92,19 @@ export class RemoteSessionsStore {
     this.publish({ loading: true })
     const generation = this.generation
     try {
-      const hosts = await getRemoteHosts()
+      const statusRevision = this.statusRevision
+      const [hosts, status] = await Promise.all([getRemoteHosts(), getRemoteSyncStatus()])
       const results = await Promise.all(hosts.map((host) => getRemoteSessions(host, false)))
       if (generation !== this.generation) return
       this.publish({
         hosts,
+        ...(statusRevision === this.statusRevision
+          ? {
+              progress: status.progress,
+              intervalSecs: status.intervalSecs,
+              hostErrors: status.errors,
+            }
+          : {}),
         snapshots: new Map(results.map((result) => [result.host, result])),
         loaded: true,
         error: null,
@@ -98,8 +122,22 @@ export class RemoteSessionsStore {
       void this.load()
     }
   }
+  async saveInterval(seconds: number): Promise<void> {
+    if (this.state.saving) return
+    this.publish({ saving: true })
+    try {
+      await setRemoteSyncInterval(seconds)
+      this.publish({ intervalSecs: seconds, error: null })
+    } catch (error) {
+      this.publish({ error: String(error) })
+    } finally {
+      this.publish({ saving: false })
+      this.reloadIfPending()
+    }
+  }
   async save(hosts: string[]): Promise<void> {
-    if (this.state.refreshing || this.state.saving || this.state.loading) return
+    if (this.state.refreshing || this.state.progress || this.state.saving || this.state.loading)
+      return
     this.publish({ saving: true })
     try {
       await setRemoteHosts(hosts)
@@ -117,31 +155,27 @@ export class RemoteSessionsStore {
     }
   }
   async refresh(onlyHost?: string): Promise<void> {
-    if (this.state.refreshing || this.state.saving || this.state.loading) return
+    if (this.state.refreshing || this.state.progress || this.state.saving || this.state.loading)
+      return
     this.publish({ refreshing: true, error: null, progress: null })
-    await Promise.all(
-      this.state.hosts
-        .filter((host) => !onlyHost || host === onlyHost)
-        .map(async (host) => {
-          try {
-            const result = await getRemoteSessions(host, true)
-            this.publish({ snapshots: new Map(this.state.snapshots).set(host, result) })
-          } catch (error) {
-            const previous = this.state.snapshots.get(host)
-            this.publish({
-              snapshots: new Map(this.state.snapshots).set(host, {
-                host,
-                snapshot: previous?.snapshot ?? null,
-                connected: false,
-                error: String(error),
-              }),
-            })
-          }
-        }),
-    )
+    for (const host of this.state.hosts.filter((host) => !onlyHost || host === onlyHost)) {
+      try {
+        const result = await getRemoteSessions(host, true)
+        this.publish({ snapshots: new Map(this.state.snapshots).set(host, result) })
+      } catch (error) {
+        const previous = this.state.snapshots.get(host)
+        this.publish({
+          snapshots: new Map(this.state.snapshots).set(host, {
+            host,
+            snapshot: previous?.snapshot ?? null,
+            connected: false,
+            error: String(error),
+          }),
+        })
+      }
+    }
     this.publish({
       refreshing: false,
-      progress: null,
       error:
         [...this.state.snapshots.values()]
           .filter((value) => value.error)

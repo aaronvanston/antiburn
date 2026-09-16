@@ -9,7 +9,8 @@ export function RemoteHostsSettings() {
   const [store] = useState(() => new RemoteSessionsStore())
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [alias, setAlias] = useState("")
-  const busy = !state.loaded || state.loading || state.saving || state.refreshing
+  const busy =
+    !state.loaded || state.loading || state.saving || state.refreshing || !!state.progress
 
   return (
     <SectionGroup title="Remote hosts">
@@ -18,6 +19,30 @@ export function RemoteHostsSettings() {
           <p className="type-footnote text-label-secondary">
             Discover Claude Code and Codex sessions on your other machines over SSH. Select a
             machine in Sessions to browse its activity. Changes save automatically.
+          </p>
+          <label className="flex flex-wrap items-center gap-3 type-body text-label">
+            Rescan remote sessions
+            <select
+              aria-label="Rescan remote sessions"
+              className="rounded-control border border-separator bg-input-fill px-3 py-1.5 type-body"
+              value={state.intervalSecs}
+              disabled={!state.loaded || state.saving}
+              onChange={(event) => void store.saveInterval(Number(event.target.value))}
+            >
+              <option value={60}>Every minute</option>
+              <option value={300}>Every 5 minutes</option>
+              <option value={900}>Every 15 minutes</option>
+              <option value={1800}>Every 30 minutes</option>
+              <option value={3600}>Every hour</option>
+              <option value={0}>Manually</option>
+            </select>
+          </label>
+          <p className="type-footnote text-label-secondary">
+            {state.intervalSecs === 0
+              ? "Automatic scans are off. Use Scan now to refresh a host."
+              : "Scans run automatically while Antiburn is running, even with Settings closed. The interval starts after each scan finishes."}{" "}
+            Changing the frequency applies after the current scan. Cached sessions remain
+            available offline.
           </p>
           <form
             className="flex flex-wrap items-end gap-2"
@@ -49,7 +74,10 @@ export function RemoteHostsSettings() {
           </form>
           {state.progress && (
             <p role="status" className="type-footnote text-label-secondary">
-              {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
+              {state.progress.host}:{" "}
+              {state.progress.total
+                ? `${state.progress.completed}/${state.progress.total} sessions`
+                : "Connecting…"}
             </p>
           )}
           <p className="type-caption text-label-secondary">
@@ -78,9 +106,9 @@ export function RemoteHostsSettings() {
                   <PushButton
                     disabled={busy}
                     onClick={() => void store.refresh(host)}
-                    ariaLabel={`Sync sessions to ${host}`}
+                    ariaLabel={`Scan ${host} now`}
                   >
-                    Sync sessions
+                    Scan now
                   </PushButton>
                   <PushButton
                     disabled={busy}
@@ -95,12 +123,22 @@ export function RemoteHostsSettings() {
                   </PushButton>
                 </div>
                 <p role="status" className="break-words type-footnote text-label-secondary">
-                  {result?.error
-                    ? result.error
+                  {state.hostErrors[host] || result?.error
+                    ? state.hostErrors[host] || result?.error
                     : result?.connected
                       ? `Synced · ${result.snapshot?.sessions.length ?? 0} recent sessions`
-                      : "Not synced in this window"}
+                      : result?.snapshot
+                        ? `Last synced ${new Date(result.snapshot.collectedAt * 1000).toLocaleString()} · ${result.snapshot.sessions.length} recent sessions`
+                        : "Waiting for first scan"}
                 </p>
+                {(result?.snapshot?.truncated || !!result?.snapshot?.skipped) && (
+                  <p className="type-caption text-label-secondary">
+                    {result.snapshot.truncated ? "Latest 200 sessions only. " : ""}
+                    {result.snapshot.skipped
+                      ? `${result.snapshot.skipped} sources skipped.`
+                      : ""}
+                  </p>
+                )}
               </div>
             )
           })}

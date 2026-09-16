@@ -51,8 +51,8 @@
     "allow-reveal-source",
     "allow-set-settings",
     "allow-get-remote-hosts",
-    "allow-set-remote-hosts",
     "allow-get-remote-sessions",
-    "allow-analyze-remote-session"
+    "allow-analyze-remote-session",
+    "allow-get-remote-sync-status"
   ]
 }

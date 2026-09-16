@@ -8,7 +8,9 @@ import { MainActivitySession } from "../main-window/MainActivitySession"
 import { MachineSessionsView } from "./MachineSessionsView"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
-  onRemoteSyncProgress: async () => () => {},
+  onRemoteSyncStatus: vi.fn(async () => () => {}),
+  getRemoteSyncStatus: async () => ({ intervalSecs: 300, progress: null, errors: {} }),
+  setRemoteSyncInterval: vi.fn(),
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),
@@ -79,11 +81,9 @@ it("switches between local sessions and specific remote origins without starting
   expect(screen.getByText("Standard session list: local")).toBeVisible()
 })
 
-it("opens host settings and reconciles changes when the main window regains focus", async () => {
+it("reconciles host changes when the main window regains focus", async () => {
   render(<Harness />)
   await screen.findByRole("option", { name: "build-two" })
-  fireEvent.click(screen.getByRole("button", { name: "Manage hosts…" }))
-  expect(openSettingsWindow).toHaveBeenCalledWith("sources")
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "host:build-two" } })
   vi.mocked(getRemoteHosts).mockResolvedValue(["build-one"])
   fireEvent.focus(window)
@@ -94,12 +94,9 @@ it("opens host settings and reconciles changes when the main window regains focu
   expect(screen.queryByRole("button", { name: /build-two task/ })).not.toBeInTheDocument()
 })
 
-it("syncs only the selected machine without replacing the standard session view", async () => {
+it("keeps host management and scan controls out of Sessions", async () => {
   render(<Harness />)
   await screen.findByRole("option", { name: "build-two" })
-  fireEvent.change(screen.getByRole("combobox"), { target: { value: "host:build-two" } })
-  fireEvent.click(screen.getByRole("button", { name: "Sync remote sessions" }))
-  await waitFor(() => expect(getRemoteSessions).toHaveBeenCalledWith("build-two", true))
-  expect(getRemoteSessions).not.toHaveBeenCalledWith("build-one", true)
-  expect(screen.getByText("Standard session list: host:build-two")).toBeVisible()
+  expect(screen.queryByRole("button")).not.toBeInTheDocument()
+  expect(getRemoteSessions).not.toHaveBeenCalledWith(expect.anything(), true)
 })

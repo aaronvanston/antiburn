@@ -1,7 +1,6 @@
 import { useState, useSyncExternalStore, type ComponentProps } from "react"
 
 import { isMacOS } from "../../lib/platform"
-import { openSettingsWindow } from "../../lib/ipc"
 import { MainActivityView } from "../main-window/MainActivityView"
 import { RemoteSessionsStore } from "./RemoteSessionsStore"
 
@@ -15,7 +14,6 @@ export function MachineSessionsView({
 }) {
   const [store] = useState(() => new RemoteSessionsStore())
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-  const [error, setError] = useState<string | null>(null)
   const effectiveMachine =
     machine.startsWith("host:") && state.loaded && !state.hosts.includes(machine.slice(5))
       ? "remote"
@@ -44,57 +42,6 @@ export function MachineSessionsView({
             ))}
           </select>
         </label>
-        <button
-          className="ui-push-button"
-          onClick={() => {
-            setError(null)
-            void openSettingsWindow("sources").catch((cause: unknown) =>
-              setError(String(cause)),
-            )
-          }}
-        >
-          Manage hosts…
-        </button>
-        <button
-          className="ui-push-button"
-          disabled={state.refreshing || state.loading || !state.hosts.length}
-          onClick={() =>
-            void store.refresh(
-              effectiveMachine.startsWith("host:") ? effectiveMachine.slice(5) : undefined,
-            )
-          }
-        >
-          {state.refreshing ? "Syncing transcripts…" : "Sync remote sessions"}
-        </button>
-        {state.progress && (
-          <p role="status" className="type-footnote text-label-secondary">
-            {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="type-footnote text-label-secondary">
-            {error}
-          </p>
-        )}
-        {[...state.snapshots.values()]
-          .filter(
-            (value) =>
-              (effectiveMachine === "all" ||
-                effectiveMachine === "remote" ||
-                effectiveMachine === `host:${value.host}`) &&
-              (value.snapshot?.truncated || value.snapshot?.skipped),
-          )
-          .map((value) => (
-            <p key={value.host} className="type-footnote text-label-secondary">
-              {value.host}: {value.snapshot?.truncated ? "Latest 200 sessions only. " : ""}
-              {value.snapshot?.skipped ? `${value.snapshot.skipped} sources skipped.` : ""}
-            </p>
-          ))}
-        {state.error && (
-          <p role="alert" className="type-footnote text-label-secondary">
-            {state.error}
-          </p>
-        )}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1">
         <MainActivityView {...activityProps} machine={effectiveMachine} />

@@ -9,7 +9,7 @@ use tokio::sync::Semaphore;
 
 static REQUESTS: OnceLock<Semaphore> = OnceLock::new();
 
-fn directory(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn directory(app: &AppHandle) -> Result<PathBuf, String> {
     let path = app
         .path()
         .app_data_dir()
@@ -53,7 +53,7 @@ fn validate_hosts(hosts: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let temp = path.with_extension("tmp");
     let mut options = std::fs::OpenOptions::new();
@@ -93,6 +93,7 @@ pub async fn set_remote_hosts(app: AppHandle, hosts: Vec<String>) -> Result<(), 
             &serde_json::to_vec(&hosts).map_err(|e| e.to_string())?,
         )?;
         for host in previous.into_iter().filter(|host| !hosts.contains(host)) {
+            crate::remote_sync::forget(&app, &host);
             let path = dir.join(format!("{host}.snapshot.json"));
             if path.exists() {
                 std::fs::remove_file(path).map_err(|e| e.to_string())?;
@@ -131,9 +132,8 @@ pub async fn get_remote_sessions(
         Some(
             REQUESTS
                 .get_or_init(|| Semaphore::new(1))
-                .acquire()
-                .await
-                .map_err(|e| e.to_string())?,
+                .try_acquire()
+                .map_err(|_| "A remote scan is already running".to_owned())?,
         )
     } else {
         None
@@ -165,6 +165,14 @@ pub async fn get_remote_sessions(
             connected: false,
         });
     }
+    crate::remote_sync::progress(
+        &app,
+        crate::remote_sync::Progress {
+            host: host.clone(),
+            completed: 0,
+            total: 0,
+        },
+    );
     let result = async {
         let bytes = transport::request(
             &host,
@@ -183,10 +191,19 @@ pub async fn get_remote_sessions(
         let store = app.state::<crate::store::Store>();
         let mut failures = Vec::new();
         for (index, session) in snapshot.sessions.iter().enumerate() {
-            if let Err(error) = crate::remote_cache::sync_session(&root, &host, session, &store).await {
+            if let Err(error) =
+                crate::remote_cache::sync_session(&root, &host, session, &store).await
+            {
                 failures.push(format!("{}: {error}", session.session_id));
             }
-            let _ = app.emit("remote-sync-progress", serde_json::json!({ "host": host, "completed": index + 1, "total": snapshot.sessions.len() }));
+            crate::remote_sync::progress(
+                &app,
+                crate::remote_sync::Progress {
+                    host: host.clone(),
+                    completed: index + 1,
+                    total: snapshot.sessions.len(),
+                },
+            );
             if (index + 1) % 10 == 0 {
                 crate::insights_worker::wake(&app);
                 let _ = app.emit(crate::commands::SESSIONS_INVALIDATED_EVENT, ());
@@ -194,13 +211,27 @@ pub async fn get_remote_sessions(
         }
         crate::insights_worker::wake(&app);
         let _ = app.emit(crate::commands::SESSIONS_INVALIDATED_EVENT, ());
-        anyhow::ensure!(failures.is_empty(), "{} sessions could not sync. {}", failures.len(), failures.first().cloned().unwrap_or_default());
+        anyhow::ensure!(
+            failures.is_empty(),
+            "{} sessions could not sync. {}",
+            failures.len(),
+            failures.first().cloned().unwrap_or_default()
+        );
         tauri::async_runtime::spawn_blocking(move || write_private(&path, &bytes))
             .await?
             .map_err(anyhow::Error::msg)?;
         Ok::<_, anyhow::Error>(snapshot)
     }
     .await;
+    crate::remote_sync::finished(
+        &app,
+        &host,
+        result
+            .as_ref()
+            .err()
+            .map(|error| error.to_string())
+            .as_deref(),
+    );
     Ok(match result {
         Ok(snapshot) => HostSnapshot {
             host,

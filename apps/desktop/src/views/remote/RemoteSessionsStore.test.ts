@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   getRemoteHosts,
+  onRemoteSyncStatus,
   getRemoteSessions,
   setRemoteHosts,
   type HostSnapshot,
@@ -8,7 +9,9 @@ import {
 import { RemoteSessionsStore } from "./RemoteSessionsStore"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
-  onRemoteSyncProgress: async () => () => {},
+  onRemoteSyncStatus: vi.fn(async () => () => {}),
+  getRemoteSyncStatus: async () => ({ intervalSecs: 300, progress: null, errors: {} }),
+  setRemoteSyncInterval: vi.fn(),
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),
@@ -118,4 +121,48 @@ it("queues focus reloads during collection so a removed host cannot reappear", a
   await refresh
   await vi.waitFor(() => expect(store.getSnapshot().hosts).toEqual([]))
   expect(store.getSnapshot().snapshots.size).toBe(0)
+})
+
+it("observes background progress and completion from other windows", async () => {
+  const store = await loadedStore()
+  const update = vi.mocked(onRemoteSyncStatus).mock.calls[0]![0]
+  update({
+    intervalSecs: 900,
+    progress: { host: "test-box", completed: 1, total: 3 },
+    errors: {},
+  })
+  expect(store.getSnapshot().progress?.completed).toBe(1)
+  expect(store.getSnapshot().intervalSecs).toBe(900)
+  await store.refresh()
+  expect(getRemoteSessions).toHaveBeenCalledTimes(1)
+  update({ intervalSecs: 300, progress: null, errors: {} })
+  await vi.waitFor(() => expect(getRemoteSessions).toHaveBeenCalledTimes(2))
+  expect(store.getSnapshot().progress).toBeNull()
+  expect(getRemoteSessions).toHaveBeenLastCalledWith("test-box", false)
+})
+
+it("does not replace a newer scan event with an older cached load", async () => {
+  const store = await loadedStore()
+  const update = vi.mocked(onRemoteSyncStatus).mock.calls[0]![0]
+  let finish!: (value: HostSnapshot) => void
+  vi.mocked(getRemoteSessions).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  window.dispatchEvent(new Event("focus"))
+  await vi.waitFor(() => expect(getRemoteSessions).toHaveBeenCalledTimes(2))
+  update({
+    intervalSecs: 900,
+    progress: { host: "test-box", completed: 2, total: 3 },
+    errors: {},
+  })
+  finish(cached)
+  await vi.waitFor(() => expect(store.getSnapshot().loading).toBe(false))
+  expect(store.getSnapshot().progress?.completed).toBe(2)
+  expect(store.getSnapshot().intervalSecs).toBe(900)
+  for (const stop of subscriptions.splice(0)) stop()
+  update({ intervalSecs: 0, progress: null, errors: {} })
+  expect(store.getSnapshot().intervalSecs).toBe(900)
 })

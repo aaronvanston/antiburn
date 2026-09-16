@@ -80,6 +80,7 @@ mod provider_usage;
 pub mod remediation;
 mod remote_cache;
 mod remote_sessions;
+mod remote_sync;
 mod repositories;
 mod retention;
 mod runtime_pricing;
@@ -336,6 +337,7 @@ pub fn run() {
             schedulers.push(scan::idle::spawn(app.handle()));
             schedulers.push(retention::spawn_scheduler(app.handle()));
             schedulers.push(insights_worker::spawn(app.handle()));
+            schedulers.push(remote_sync::spawn(app.handle()));
             schedulers.push(updates::spawn_scheduler(app.handle()));
             schedulers.push(usage_alerts::spawn_scheduler(app.handle()));
             schedulers.push(disk_monitor::spawn_disk_monitor(app.handle().clone()));

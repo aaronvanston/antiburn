@@ -29,5 +29,13 @@ export const setRemoteHosts = (hosts: string[]) => invoke<void>("set_remote_host
 export const getRemoteSessions = (host: string, refresh: boolean) =>
   invoke<HostSnapshot>("get_remote_sessions", { host, refresh })
 export type RemoteSyncProgress = { host: string; completed: number; total: number }
-export const onRemoteSyncProgress = (callback: (progress: RemoteSyncProgress) => void) =>
-  listen<RemoteSyncProgress>("remote-sync-progress", (event) => callback(event.payload))
+export type RemoteSyncStatus = {
+  intervalSecs: number
+  progress: RemoteSyncProgress | null
+  errors: Record<string, string>
+}
+export const getRemoteSyncStatus = () => invoke<RemoteSyncStatus>("get_remote_sync_status")
+export const setRemoteSyncInterval = (seconds: number) =>
+  invoke<void>("set_remote_sync_interval", { seconds })
+export const onRemoteSyncStatus = (callback: (status: RemoteSyncStatus) => void) =>
+  listen<RemoteSyncStatus>("remote-sync-status", (event) => callback(event.payload))
