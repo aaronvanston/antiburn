@@ -71,6 +71,8 @@ pub struct SessionTarget {
     agent: String,
     session_id: String,
     wsl_distro: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    remote_host: Option<String>,
 }
 
 /// Revisioned request shared by the event and renderer peek paths.
@@ -419,6 +421,7 @@ impl MainWindowState {
                 agent,
                 session_id,
                 wsl_distro,
+                remote_host: None,
             },
             created_at: now,
         });
@@ -943,10 +946,11 @@ fn resolve_sample_for_open(
         }
     };
     let exists = store
-        .session(&SessionKey::for_session(
+        .session(&SessionKey::for_origin(
             &target.agent,
             &target.session_id,
             target.wsl_distro.as_deref(),
+            target.remote_host.as_deref(),
         ))
         .map_err(|error| error.to_string())?
         .is_some();
@@ -1841,6 +1845,7 @@ mod tests {
             agent: "codex".to_owned(),
             session_id: id.to_owned(),
             wsl_distro: None,
+            remote_host: None,
         }
     }
 
@@ -2265,11 +2270,13 @@ mod tests {
             agent: "codex".to_owned(),
             session_id: "sample".to_owned(),
             wsl_distro: None,
+            remote_host: None,
         });
         let external = state.request_session_target(SessionTarget {
             agent: "claude-code".to_owned(),
             session_id: "external".to_owned(),
             wsl_distro: None,
+            remote_host: None,
         });
 
         assert!(external.revision > sample.revision);

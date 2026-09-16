@@ -286,6 +286,7 @@ export function PopoverView() {
                   agent: entry.agent,
                   sessionId: entry.sessionId,
                   wslDistro: entry.wslDistro ?? null,
+                  ...(entry.remoteHost ? { remoteHost: entry.remoteHost } : {}),
                 })
               }}
               renderAgentIcon={renderAgentIcon}

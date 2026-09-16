@@ -292,7 +292,9 @@ export class MainOverviewSession {
     try {
       const payloads = await this.adapter.listRecentSessions()
       if (work === this.workVersion && version === this.recentVersion) {
-        this.update({ recentSessions: overviewRecentSessions(payloads) })
+        this.update({
+          recentSessions: overviewRecentSessions(payloads.filter((entry) => !entry.remoteHost)),
+        })
       }
     } catch {
       // The sessions panel keeps its last rows.

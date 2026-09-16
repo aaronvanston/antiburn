@@ -58,7 +58,11 @@ pub async fn refresh(app: &AppHandle) -> anyhow::Result<()> {
     // Repository counts use the newest bounded slice of retained sessions.
     // The cap protects an always-running utility
     // from loading an unbounded history into memory at once.
-    let sessions = store.recent_sessions(0, MAX_SESSIONS_CONSIDERED)?;
+    let sessions: Vec<_> = store
+        .recent_sessions(0, MAX_SESSIONS_CONSIDERED)?
+        .into_iter()
+        .filter(|session| session.key.remote_host().is_none())
+        .collect();
     let known: Vec<RepositoryRecord> = store.repositories()?;
     let scan_roots: Vec<PathBuf> = store.scan_roots()?.into_iter().map(PathBuf::from).collect();
 
@@ -105,7 +109,11 @@ pub async fn refresh(app: &AppHandle) -> anyhow::Result<()> {
 
 /// Refresh only the stored session counts after local session deletion.
 pub fn refresh_session_counts(store: &Store) -> anyhow::Result<()> {
-    let sessions = store.recent_sessions(0, MAX_SESSIONS_CONSIDERED)?;
+    let sessions: Vec<_> = store
+        .recent_sessions(0, MAX_SESSIONS_CONSIDERED)?
+        .into_iter()
+        .filter(|session| session.key.remote_host().is_none())
+        .collect();
     let mut repositories = store.repositories()?;
     for repository in &mut repositories {
         repository.session_count = repository
@@ -305,6 +313,9 @@ pub fn purge_ignored_sessions(store: &Store) -> anyhow::Result<usize> {
     }
     let mut removed = 0;
     for session in store.recent_sessions(0, usize::MAX)? {
+        if session.key.remote_host().is_some() {
+            continue;
+        }
         let Some(cwd) = session.cwd.as_deref() else {
             continue;
         };

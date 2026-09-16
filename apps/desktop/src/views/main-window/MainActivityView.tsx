@@ -1,5 +1,6 @@
 import { lazy, Suspense, useSyncExternalStore } from "react"
 
+import { sessionsOnMachine } from "../../lib/sessionMachine"
 import { SessionList } from "../../components/session/SessionList"
 import { renderAgentIcon } from "../../lib/agentIcon"
 import { filterSessionEntries } from "../../lib/sessionFilters"
@@ -32,10 +33,12 @@ function itemForSubject(subject: SessionSubject): SessionItem {
 
 export function MainActivityView({
   active,
+  machine = "all",
   session,
   hygieneBySession,
 }: {
   active: boolean
+  machine?: string
   session: MainActivitySession
   /** Fetched once above this view, pinned to the full unfiltered list. */
   hygieneBySession: SessionHygieneSnapshot
@@ -47,7 +50,7 @@ export function MainActivityView({
   )
   const snoozedDetectors = snoozedDetectorIds(useSnoozedBurnChecks())
   const filteredEntries = filterSessionEntries(
-    state.entries ?? [],
+    sessionsOnMachine(state.entries ?? [], machine),
     hygieneBySession,
     state.filter,
     snoozedDetectors,
@@ -68,7 +71,7 @@ export function MainActivityView({
 
   return (
     <CollectionDetailPane<SessionItem>
-      title="Sessions · This machine"
+      title="Sessions"
       items={items}
       selection={selected}
       onSelectionChange={(item) =>

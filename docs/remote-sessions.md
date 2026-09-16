@@ -1,43 +1,50 @@
 # Remote sessions in this fork
 
-This fork adds read-only remote machines to the Sessions view in the main desktop window.
-A small Linux helper uses the existing `antiburn-local` engine to discover
-Claude Code and Codex transcripts and calculate metrics where the files live.
-The desktop invokes it over the user's existing SSH connection. No server,
-listener, credential forwarding, provider login, or background daemon is needed.
+This fork imports Claude Code and Codex sessions from user-owned Linux hosts over SSH.
+Raw transcripts and companion files enter a private local cache. The desktop's
+normal evidence worker analyses them, and the standard Sessions list and detail
+view display them alongside local sessions. No server or background daemon is needed.
 
 ## Current behaviour
 
-- Open **Settings → Sources → Remote hosts** to add or remove SSH aliases. Changes save automatically; up to eight aliases are supported.
-- Use **Test connection** beside a host to check SSH and collect its recent sessions. The UI shows connection errors beside that host.
-- In **Sessions**, use **Machine** to choose **This machine**, **All remote hosts**, or a specific host. Remote rows and analysis identify the source host.
-- **Manage hosts…** opens Sources in Settings. The session view reloads configuration and cached lists when its window regains focus.
-- Press **Refresh hosts** to collect remote sessions again. A selected host refreshes only that host.
-- Discovery returns at most 200 transcripts per host from the engine's seven-day recency window.
-  A truncated list is labelled. Unreadable or unidentified sources are counted as skipped.
-- Select a session to calculate its parent-transcript tokens, API-equivalent cost,
-  context history and compactions. Refresh analysis explicitly to update it.
-- Each host's latest successful list is cached in the app data directory.
-  A failed connection preserves that list and displays the failure and collection time.
-- A host alias identifies a source in this prototype. Renaming an alias creates a new source;
-  aliases for the same machine are not automatically deduplicated.
-- Remote results have a separate pane. They do not change local totals, provider
-  allowance allocation, Burn Checks, native session identity or local remediation.
-- Source transcripts and provider credentials are never modified. No remote
-  resume, stop, configuration editing or transcript deletion commands exist.
+- Configure SSH aliases under **Settings → Sources → Remote hosts** (up to eight).
+- Press **Sync sessions** beside a host, or **Sync remote sessions** in Sessions.
+  Progress reports completed sessions. Changing the Machine filter does not connect.
+- **Machine** offers All machines, This machine, All remote hosts and individual hosts.
+  Session rows and detail headers retain their source host.
+- The usual session filters, context history, tools, model and token breakdowns,
+  cost estimates, per-session checks and subagent navigation use the same pipeline.
+- Discovery covers up to 200 recent sessions per host over seven days. The UI
+  reports truncated lists and skipped sources. Archived-source discovery is unchanged.
+- Claude bundles preserve child transcripts and metadata sidecars, plus a declared
+  fork parent's transcript when available. Existing engine coverage limits still apply.
+- Sync skips unchanged bundles; a changed bundle is transferred in full. New copies
+  are staged and validated before replacing the index. Failed transfers retain the
+  previous usable copy. Successfully imported sessions remain visible after partial failure.
+- Cached sessions remain readable offline and are marked as synced copies, without
+  claiming that their remote processes are currently running.
+- The native Overview, global Burn Checks report, provider account quotas and local
+  configuration remediation keep their existing native-machine scope. Remote session
+  checks are available in session details. Remote quota shares are unknown; local
+  account credentials are never attributed to a remote session.
+- Source aliases define separate identities, including when the same transcript ID
+  exists on several machines. Renaming an alias creates another source.
+- Removing a host removes its indexed sessions, cached transcripts and analysis.
+  Deleting session data clears its index; syncing can import it again. The private
+  transcript cache remains until resync or host removal. Local index clearing does
+  not remove that cache. Original remote files are never edited or deleted.
 
-Session titles can contain the beginning of a user prompt. Titles, working
-directories, session IDs, metrics and engine-derived context details travel over
-SSH to the user's desktop. Transcript message bodies are not returned. Lists
-are stored in an owner-only directory; selected analysis stays in memory.
-Removing a host deletes its cached list. Clearing the local session index does
-not clear remote lists; remove the host to clear those.
+Session bodies, titles, working directories, IDs and supporting sidecars travel over
+SSH to this desktop. They are sensitive local data. Transcript directories are
+owner-only and transcript files use mode 0600. No credentials, provider account
+configuration, project source trees, or arbitrary caller-supplied paths are copied.
+Cost estimates use the desktop's pricing catalogue, as local sessions do.
 
-The pane makes no process-liveness claim. File modification times are activity
-hints, and provider quota meters are account-level data that this collector does
-not read. Analysis covers only the selected parent transcript; child usage is
-not combined. Estimated prices use the helper's bundled engine price catalogue.
-Parsing gaps inherited from the engine are not a clean Burn Check result.
+Bundles contain at most 512 files and 1 GiB of content. Sync stops when existing
+transcript caches exceed 14 GiB, leaving up to 2 GiB for staged transfer and extraction.
+Remove an unused host in Settings to reclaim space. A session larger than the bundle
+limit reports an error; it is not silently truncated. Unused generations for a session
+are removed on its next sync. Connections are explicit; no background SSH polling runs.
 
 ## Build and install the Linux helper
 
@@ -71,20 +78,19 @@ printf '%s' '{"operation":"list","version":1}' | \
   ssh -T build-box '~/.local/bin/antiburn-remote stdio'
 ```
 
-Protocol version 1 also accepts `analyze` with `agent` and `session_id`.
-Selection must match the recent discovery list; callers cannot supply a file path.
-A locally built helper can exercise the same bounded SSH transport as the app:
+Protocol version 1 supports `list`, legacy `analyze`, and `export` with `agent`,
+`session_id` and an optional 64-character `known` bundle signature. Export selection
+must match discovery; callers cannot supply a source path. Install the updated helper
+on every host before syncing with this desktop build.
 
-```sh
-printf '%s' '{"operation":"list","version":1}' | \
-  crates/antiburn-remote/target/release/antiburn-remote ssh build-box
-```
-
-The helper emits one JSON response and exits. Requests are capped at 8 KiB,
-responses at 8 MiB, and errors at 8 KiB. SSH requests time out after 60 seconds.
-Analysis streams one transcript, capped at 512 MiB with a 40-second parsing
-budget. Desktop requests are serialised, including host removal, so a late
-response cannot restore a deleted cache. No polling starts automatically.
+List and legacy analysis return bounded JSON (8 MiB, 60-second timeout). Export
+streams `ABR2DATA` or `ABR2SAME`, a little-endian 32-bit manifest length, the JSON
+manifest (at most 1 MiB), and file contents in manifest order. Desktop extraction
+uses validated identities and generated paths. Export has a 180-second timeout per
+session and rejects incomplete, excess or changed-during-transfer data. Requests
+are capped at 8 KiB and error output at 8 KiB. Desktop operations are serialised,
+including host removal. The local CLI `ssh` mode supports JSON requests only;
+the desktop transport handles binary exports.
 
 ## Build the separate macOS app
 
@@ -112,7 +118,7 @@ to this repository.
 ## Follow-up work before proposing upstream integration
 
 - Agree on stable source identity independent of SSH aliases.
-- Decide how machine scopes appear in the existing session list and reports.
-- Add incremental collection and capability negotiation before continuous polling.
-- Characterise child-session aggregation, archived-session coverage and parsing gaps.
+- Extend global reports and remote configuration remediation with explicit machine scopes.
+- Add per-file deltas and capability negotiation before continuous polling.
+- Extend archived-session discovery and review additional agent formats.
 - Review a user-facing SSH setup flow and Linux binary release packaging.

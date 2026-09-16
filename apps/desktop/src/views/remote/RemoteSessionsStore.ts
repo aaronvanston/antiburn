@@ -1,5 +1,7 @@
 import {
   getRemoteHosts,
+  onRemoteSyncProgress,
+  type RemoteSyncProgress,
   getRemoteSessions,
   setRemoteHosts,
   type HostSnapshot,
@@ -13,6 +15,7 @@ type State = {
   refreshing: boolean
   loaded: boolean
   error: string | null
+  progress: RemoteSyncProgress | null
 }
 
 /** Load cached snapshots when the remote view subscribes. Connections require a refresh action. */
@@ -25,8 +28,10 @@ export class RemoteSessionsStore {
     refreshing: false,
     loaded: false,
     error: null,
+    progress: null,
   }
   private listeners = new Set<() => void>()
+  private unlisten: (() => void) | null = null
   private started = false
   private reloadPending = false
   private generation = 0
@@ -38,6 +43,13 @@ export class RemoteSessionsStore {
     this.listeners.add(listener)
     if (!this.started) {
       this.started = true
+      const generation = this.generation
+      void onRemoteSyncProgress((progress) => this.publish({ progress }))
+        .then((unlisten) => {
+          if (this.started && generation === this.generation) this.unlisten = unlisten
+          else unlisten()
+        })
+        .catch((error: unknown) => this.publish({ error: String(error) }))
       window.addEventListener("focus", this.onFocus)
       void this.load()
     }
@@ -45,6 +57,8 @@ export class RemoteSessionsStore {
       this.listeners.delete(listener)
       if (!this.listeners.size) {
         window.removeEventListener("focus", this.onFocus)
+        this.unlisten?.()
+        this.unlisten = null
         this.started = false
         this.generation++
       }
@@ -104,7 +118,7 @@ export class RemoteSessionsStore {
   }
   async refresh(onlyHost?: string): Promise<void> {
     if (this.state.refreshing || this.state.saving || this.state.loading) return
-    this.publish({ refreshing: true, error: null })
+    this.publish({ refreshing: true, error: null, progress: null })
     await Promise.all(
       this.state.hosts
         .filter((host) => !onlyHost || host === onlyHost)
@@ -125,7 +139,15 @@ export class RemoteSessionsStore {
           }
         }),
     )
-    this.publish({ refreshing: false })
+    this.publish({
+      refreshing: false,
+      progress: null,
+      error:
+        [...this.state.snapshots.values()]
+          .filter((value) => value.error)
+          .map((value) => `${value.host}: ${value.error}`)
+          .join("; ") || null,
+    })
     this.reloadIfPending()
   }
 }

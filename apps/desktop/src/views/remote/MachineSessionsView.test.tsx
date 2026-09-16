@@ -8,6 +8,7 @@ import { MainActivitySession } from "../main-window/MainActivitySession"
 import { MachineSessionsView } from "./MachineSessionsView"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
+  onRemoteSyncProgress: async () => () => {},
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),
@@ -15,7 +16,9 @@ vi.mock("../../lib/remoteSessionsIpc", () => ({
 }))
 vi.mock("../../lib/ipc", () => ({ openSettingsWindow: vi.fn() }))
 vi.mock("../main-window/MainActivityView", () => ({
-  MainActivityView: () => <p>Local session list</p>,
+  MainActivityView: ({ machine }: { machine: string }) => (
+    <p>Standard session list: {machine}</p>
+  ),
 }))
 vi.mock("../main-window/MainActivitySession", () => ({ MainActivitySession: class {} }))
 
@@ -62,19 +65,18 @@ beforeEach(() => {
 
 it("switches between local sessions and specific remote origins without starting SSH", async () => {
   render(<Harness />)
-  expect(screen.getByText("Local session list")).toBeVisible()
+  expect(screen.getByText("Standard session list: local")).toBeVisible()
   await screen.findByRole("option", { name: "build-two" })
   fireEvent.change(screen.getByRole("combobox", { name: "Session machine" }), {
     target: { value: "host:build-two" },
   })
-  const row = await screen.findByRole("button", { name: /build-two task/ })
-  expect(row).toHaveTextContent("build-two · codex · cli")
-  expect(screen.queryByRole("button", { name: /build-one task/ })).not.toBeInTheDocument()
+  expect(screen.getByText("Standard session list: host:build-two")).toBeVisible()
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "remote" } })
-  expect(await screen.findByRole("button", { name: /build-one task/ })).toBeVisible()
+  expect(screen.getByText("Standard session list: remote")).toBeVisible()
   expect(getRemoteSessions).toHaveBeenCalledTimes(2)
+  expect(getRemoteSessions).not.toHaveBeenCalledWith(expect.anything(), true)
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "local" } })
-  expect(screen.getByText("Local session list")).toBeVisible()
+  expect(screen.getByText("Standard session list: local")).toBeVisible()
 })
 
 it("opens host settings and reconciles changes when the main window regains focus", async () => {
@@ -90,4 +92,14 @@ it("opens host settings and reconciles changes when the main window regains focu
   )
   expect(screen.getByRole("combobox")).toHaveValue("remote")
   expect(screen.queryByRole("button", { name: /build-two task/ })).not.toBeInTheDocument()
+})
+
+it("syncs only the selected machine without replacing the standard session view", async () => {
+  render(<Harness />)
+  await screen.findByRole("option", { name: "build-two" })
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "host:build-two" } })
+  fireEvent.click(screen.getByRole("button", { name: "Sync remote sessions" }))
+  await waitFor(() => expect(getRemoteSessions).toHaveBeenCalledWith("build-two", true))
+  expect(getRemoteSessions).not.toHaveBeenCalledWith("build-one", true)
+  expect(screen.getByText("Standard session list: host:build-two")).toBeVisible()
 })

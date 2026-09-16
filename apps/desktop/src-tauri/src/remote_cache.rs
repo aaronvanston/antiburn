@@ -1,0 +1,489 @@
+//! Private remote transcripts indexed by the ordinary evidence worker.
+
+use crate::{
+    analysis::{self, PassSignal},
+    store::{FencedTurnRowStore, SessionKey, SessionRecord, Store},
+};
+use antiburn_local::{
+    analysis::TurnRowStore,
+    discovery::{
+        SessionSource,
+        source_version::{FINGERPRINT_HEAD_BYTES, FingerprintInputs, SourceStat, head_hash_of},
+    },
+};
+use antiburn_remote::{
+    PROTOCOL_VERSION, RemoteSession, Request,
+    export::{BundleManifest, MAX_MANIFEST_BYTES},
+    transport,
+};
+use anyhow::{Context, Result, ensure};
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+fn private_dir(path: &Path) -> Result<()> {
+    fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+pub fn manifest_for(record: &SessionRecord) -> Result<(PathBuf, BundleManifest)> {
+    ensure!(record.key.remote_host().is_some(), "Not a remote session");
+    let dir = Path::new(&record.source_label)
+        .parent()
+        .context("Missing transcript directory")?
+        .to_path_buf();
+    let path = dir.join("manifest.json");
+    ensure!(
+        fs::metadata(&path)?.len() <= MAX_MANIFEST_BYTES as u64,
+        "Manifest exceeds limit"
+    );
+    let manifest: BundleManifest = serde_json::from_slice(&fs::read(path)?)?;
+    manifest.validate()?;
+    ensure!(
+        manifest.session.agent == record.key.agent
+            && manifest.session.session_id == record.key.session_id,
+        "Cached transcript identity mismatch"
+    );
+    Ok((dir, manifest))
+}
+
+fn parent_fingerprint(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    let stat = SourceStat::from_open_std_file(&file).context("Cannot stat transcript")?;
+    let mut head = Vec::new();
+    (&mut file)
+        .take(FINGERPRINT_HEAD_BYTES as u64)
+        .read_to_end(&mut head)?;
+    Ok(FingerprintInputs {
+        stat,
+        head_hash: Some(head_hash_of(&head)),
+    }
+    .fingerprint())
+}
+
+pub fn unpack(
+    bundle: &Path,
+    target: &Path,
+    expected: &RemoteSession,
+) -> Result<(BundleManifest, bool)> {
+    let mut input = std::io::BufReader::new(fs::File::open(bundle)?);
+    let mut magic = [0u8; 8];
+    input.read_exact(&mut magic)?;
+    ensure!(
+        &magic == b"ABR2SAME" || &magic == b"ABR2DATA",
+        "Update the remote helper to support transcript syncing"
+    );
+    let mut length = [0u8; 4];
+    input.read_exact(&mut length)?;
+    let length = u32::from_le_bytes(length) as usize;
+    ensure!(length <= MAX_MANIFEST_BYTES, "Manifest exceeds limit");
+    let mut bytes = vec![0u8; length];
+    input.read_exact(&mut bytes)?;
+    let manifest: BundleManifest = serde_json::from_slice(&bytes)?;
+    manifest.validate()?;
+    ensure!(
+        manifest.session.agent == expected.agent
+            && manifest.session.session_id == expected.session_id,
+        "Exported session identity mismatch"
+    );
+    let unchanged = &magic == b"ABR2SAME";
+    if !unchanged {
+        for (index, descriptor) in manifest.files.iter().enumerate() {
+            let path = target.join(manifest.file_name(index));
+            private_dir(path.parent().context("Missing cache directory")?)?;
+            let mut options = fs::OpenOptions::new();
+            options.create_new(true).write(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(path)?;
+            ensure!(
+                std::io::copy(&mut (&mut input).take(descriptor.size), &mut file)?
+                    == descriptor.size,
+                "Incomplete transcript transfer"
+            );
+            file.sync_all()?;
+        }
+        fs::write(target.join("manifest.json"), bytes)?;
+    }
+    let mut trailing = [0u8; 1];
+    ensure!(
+        input.read(&mut trailing)? == 0,
+        "Unexpected data after transcript bundle"
+    );
+    Ok((manifest, unchanged))
+}
+
+fn cache_size(path: &Path) -> Result<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut size = 0u64;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            size = size.saturating_add(cache_size(&entry.path())?);
+        } else if kind.is_file() {
+            size = size.saturating_add(entry.metadata()?.len());
+        }
+    }
+    Ok(size)
+}
+
+pub async fn sync_session(
+    root: &Path,
+    host: &str,
+    session: &RemoteSession,
+    store: &Store,
+) -> Result<()> {
+    let cache_root = root.join("transcripts");
+    let size = tokio::task::spawn_blocking(move || cache_size(&cache_root)).await??;
+    ensure!(
+        size <= 14 * 1024 * 1024 * 1024,
+        "Remote cache reached 14 GiB; remove an unused host in Settings before syncing more sessions"
+    );
+    let key = SessionKey::for_origin(&session.agent, &session.session_id, None, Some(host));
+    let previous = store.session(&key)?;
+    let known = previous
+        .as_ref()
+        .and_then(|record| manifest_for(record).ok())
+        .filter(|(dir, manifest)| {
+            manifest.files.iter().enumerate().all(|(index, file)| {
+                fs::metadata(dir.join(manifest.file_name(index)))
+                    .is_ok_and(|meta| meta.len() == file.size)
+            })
+        })
+        .and_then(|(_, manifest)| manifest.signature().ok());
+    let identity = Sha256::digest(format!("{}\0{}", session.agent, session.session_id).as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let parent = root.join("transcripts").join(host).join(identity);
+    private_dir(&parent)?;
+    let retained = previous
+        .as_ref()
+        .and_then(|record| Path::new(&record.source_label).parent());
+    for entry in fs::read_dir(&parent)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && Some(entry.path().as_path()) != retained {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    let generation = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let target = parent.join(generation.to_string());
+    private_dir(&target)?;
+    let bundle = target.join("transfer.bin");
+    let result = async {
+        transport::export_to(
+            host,
+            &Request::Export {
+                version: PROTOCOL_VERSION,
+                agent: session.agent.clone(),
+                session_id: session.session_id.clone(),
+                known,
+            },
+            &bundle,
+        )
+        .await?;
+        let bundle_copy = bundle.clone();
+        let target_copy = target.clone();
+        let expected = session.clone();
+        let (manifest, unchanged) =
+            tokio::task::spawn_blocking(move || unpack(&bundle_copy, &target_copy, &expected))
+                .await??;
+        fs::remove_file(&bundle)?;
+        if unchanged {
+            let old = previous.as_ref().context("Missing existing snapshot")?;
+            let (old_dir, old_manifest) = manifest_for(old)?;
+            ensure!(
+                manifest.signature()? == old_manifest.signature()?,
+                "Unchanged response does not match the cached snapshot"
+            );
+            ensure!(
+                old_manifest.files.iter().enumerate().all(|(index, file)| {
+                    fs::metadata(old_dir.join(old_manifest.file_name(index)))
+                        .is_ok_and(|meta| meta.len() == file.size)
+                }),
+                "Cached transcript is incomplete; remove and re-add the host to resync"
+            );
+            fs::remove_dir_all(&target)?;
+            return Ok(());
+        }
+        let path = target.join(manifest.file_name(0));
+        let record = SessionRecord {
+            key,
+            source_kind: "file".to_owned(),
+            source_label: path.to_string_lossy().into_owned(),
+            wsl_distro: None,
+            title: Some(manifest.session.title.clone()),
+            title_source: Some("indexed".to_owned()),
+            cwd: manifest.session.cwd.clone(),
+            surface: manifest.session.surface.clone(),
+            updated_at_epoch: manifest.session.updated_at,
+            activity_cursor: manifest.signature()?,
+            activity_source: "mtime".to_owned(),
+            subagent_count: manifest
+                .files
+                .iter()
+                .filter(|file| file.subagent_id.is_some())
+                .count() as u32,
+            fork_parent_session_id: manifest.fork_parent_session_id,
+            source_fingerprint: Some(parent_fingerprint(&path)?),
+        };
+        store.upsert_sessions(&[record], &["claude-code", "codex"])?;
+        if let Some(old) = previous
+            && let Some(old_dir) = Path::new(&old.source_label)
+                .parent()
+                .filter(|dir| dir.parent() == Some(parent.as_path()))
+        {
+            let _ = fs::remove_dir_all(old_dir);
+        }
+        Ok(())
+    }
+    .await;
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&target);
+    }
+    result
+}
+
+pub fn run_pass(
+    record: SessionRecord,
+    signal: PassSignal,
+    fence: i64,
+    store: Store,
+) -> crate::insights_worker::PassFuture {
+    Box::pin(async move {
+        let Ok((dir, manifest)) = manifest_for(&record) else {
+            return analysis::unsupported_evidence_pass();
+        };
+        let Some(agent) = crate::agents::kind_from_slug(&record.key.agent) else {
+            return analysis::unsupported_evidence_pass();
+        };
+        let children = manifest
+            .files
+            .iter()
+            .enumerate()
+            .filter_map(|(index, file)| {
+                file.subagent_id.as_ref().map(|id| {
+                    (
+                        id.clone(),
+                        file.label.clone().unwrap_or_else(|| "Sub-agent".to_owned()),
+                        dir.join(manifest.file_name(index)),
+                    )
+                })
+            })
+            .collect();
+        let parent = store.fork_parent(&record.key).ok().flatten();
+        let writer: Arc<dyn TurnRowStore> =
+            Arc::new(FencedTurnRowStore::new(store, record.key.clone(), fence));
+        analysis::analyze_located_for_evidence(
+            agent,
+            &record.key.session_id,
+            analysis::ClaimedSource {
+                fingerprint: record.source_fingerprint,
+                generation: 0,
+            },
+            signal,
+            Some(writer),
+            parent,
+            analysis::LocatedTranscripts {
+                source: SessionSource::File(PathBuf::from(record.source_label)),
+                children,
+            },
+        )
+        .await
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use antiburn_remote::export::BundleFile;
+
+    fn manifest(data: &[u8]) -> BundleManifest {
+        BundleManifest {
+            session: RemoteSession {
+                agent: "claude-code".into(),
+                session_id: "synthetic".into(),
+                title: "Synthetic".into(),
+                cwd: None,
+                surface: "cli".into(),
+                updated_at: Some(1),
+            },
+            files: vec![BundleFile {
+                size: data.len() as u64,
+                version: "fixture".into(),
+                subagent_id: None,
+                label: None,
+                sidecar_for: None,
+                fork_parent: false,
+            }],
+            fork_parent_session_id: None,
+        }
+    }
+
+    fn transfer(path: &Path, manifest: &BundleManifest, data: &[u8], same: bool) {
+        let header = serde_json::to_vec(manifest).unwrap();
+        let mut bytes = if same {
+            b"ABR2SAME".to_vec()
+        } else {
+            b"ABR2DATA".to_vec()
+        };
+        bytes.extend((header.len() as u32).to_le_bytes());
+        bytes.extend(header);
+        bytes.extend(data);
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn imports_private_transcripts_and_rejects_incomplete_or_mismatched_bundles() {
+        let temp = tempfile::tempdir().unwrap();
+        let bundle = temp.path().join("bundle");
+        let data = b"synthetic transcript\n";
+        let manifest = manifest(data);
+        transfer(&bundle, &manifest, data, false);
+        let target = temp.path().join("snapshot");
+        private_dir(&target).unwrap();
+        assert!(!unpack(&bundle, &target, &manifest.session).unwrap().1);
+        let path = target.join("synthetic.jsonl");
+        assert_eq!(fs::read(&path).unwrap(), data);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let mut wrong = manifest.session.clone();
+        wrong.session_id = "another".into();
+        assert!(unpack(&bundle, &temp.path().join("wrong"), &wrong).is_err());
+        transfer(&bundle, &manifest, b"short", false);
+        assert!(unpack(&bundle, &temp.path().join("partial"), &manifest.session).is_err());
+        assert_eq!(fs::read(path).unwrap(), data);
+        transfer(&bundle, &manifest, b"", true);
+        assert!(unpack(&bundle, &target, &manifest.session).unwrap().1);
+        transfer(&bundle, &manifest, b"extra", true);
+        assert!(unpack(&bundle, &target, &manifest.session).is_err());
+    }
+
+    #[tokio::test]
+    async fn imported_transcript_uses_full_analysis_and_retains_tools_and_billable_usage() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = br#"{"type":"user","uuid":"u1","timestamp":"2026-09-15T10:00:00Z","message":{"role":"user","content":"Inspect the file"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-09-15T10:00:01Z","message":{"id":"m1","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/synthetic/example.rs"}}],"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+{"type":"user","uuid":"u2","timestamp":"2026-09-15T10:00:02Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"Example"}]}}
+{"type":"assistant","uuid":"a2","timestamp":"2026-09-15T10:00:03Z","message":{"id":"m2","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Reviewed"}],"usage":{"input_tokens":120,"output_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+"#;
+        let manifest = manifest(data);
+        let bundle = temp.path().join("bundle");
+        transfer(&bundle, &manifest, data, false);
+        let target = temp.path().join("snapshot");
+        unpack(&bundle, &target, &manifest.session).unwrap();
+        let path = target.join(manifest.file_name(0));
+        let pass = analysis::analyze_located_for_evidence(
+            crate::agents::kind_from_slug("claude-code").unwrap(),
+            "synthetic",
+            analysis::ClaimedSource {
+                fingerprint: Some(parent_fingerprint(&path).unwrap()),
+                generation: 0,
+            },
+            PassSignal::new(),
+            Some(antiburn_local::analysis::MemoryTurnRowStore::new(
+                "claude-code",
+                "synthetic",
+            )),
+            None,
+            analysis::LocatedTranscripts {
+                source: SessionSource::File(path),
+                children: vec![],
+            },
+        )
+        .await;
+        assert!(matches!(pass.outcome, analysis::PassOutcome::Published));
+        assert!(pass.evidence.is_some());
+        assert!(pass.analysis.summary.is_some());
+        assert_eq!(
+            pass.analysis
+                .metrics
+                .as_ref()
+                .unwrap()
+                .billable_input_tokens,
+            220
+        );
+        assert_eq!(
+            pass.analysis
+                .metrics
+                .as_ref()
+                .unwrap()
+                .billable_output_tokens,
+            30
+        );
+        assert!(!pass.analysis.inclusive_model_breakdown.is_empty());
+        let encoded = serde_json::to_string(&pass.analysis.summary).unwrap();
+        assert!(
+            encoded.contains("Read"),
+            "tool analysis must survive import"
+        );
+    }
+
+    #[test]
+    fn origin_identity_isolates_identical_ids_and_host_deletion() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_in_memory(temp.path()).unwrap();
+        let keys: Vec<_> = [None, Some("one"), Some("two")]
+            .into_iter()
+            .map(|host| SessionKey::for_origin("codex", "same", None, host))
+            .collect();
+        let now = antiburn_remote::now();
+        for key in &keys {
+            let record = SessionRecord {
+                key: key.clone(),
+                source_kind: "file".into(),
+                source_label: "/synthetic/session.jsonl".into(),
+                wsl_distro: None,
+                title: None,
+                title_source: None,
+                cwd: None,
+                surface: "cli".into(),
+                updated_at_epoch: Some(now),
+                activity_cursor: "1".into(),
+                activity_source: "mtime".into(),
+                subagent_count: 0,
+                fork_parent_session_id: None,
+                source_fingerprint: None,
+            };
+            store.upsert_sessions(&[record], &["codex"]).unwrap();
+        }
+        store
+            .observe_provider_account("codex", "openai", &"a".repeat(64), now + 1, "provider_live")
+            .unwrap();
+        let bindings = store.session_bound_accounts(&keys).unwrap();
+        assert!(
+            bindings
+                .keys()
+                .any(|(key, _)| key.environment_key == "native")
+        );
+        assert!(bindings.keys().all(|(key, _)| key.remote_host().is_none()));
+        assert_eq!(store.usage_evidence(0).unwrap().len(), 1);
+        store.delete_remote_host("one").unwrap();
+        assert!(store.session(&keys[0]).unwrap().is_some());
+        assert!(store.session(&keys[1]).unwrap().is_none());
+        assert!(store.session(&keys[2]).unwrap().is_some());
+    }
+}

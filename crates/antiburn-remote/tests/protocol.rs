@@ -94,3 +94,76 @@ fn protocol_mismatch_produces_no_snapshot() {
     assert!(!result.status.success());
     assert!(result.stdout.is_empty());
 }
+
+#[test]
+fn exports_claude_companions_and_skips_only_unchanged_bundles() {
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join(".claude/projects/synthetic");
+    let children = project.join("parent/subagents");
+    std::fs::create_dir_all(&children).unwrap();
+    let content = r#"{"type":"user","sessionId":"parent","cwd":"/synthetic/project","message":{"role":"user","content":"Synthetic task"}}
+{"type":"assistant","sessionId":"parent","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Synthetic answer"}],"usage":{"input_tokens":10,"output_tokens":2}}}
+"#;
+    std::fs::write(project.join("parent.jsonl"), content).unwrap();
+    std::fs::write(
+        children.join("agent-child.jsonl"),
+        content.replace("parent", "child"),
+    )
+    .unwrap();
+    std::fs::write(
+        children.join("agent-child.meta.json"),
+        r#"{"toolUseId":"synthetic-tool"}"#,
+    )
+    .unwrap();
+    let request = json!({"operation":"export","version":1,"agent":"claude-code","session_id":"parent","known":null});
+    let first = call(home.path(), request.clone());
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert_eq!(&first.stdout[..8], b"ABR2DATA");
+    let length = u32::from_le_bytes(first.stdout[8..12].try_into().unwrap()) as usize;
+    let manifest: antiburn_remote::export::BundleManifest =
+        serde_json::from_slice(&first.stdout[12..12 + length]).unwrap();
+    manifest.validate().unwrap();
+    assert_eq!(manifest.files.len(), 3);
+    assert_eq!(
+        first.stdout.len(),
+        12 + length
+            + manifest
+                .files
+                .iter()
+                .map(|file| file.size as usize)
+                .sum::<usize>()
+    );
+    assert!(
+        manifest
+            .files
+            .iter()
+            .any(|file| file.subagent_id.as_deref() == Some("agent-child"))
+    );
+    assert_eq!(manifest.file_name(1), "parent/subagents/agent-child.jsonl");
+    assert_eq!(
+        manifest.file_name(2),
+        "parent/subagents/agent-child.meta.json"
+    );
+    let mut known = request;
+    known["known"] = json!(manifest.signature().unwrap());
+    let second = call(home.path(), known.clone());
+    assert!(second.status.success());
+    assert_eq!(&second.stdout[..8], b"ABR2SAME");
+    assert_eq!(second.stdout.len(), 12 + length);
+    std::fs::write(
+        children.join("agent-child.meta.json"),
+        r#"{"toolUseId":"changed-tool","agentType":"Explore"}"#,
+    )
+    .unwrap();
+    let changed = call(home.path(), known);
+    assert!(changed.status.success());
+    assert_eq!(&changed.stdout[..8], b"ABR2DATA");
+    assert_eq!(
+        std::fs::read_to_string(project.join("parent.jsonl")).unwrap(),
+        content
+    );
+}

@@ -1,6 +1,7 @@
 import { Flame, House, MessagesSquare, Settings } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
+import { sessionsOnMachine } from "../lib/sessionMachine"
 import type { SessionListEntry } from "../components/session/SessionList"
 import {
   SidebarNav,
@@ -90,7 +91,7 @@ function sessionFilterChildren(
 /** A section supplies its panes without changing the main window's native lifecycle. */
 export function MainWindowView({ sections }: { sections?: readonly MainWindowSection[] }) {
   const [settingsError, setSettingsError] = useState(false)
-  const [machine, setMachine] = useState("local")
+  const [machine, setMachine] = useState("all")
   async function openSettings(): Promise<void> {
     setSettingsError(false)
     try {
@@ -165,12 +166,17 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       id: "activity",
       label: "Sessions",
       icon: MessagesSquare,
-      children:
-        machine === "local" ? sessionFilterChildren(activity.entries, hygieneBySession) : [],
+      children: sessionFilterChildren(
+        activity.entries ? sessionsOnMachine(activity.entries, machine) : null,
+        hygieneBySession,
+      ),
       render: ({ active }) => (
         <MachineSessionsView
           machine={machine}
-          onMachineChange={setMachine}
+          onMachineChange={(next) => {
+            activitySession.clearSelection()
+            setMachine(next)
+          }}
           active={active}
           session={activitySession}
           hygieneBySession={hygieneBySession}
@@ -200,7 +206,6 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       activitySession.setFilter({ kind: "all" })
       return
     }
-    setMachine("local")
     // Every other id is a Sessions filter child, encoded by sessionFilterId.
     navigationSession.select("activity")
     activitySession.setFilter(parseSessionFilterId(id))
@@ -210,7 +215,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   // Highlight the active filter's own row while inside Sessions, so the
   // matching child reads as selected instead of the parent row.
   const navValue =
-    !sections && selected?.id === "activity" && machine === "local"
+    !sections && selected?.id === "activity"
       ? sessionFilterId(activity.filter)
       : (selected?.id ?? "")
   return (

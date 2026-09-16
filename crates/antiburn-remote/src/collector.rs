@@ -14,12 +14,16 @@ use crate::{
     Analysis, LOOKBACK_SECS, MAX_SESSIONS, PROTOCOL_VERSION, RemoteSession, Snapshot, now,
 };
 
-struct Entry {
-    session: RemoteSession,
-    log: SessionLog,
+pub(crate) struct Entry {
+    pub(crate) session: RemoteSession,
+    pub(crate) log: SessionLog,
 }
 
-async fn discover() -> (Vec<Entry>, bool, usize) {
+pub(crate) async fn discover() -> (Vec<Entry>, bool, usize) {
+    discover_matching(None).await
+}
+
+pub(crate) async fn discover_matching(target: Option<(&str, &str)>) -> (Vec<Entry>, bool, usize) {
     let mut logs = Vec::new();
     for agent in [AgentKind::Claude, AgentKind::Codex] {
         logs.extend(
@@ -32,6 +36,12 @@ async fn discover() -> (Vec<Entry>, bool, usize) {
     logs.sort_by_key(|log| std::cmp::Reverse(log.updated_at));
     let truncated = logs.len() > MAX_SESSIONS;
     logs.truncate(MAX_SESSIONS);
+    if let Some((agent, id)) = target {
+        logs.retain(|log| log.agent_type.to_string() == agent);
+        if logs.iter().any(|log| log.source_label().contains(id)) {
+            logs.retain(|log| log.source_label().contains(id));
+        }
+    }
     let home = home_dir().unwrap_or_default();
     let mut seen = HashSet::new();
     let mut entries = Vec::new();

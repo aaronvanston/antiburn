@@ -1,6 +1,7 @@
 //! Versioned, read-only session collection over a user-owned SSH connection.
 
 pub mod collector;
+pub mod export;
 pub mod transport;
 
 use antiburn_local::analysis::SessionMetrics;
@@ -17,6 +18,12 @@ pub enum Request {
     List {
         version: u32,
     },
+    Export {
+        version: u32,
+        agent: String,
+        session_id: String,
+        known: Option<String>,
+    },
     Analyze {
         version: u32,
         agent: String,
@@ -26,9 +33,24 @@ pub enum Request {
 
 impl Request {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Self::Export {
+            known: Some(known), ..
+        } = self
+        {
+            anyhow::ensure!(
+                known.len() == 64 && known.bytes().all(|b| b.is_ascii_hexdigit()),
+                "Invalid bundle signature"
+            );
+        }
         let version = match self {
             Self::List { version } => *version,
-            Self::Analyze {
+            Self::Export {
+                version,
+                agent,
+                session_id,
+                ..
+            }
+            | Self::Analyze {
                 version,
                 agent,
                 session_id,

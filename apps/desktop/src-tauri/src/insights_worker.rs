@@ -78,6 +78,9 @@ fn run_record_pass(
     claim_fence: i64,
     store: Store,
 ) -> PassFuture {
+    if record.key.remote_host().is_some() {
+        return crate::remote_cache::run_pass(record.clone(), signal, claim_fence, store);
+    }
     run_record_pass_with(
         record,
         signal,

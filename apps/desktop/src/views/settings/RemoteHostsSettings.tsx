@@ -47,6 +47,11 @@ export function RemoteHostsSettings() {
               Add host
             </button>
           </form>
+          {state.progress && (
+            <p role="status" className="type-footnote text-label-secondary">
+              {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
+            </p>
+          )}
           <p className="type-caption text-label-secondary">
             Use an existing SSH alias with key authentication. The remote helper must be
             installed at ~/.local/bin/antiburn-remote on that machine. Up to eight hosts.
@@ -73,9 +78,9 @@ export function RemoteHostsSettings() {
                   <PushButton
                     disabled={busy}
                     onClick={() => void store.refresh(host)}
-                    ariaLabel={`Test connection to ${host}`}
+                    ariaLabel={`Sync sessions to ${host}`}
                   >
-                    Test connection
+                    Sync sessions
                   </PushButton>
                   <PushButton
                     disabled={busy}
@@ -93,15 +98,21 @@ export function RemoteHostsSettings() {
                   {result?.error
                     ? result.error
                     : result?.connected
-                      ? `Connected · ${result.snapshot?.sessions.length ?? 0} recent sessions`
-                      : "Connection not tested in this window"}
+                      ? `Synced · ${result.snapshot?.sessions.length ?? 0} recent sessions`
+                      : "Not synced in this window"}
                 </p>
               </div>
             )
           })}
+          {state.progress && (
+            <p role="status" className="type-footnote text-label-secondary">
+              {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
+            </p>
+          )}
           <p className="type-caption text-label-secondary">
-            Testing collects the recent session list. Removing a host clears its cached list on
-            this machine; sessions on the remote machine stay intact.
+            Syncing copies transcripts and companion files into a private local cache for full
+            analysis. Removing a host clears its cached transcripts and analysis on this
+            machine; sessions on the remote machine stay intact.
           </p>
         </div>
       </Card>

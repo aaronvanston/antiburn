@@ -5,6 +5,7 @@ import { getRemoteHosts, getRemoteSessions, setRemoteHosts } from "../../lib/rem
 import { RemoteHostsSettings } from "./RemoteHostsSettings"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
+  onRemoteSyncProgress: async () => () => {},
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),
@@ -38,15 +39,15 @@ it("adds and removes hosts from Settings without starting SSH", async () => {
   expect(getRemoteSessions).toHaveBeenCalledExactlyOnceWith("build-one", false)
 })
 
-it("tests only the chosen host and shows connection failures", async () => {
+it("syncs only the chosen host and shows connection failures", async () => {
   vi.mocked(getRemoteHosts).mockResolvedValue(["build-one", "build-two"])
   render(<RemoteHostsSettings />)
   await screen.findByText("build-two")
-  fireEvent.click(screen.getByRole("button", { name: "Test connection to build-two" }))
-  await screen.findByText("Connected · 0 recent sessions")
+  fireEvent.click(screen.getByRole("button", { name: "Sync sessions to build-two" }))
+  await screen.findByText("Synced · 0 recent sessions")
   expect(getRemoteSessions).toHaveBeenLastCalledWith("build-two", true)
   vi.mocked(getRemoteSessions).mockRejectedValueOnce(new Error("Permission denied"))
-  fireEvent.click(screen.getByRole("button", { name: "Test connection to build-one" }))
+  fireEvent.click(screen.getByRole("button", { name: "Sync sessions to build-one" }))
   await screen.findByText("Error: Permission denied")
 })
 

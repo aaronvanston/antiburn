@@ -1755,10 +1755,32 @@ impl Store {
         Ok(sessions)
     }
 
-    /// Delete every antiburn-owned record for one session.
-    ///
-    /// Local records only. The provider's transcript is never touched — see
-    /// [`crate::commands::delete_session_data`].
+    /// Delete indexed sessions and analysis for one SSH host.
+    pub fn delete_remote_host(&self, host: &str) -> Result<()> {
+        let mut connection = self.lock();
+        let tx = connection.transaction()?;
+        let environment = format!("ssh:{host}");
+        let keys = {
+            let mut statement =
+                tx.prepare("SELECT agent, session_id FROM session WHERE environment_key = ?1")?;
+            statement
+                .query_map([&environment], |row| {
+                    Ok(SessionKey::new(
+                        &environment,
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for key in keys {
+            delete_session_in(&tx, &key)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Delete local records for one session without changing the provider's transcript.
     pub fn delete_session(&self, key: &SessionKey) -> Result<bool> {
         let mut connection = self.lock();
         let tx = connection.transaction()?;
@@ -2328,6 +2350,7 @@ impl Store {
                 AND a.agent = s.agent
                 AND a.session_id = s.session_id
               WHERE COALESCE(s.updated_at_epoch, 0) >= ?1
+                AND s.environment_key NOT LIKE 'ssh:%'
               ORDER BY COALESCE(s.updated_at_epoch, 0) DESC",
         )?;
         let rows = statement.query_map(params![since_epoch], |row| {
@@ -2411,6 +2434,7 @@ impl Store {
              SELECT environment_key, agent, session_id, ?2, ?3, ?7, 'direct', ?4
                FROM session
               WHERE agent = ?1
+                AND environment_key NOT LIKE 'ssh:%'
                 AND unixepoch(first_seen_at) >= ?5
                 AND COALESCE(updated_at_epoch, 0) BETWEEN MAX(?5, ?6 - 600) AND ?6
                 AND COALESCE(updated_at_epoch, 0) > COALESCE((

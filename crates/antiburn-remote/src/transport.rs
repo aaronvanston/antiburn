@@ -85,6 +85,76 @@ pub async fn request(host: &str, request: &Request) -> Result<Vec<u8>> {
         .context("Remote request timed out after 60 seconds")?
 }
 
+/// Stream one bounded bundle into a private staging file.
+pub async fn export_to(host: &str, request: &Request, destination: &std::path::Path) -> Result<()> {
+    validate_host(host)?;
+    request.validate()?;
+    ensure!(
+        matches!(request, Request::Export { .. }),
+        "Expected export request"
+    );
+    let bytes = serde_json::to_vec(request)?;
+    ensure!(bytes.len() <= 8192, "Request exceeds 8 KiB");
+    let mut child = tokio::process::Command::new("ssh")
+        .args([
+            "-T",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            "ServerAliveInterval=10",
+            "-o",
+            "ServerAliveCountMax=2",
+            "--",
+            host,
+            "~/.local/bin/antiburn-remote stdio",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let mut stdin = child.stdin.take().context("Missing SSH input")?;
+    let stdout = child.stdout.take().context("Missing SSH output")?;
+    let stderr = child.stderr.take().context("Missing SSH errors")?;
+    let operation = async {
+        stdin.write_all(&bytes).await?;
+        stdin.shutdown().await?;
+        drop(stdin);
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .await?;
+        let limit = crate::export::MAX_BUNDLE_BYTES + crate::export::MAX_MANIFEST_BYTES as u64 + 12;
+        let copy = async {
+            let copied = tokio::io::copy(&mut stdout.take(limit + 1), &mut file).await?;
+            ensure!(copied <= limit, "Bundle exceeds transfer limit");
+            file.sync_all().await?;
+            Ok::<_, anyhow::Error>(())
+        };
+        let errors = async {
+            let mut bytes = Vec::new();
+            stderr.take(8193).read_to_end(&mut bytes).await?;
+            ensure!(bytes.len() <= 8192, "SSH error output exceeds limit");
+            Ok::<_, anyhow::Error>(bytes)
+        };
+        let (_, errors) = tokio::try_join!(copy, errors)?;
+        ensure!(
+            child.wait().await?.success(),
+            "SSH/helper failed: {}",
+            String::from_utf8_lossy(&errors).trim()
+        );
+        Ok(())
+    };
+    tokio::time::timeout(Duration::from_secs(180), operation)
+        .await
+        .context("Transcript transfer timed out")?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

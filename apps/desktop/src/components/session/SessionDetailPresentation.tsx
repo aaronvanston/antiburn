@@ -88,6 +88,7 @@ interface SessionDetailSubject {
   repo?: string
   timestamp?: string
   title?: string
+  remoteHost?: string | null
   wslDistro: string | null
   /**
    * Present when the view is showing a sub-agent rather than a session the
@@ -752,7 +753,7 @@ export function SessionDetailPresentation({
   const subagent = session.subagent
   const { bindModifiers, modified } = useDiscussionModifiers(
     active && !!onCopyDiscussionPrompt,
-    localSessionKey(session.agent, session.sessionId, session.wslDistro),
+    localSessionKey(session.agent, session.sessionId, session.wslDistro, session.remoteHost),
   )
   const [tab, setTab] = useState<SessionDetailTab>("overview")
   // Which chart layer the key points at. The pointer sets it and the pointer
@@ -858,7 +859,12 @@ export function SessionDetailPresentation({
   const heroTitle = relations?.title?.trim() || session.title?.trim() || "Session"
   const hostActions = (
     <HostActions
-      sessionKey={localSessionKey(session.agent, session.sessionId, session.wslDistro)}
+      sessionKey={localSessionKey(
+        session.agent,
+        session.sessionId,
+        session.wslDistro,
+        session.remoteHost,
+      )}
       relations={relations}
       refreshing={refreshing}
       onOpenRelatedSession={onOpenRelatedSession}
@@ -876,7 +882,7 @@ export function SessionDetailPresentation({
       className="flex min-w-0 flex-col gap-y-0.5 session-detail-summary flex-1 basis-48 type-body"
       aria-label="Session summary"
     >
-      {(session.repo || session.wslDistro) && (
+      {(session.repo || session.wslDistro || session.remoteHost) && (
         <div className="flex min-w-0 items-center gap-1.5 type-caption text-label-tertiary">
           {session.repo && (
             <Tooltip label={session.repo}>
@@ -884,6 +890,7 @@ export function SessionDetailPresentation({
             </Tooltip>
           )}
           <WslOriginBadge distro={session.wslDistro} />
+          {session.remoteHost && <span>{session.remoteHost} · Synced copy</span>}
         </div>
       )}
 

@@ -1,10 +1,10 @@
 //! Explicit SSH collection with a private, bounded last-successful snapshot.
 
-use antiburn_remote::{Analysis, PROTOCOL_VERSION, Request, Snapshot, transport};
+use antiburn_remote::{PROTOCOL_VERSION, Request, Snapshot, transport};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Semaphore;
 
 static REQUESTS: OnceLock<Semaphore> = OnceLock::new();
@@ -97,6 +97,14 @@ pub async fn set_remote_hosts(app: AppHandle, hosts: Vec<String>) -> Result<(), 
             if path.exists() {
                 std::fs::remove_file(path).map_err(|e| e.to_string())?;
             }
+            app.state::<crate::store::Store>()
+                .delete_remote_host(&host)
+                .map_err(|e| e.to_string())?;
+            let transcripts = dir.join("transcripts").join(&host);
+            if transcripts.exists() {
+                std::fs::remove_dir_all(transcripts).map_err(|e| e.to_string())?;
+            }
+            let _ = app.emit(crate::commands::SESSIONS_INVALIDATED_EVENT, ());
         }
         Ok(())
     })
@@ -165,6 +173,22 @@ pub async fn get_remote_sessions(
                 && snapshot.sessions.len() <= antiburn_remote::MAX_SESSIONS,
             "Remote helper protocol mismatch"
         );
+        let root = directory(&app).map_err(anyhow::Error::msg)?;
+        let store = app.state::<crate::store::Store>();
+        let mut failures = Vec::new();
+        for (index, session) in snapshot.sessions.iter().enumerate() {
+            if let Err(error) = crate::remote_cache::sync_session(&root, &host, session, &store).await {
+                failures.push(format!("{}: {error}", session.session_id));
+            }
+            let _ = app.emit("remote-sync-progress", serde_json::json!({ "host": host, "completed": index + 1, "total": snapshot.sessions.len() }));
+            if (index + 1) % 10 == 0 {
+                crate::insights_worker::wake(&app);
+                let _ = app.emit(crate::commands::SESSIONS_INVALIDATED_EVENT, ());
+            }
+        }
+        crate::insights_worker::wake(&app);
+        let _ = app.emit(crate::commands::SESSIONS_INVALIDATED_EVENT, ());
+        anyhow::ensure!(failures.is_empty(), "{} sessions could not sync. {}", failures.len(), failures.first().cloned().unwrap_or_default());
         tauri::async_runtime::spawn_blocking(move || write_private(&path, &bytes))
             .await?
             .map_err(anyhow::Error::msg)?;
@@ -185,48 +209,6 @@ pub async fn get_remote_sessions(
             connected: false,
         },
     })
-}
-
-#[tauri::command]
-pub async fn analyze_remote_session(
-    app: AppHandle,
-    host: String,
-    agent: String,
-    session_id: String,
-) -> Result<Analysis, String> {
-    let _permit = REQUESTS
-        .get_or_init(|| Semaphore::new(1))
-        .acquire()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let checked_host = host.clone();
-    let configured = tauri::async_runtime::spawn_blocking(move || {
-        read_hosts(&app).map(|hosts| hosts.contains(&checked_host))
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    if !configured {
-        return Err("Host is not configured".into());
-    }
-    let bytes = transport::request(
-        &host,
-        &Request::Analyze {
-            version: PROTOCOL_VERSION,
-            agent: agent.clone(),
-            session_id: session_id.clone(),
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    let analysis: Analysis = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    if analysis.version != PROTOCOL_VERSION
-        || analysis.session.agent != agent
-        || analysis.session.session_id != session_id
-    {
-        return Err("Remote analysis identity or protocol mismatch".into());
-    }
-    Ok(analysis)
 }
 
 #[cfg(test)]

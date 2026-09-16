@@ -123,6 +123,22 @@ pub struct RemediationResult {
 }
 
 impl SessionKey {
+    pub fn for_origin(
+        agent: &str,
+        session_id: &str,
+        wsl_distro: Option<&str>,
+        remote_host: Option<&str>,
+    ) -> Self {
+        match remote_host {
+            Some(host) => Self::new(format!("ssh:{host}"), agent, session_id),
+            None => Self::for_session(agent, session_id, wsl_distro),
+        }
+    }
+
+    pub fn remote_host(&self) -> Option<&str> {
+        self.environment_key.strip_prefix("ssh:")
+    }
+
     pub fn new(
         environment_key: impl Into<String>,
         agent: impl Into<String>,

@@ -8,6 +8,7 @@ import {
 import { RemoteSessionsStore } from "./RemoteSessionsStore"
 
 vi.mock("../../lib/remoteSessionsIpc", () => ({
+  onRemoteSyncProgress: async () => () => {},
   getRemoteHosts: vi.fn(),
   getRemoteSessions: vi.fn(),
   setRemoteHosts: vi.fn(),

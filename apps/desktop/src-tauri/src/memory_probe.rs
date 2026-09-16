@@ -101,6 +101,7 @@ fn generate_sessions(
             let model = models[shape % models.len()];
             let timestamp = now - time::Duration::minutes(index as i64 * 15);
             ActivityEntry {
+                remote_host: None,
                 agent: agent.to_string(),
                 session_id: format!("probe-{seed:08x}-{index:04}"),
                 repo: if shape.is_multiple_of(9) {

@@ -181,6 +181,7 @@ const ATTRIBUTED_TURN_SQL: &str = "SELECT t.environment_key, t.agent, t.session_
          ON a.environment_key = s.environment_key
         AND a.agent = s.agent AND a.session_id = s.session_id
       WHERE t.ts_ms > ?1 AND t.ts_ms <= ?2
+        AND t.environment_key NOT LIKE 'ssh:%'
       GROUP BY t.environment_key, t.agent, t.session_id, t.model, t.speed
       LIMIT ?3";
 

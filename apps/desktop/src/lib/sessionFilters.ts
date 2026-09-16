@@ -67,6 +67,7 @@ function hygieneCountsFor(
         agent: entry.agent,
         sessionId: entry.sessionId,
         wslDistro: entry.wslDistro ?? null,
+        remoteHost: entry.remoteHost,
       })
     : INITIAL_SESSION_HYGIENE
   return sessionBurnCheckPresentation(

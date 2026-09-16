@@ -601,7 +601,10 @@ partial or unavailable, not pass through a generic reader as clean.
 
 ## Remote collection in this fork
 
-The Remote sessions pane displays metrics from the existing engine but does not
-publish Burn Checks, clean results, provider allowances or remediation targets.
-Remote sources do not enter the local report population. Existing finding and
-clean-result eligibility remain unchanged. See [remote sessions](remote-sessions.md).
+Imported Claude Code and Codex transcripts enter the same evidence worker as
+native transcripts, under a separate SSH environment key. Per-session findings,
+badges and clean-result eligibility use the existing format contracts and companion
+coverage; importing does not upgrade partial evidence to clean. Companion metadata
+and available declared fork parents retain their normal layout. The global Burn
+Checks report and configuration remediation remain native-scoped. Remote account
+allowances are not inferred from local credentials. See [remote sessions](remote-sessions.md).

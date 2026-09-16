@@ -759,7 +759,7 @@ pub async fn list_recent_sessions(
 /// Upper bound on rows one list request returns. Well past what any window can
 /// show, and small enough that a machine with years of history cannot make the
 /// popover's first paint unbounded.
-const MAX_ACTIVITY_ROWS: usize = 500;
+const MAX_ACTIVITY_ROWS: usize = 2100;
 
 pub(crate) fn activity_entry(
     store: &Store,
@@ -785,11 +785,20 @@ pub(crate) fn activity_entry(
     Ok(ActivityEntry {
         agent: session.key.agent.clone(),
         session_id: session.key.session_id.clone(),
-        repo: repository_label(repositories, session.cwd.as_deref()),
+        repo: repository_label(
+            if session.key.remote_host().is_some() {
+                &[]
+            } else {
+                repositories
+            },
+            session.cwd.as_deref(),
+        ),
         timestamp: iso_from_epoch(session.updated_at_epoch),
-        is_active: analysis::is_active(session.updated_at_epoch, now),
+        is_active: session.key.remote_host().is_none()
+            && analysis::is_active(session.updated_at_epoch, now),
         surface: session.surface.clone(),
         wsl_distro: session.wsl_distro.clone(),
+        remote_host: session.key.remote_host().map(str::to_owned),
         title: session.title.clone(),
         has_fork_parent: session.fork_parent_session_id.is_some(),
         fork_child_count: store.fork_children(&session.key)?.len() as u32,
@@ -1028,6 +1037,9 @@ pub(crate) fn session_limit_allocations(
 
     let mut allocations = Vec::new();
     for session in sessions {
+        if session.key.remote_host().is_some() {
+            continue;
+        }
         let Some(updated_at_epoch) = session.updated_at_epoch else {
             continue;
         };
@@ -1236,8 +1248,9 @@ pub async fn get_session_analysis(
     agent: String,
     session_id: String,
     wsl_distro: Option<String>,
+    remote_host: Option<String>,
 ) -> CommandResult<SessionAnalysis> {
-    run_blocking(move || session_analysis(&app, agent, session_id, wsl_distro)).await
+    run_blocking(move || session_analysis(&app, agent, session_id, wsl_distro, remote_host)).await
 }
 
 fn session_analysis(
@@ -1245,11 +1258,17 @@ fn session_analysis(
     agent: String,
     session_id: String,
     wsl_distro: Option<String>,
+    remote_host: Option<String>,
 ) -> CommandResult<SessionAnalysis> {
     let Some(kind) = kind_from_slug(&agent) else {
         return Err(format!("unknown agent {agent}"));
     };
-    let key = SessionKey::for_session(&agent, &session_id, wsl_distro.as_deref());
+    let key = SessionKey::for_origin(
+        &agent,
+        &session_id,
+        wsl_distro.as_deref(),
+        remote_host.as_deref(),
+    );
     let store = app.state::<Store>();
 
     // Rows are the only way this command computes an analysis: every agent
@@ -1290,10 +1309,11 @@ fn session_analysis(
         supports_analysis: analysis::analysis_supported(kind),
         title: stored.as_ref().and_then(|record| record.title.clone()),
         wsl_distro,
-        is_active: analysis::is_active(
-            stored.as_ref().and_then(|record| record.updated_at_epoch),
-            scan::unix_now(),
-        ),
+        is_active: remote_host.is_none()
+            && analysis::is_active(
+                stored.as_ref().and_then(|record| record.updated_at_epoch),
+                scan::unix_now(),
+            ),
         cost: analysis.cost,
         top_level_cost: analysis.top_level_cost,
         subagents_cost: analysis.subagents_cost,
@@ -1328,9 +1348,19 @@ pub async fn get_subagent_analysis(
     parent_session_id: String,
     subagent_id: String,
     wsl_distro: Option<String>,
+    remote_host: Option<String>,
 ) -> CommandResult<SessionAnalysis> {
-    run_blocking(move || subagent_analysis(&app, agent, parent_session_id, subagent_id, wsl_distro))
-        .await
+    run_blocking(move || {
+        subagent_analysis(
+            &app,
+            agent,
+            parent_session_id,
+            subagent_id,
+            wsl_distro,
+            remote_host,
+        )
+    })
+    .await
 }
 
 fn subagent_analysis(
@@ -1339,6 +1369,7 @@ fn subagent_analysis(
     parent_session_id: String,
     subagent_id: String,
     wsl_distro: Option<String>,
+    remote_host: Option<String>,
 ) -> CommandResult<SessionAnalysis> {
     let Some(kind) = kind_from_slug(&agent) else {
         return Err(format!("unknown agent {agent}"));
@@ -1349,7 +1380,12 @@ fn subagent_analysis(
     // worker, instead of re-parsing the sub-agent's own transcript
     // in-process.
     let store = app.state::<Store>();
-    let parent_key = SessionKey::for_session(&agent, &parent_session_id, wsl_distro.as_deref());
+    let parent_key = SessionKey::for_origin(
+        &agent,
+        &parent_session_id,
+        wsl_distro.as_deref(),
+        remote_host.as_deref(),
+    );
     let (analysis, analysis_pending, analysis_stale) = match analysis::subagent_analysis_from_rows(
         &store,
         &parent_key,
@@ -1465,6 +1501,7 @@ fn resolve_lineage(
                 agent: key.agent.clone(),
                 session_id: parent_id,
                 wsl_distro: wsl_distro.map(str::to_string),
+                remote_host: key.remote_host().map(str::to_owned),
             },
             title: record.as_ref().and_then(|record| record.title.clone()),
             // A parent we still have a row for is on this machine, mirroring
@@ -1482,6 +1519,7 @@ fn resolve_lineage(
                 agent: key.agent.clone(),
                 session_id: child_id,
                 wsl_distro: wsl_distro.map(str::to_string),
+                remote_host: key.remote_host().map(str::to_owned),
             },
             title: record.as_ref().and_then(|record| record.title.clone()),
             // A child we still have a row for is on this machine. The retention
@@ -2168,10 +2206,11 @@ pub async fn get_session_hygiene(
         let keys = sessions
             .iter()
             .map(|session| {
-                SessionKey::for_session(
+                SessionKey::for_origin(
                     &session.agent,
                     &session.session_id,
                     session.wsl_distro.as_deref(),
+                    session.remote_host.as_deref(),
                 )
             })
             .collect::<Vec<_>>();
@@ -2461,10 +2500,16 @@ pub async fn delete_session_data(
     agent: String,
     session_id: String,
     wsl_distro: Option<String>,
+    remote_host: Option<String>,
 ) -> CommandResult<bool> {
     let action_app = app.clone();
     let removed = run_blocking(move || {
-        let key = SessionKey::for_session(&agent, &session_id, wsl_distro.as_deref());
+        let key = SessionKey::for_origin(
+            &agent,
+            &session_id,
+            wsl_distro.as_deref(),
+            remote_host.as_deref(),
+        );
         action_app
             .state::<Store>()
             .delete_session(&key)

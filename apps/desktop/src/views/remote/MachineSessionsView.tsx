@@ -4,7 +4,6 @@ import { isMacOS } from "../../lib/platform"
 import { openSettingsWindow } from "../../lib/ipc"
 import { MainActivityView } from "../main-window/MainActivityView"
 import { RemoteSessionsStore } from "./RemoteSessionsStore"
-import { RemoteSessionsView } from "./RemoteSessionsView"
 
 export function MachineSessionsView({
   machine,
@@ -35,6 +34,7 @@ export function MachineSessionsView({
             onChange={(event) => onMachineChange(event.target.value)}
             className="min-w-0 rounded-control border border-separator bg-input-fill px-3 py-1.5 type-body"
           >
+            <option value="all">All machines</option>
             <option value="local">This machine</option>
             <option value="remote">All remote hosts</option>
             {state.hosts.map((host) => (
@@ -55,11 +55,41 @@ export function MachineSessionsView({
         >
           Manage hosts…
         </button>
+        <button
+          className="ui-push-button"
+          disabled={state.refreshing || state.loading || !state.hosts.length}
+          onClick={() =>
+            void store.refresh(
+              effectiveMachine.startsWith("host:") ? effectiveMachine.slice(5) : undefined,
+            )
+          }
+        >
+          {state.refreshing ? "Syncing transcripts…" : "Sync remote sessions"}
+        </button>
+        {state.progress && (
+          <p role="status" className="type-footnote text-label-secondary">
+            {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
+          </p>
+        )}
         {error && (
           <p role="alert" className="type-footnote text-label-secondary">
             {error}
           </p>
         )}
+        {[...state.snapshots.values()]
+          .filter(
+            (value) =>
+              (effectiveMachine === "all" ||
+                effectiveMachine === "remote" ||
+                effectiveMachine === `host:${value.host}`) &&
+              (value.snapshot?.truncated || value.snapshot?.skipped),
+          )
+          .map((value) => (
+            <p key={value.host} className="type-footnote text-label-secondary">
+              {value.host}: {value.snapshot?.truncated ? "Latest 200 sessions only. " : ""}
+              {value.snapshot?.skipped ? `${value.snapshot.skipped} sources skipped.` : ""}
+            </p>
+          ))}
         {state.error && (
           <p role="alert" className="type-footnote text-label-secondary">
             {state.error}
@@ -67,15 +97,7 @@ export function MachineSessionsView({
         )}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1">
-        {effectiveMachine === "local" ? (
-          <MainActivityView {...activityProps} />
-        ) : (
-          <RemoteSessionsView
-            key={JSON.stringify([effectiveMachine, state.hosts])}
-            store={store}
-            hostFilter={effectiveMachine.startsWith("host:") ? effectiveMachine.slice(5) : ""}
-          />
-        )}
+        <MainActivityView {...activityProps} machine={effectiveMachine} />
       </div>
     </div>
   )
