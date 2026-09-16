@@ -127,11 +127,17 @@ pub async fn get_remote_sessions(
     host: String,
     refresh: bool,
 ) -> Result<HostSnapshot, String> {
-    let _permit = REQUESTS
-        .get_or_init(|| Semaphore::new(1))
-        .acquire()
-        .await
-        .map_err(|e| e.to_string())?;
+    let _permit = if refresh {
+        Some(
+            REQUESTS
+                .get_or_init(|| Semaphore::new(1))
+                .acquire()
+                .await
+                .map_err(|e| e.to_string())?,
+        )
+    } else {
+        None
+    };
 
     transport::validate_host(&host).map_err(|e| e.to_string())?;
     let app_copy = app.clone();

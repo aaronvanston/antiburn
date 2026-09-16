@@ -104,11 +104,6 @@ export function RemoteHostsSettings() {
               </div>
             )
           })}
-          {state.progress && (
-            <p role="status" className="type-footnote text-label-secondary">
-              {state.progress.host}: {state.progress.completed}/{state.progress.total} sessions
-            </p>
-          )}
           <p className="type-caption text-label-secondary">
             Syncing copies transcripts and companion files into a private local cache for full
             analysis. Removing a host clears its cached transcripts and analysis on this
