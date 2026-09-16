@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   getRemoteHosts,
   getRemoteSessions,
@@ -34,9 +34,14 @@ beforeEach(() => {
   vi.mocked(setRemoteHosts).mockResolvedValue()
 })
 
+const subscriptions: (() => void)[] = []
+afterEach(() => {
+  for (const stop of subscriptions.splice(0)) stop()
+})
+
 async function loadedStore() {
   const store = new RemoteSessionsStore()
-  store.subscribe(() => undefined)
+  subscriptions.push(store.subscribe(() => undefined))
   await vi.waitFor(() => expect(store.getSnapshot().loaded).toBe(true))
   return store
 }
@@ -81,4 +86,35 @@ describe("remote snapshots", () => {
     expect(setRemoteHosts).toHaveBeenCalledWith([])
     expect(store.getSnapshot().snapshots.size).toBe(0)
   })
+})
+
+it("reloads host changes on focus without reconnecting, and releases the focus listener", async () => {
+  const store = await loadedStore()
+  vi.mocked(getRemoteHosts).mockResolvedValue([])
+  window.dispatchEvent(new Event("focus"))
+  await vi.waitFor(() => expect(store.getSnapshot().hosts).toEqual([]))
+  expect(store.getSnapshot().snapshots.size).toBe(0)
+  expect(getRemoteSessions).toHaveBeenCalledExactlyOnceWith("test-box", false)
+  for (const stop of subscriptions.splice(0)) stop()
+  window.dispatchEvent(new Event("focus"))
+  expect(getRemoteHosts).toHaveBeenCalledTimes(2)
+})
+
+it("queues focus reloads during collection so a removed host cannot reappear", async () => {
+  const store = await loadedStore()
+  let finish!: (value: HostSnapshot) => void
+  vi.mocked(getRemoteSessions).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const refresh = store.refresh()
+  vi.mocked(getRemoteHosts).mockResolvedValue([])
+  window.dispatchEvent(new Event("focus"))
+  expect(getRemoteHosts).toHaveBeenCalledTimes(1)
+  finish(cached)
+  await refresh
+  await vi.waitFor(() => expect(store.getSnapshot().hosts).toEqual([]))
+  expect(store.getSnapshot().snapshots.size).toBe(0)
 })

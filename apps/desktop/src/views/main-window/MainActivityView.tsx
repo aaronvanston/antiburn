@@ -68,7 +68,7 @@ export function MainActivityView({
 
   return (
     <CollectionDetailPane<SessionItem>
-      title="Sessions"
+      title="Sessions · This machine"
       items={items}
       selection={selected}
       onSelectionChange={(item) =>
@@ -104,6 +104,7 @@ export function MainActivityView({
             </p>
           ) : (
             <SessionList
+              machineLabel="This machine"
               entries={filteredEntries}
               {...(filterEmpty
                 ? {

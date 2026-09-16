@@ -4,6 +4,7 @@ import {
   type RemoteAnalysis,
   type RemoteSession,
 } from "../../lib/remoteSessionsIpc"
+import { openSettingsWindow } from "../../lib/ipc"
 import { RemoteSessionsStore } from "./RemoteSessionsStore"
 
 const buttonClass =
@@ -12,10 +13,17 @@ const number = (value: number) => value.toLocaleString()
 const date = (value: number | null | undefined) =>
   value ? new Date(value * 1000).toLocaleString() : "Unknown"
 
-export function RemoteSessionsView() {
-  const [store] = useState(() => new RemoteSessionsStore())
+export function RemoteSessionsView({
+  store: suppliedStore,
+  hostFilter = "",
+}: {
+  store?: RemoteSessionsStore
+  hostFilter?: string
+}) {
+  const [ownStore] = useState(() => new RemoteSessionsStore())
+  const store = suppliedStore ?? ownStore
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-  const [hostInput, setHostInput] = useState("")
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const [filter, setFilter] = useState("")
   const [selected, setSelected] = useState<{ host: string; session: RemoteSession } | null>(
     null,
@@ -43,14 +51,17 @@ export function RemoteSessionsView() {
 
   const needle = filter.toLowerCase()
   return (
-    <section className="flex h-full min-h-0 flex-col text-label" aria-label="Remote sessions">
+    <section
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col text-label"
+      aria-label="Remote sessions"
+    >
       <header className="space-y-3 border-b border-separator p-5">
         <div className="flex items-center justify-between gap-3">
           <h1 className="type-title-2">Remote sessions</h1>
           <button
             className={buttonClass}
-            disabled={!state.hosts.length || state.refreshing}
-            onClick={() => void store.refresh()}
+            disabled={!state.hosts.length || state.refreshing || state.loading || state.saving}
+            onClick={() => void store.refresh(hostFilter || undefined)}
           >
             {state.refreshing ? "Refreshing…" : "Refresh hosts"}
           </button>
@@ -59,30 +70,17 @@ export function RemoteSessionsView() {
           Claude Code and Codex activity from your SSH hosts. Up to 200 recent transcripts per
           host from the last seven days.
         </p>
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const host = hostInput.trim()
-            if (host)
-              void store
-                .save([...state.hosts, host])
-                .then(() => setHostInput(""))
-                .catch(() => undefined)
-          }}
-        >
-          <input
-            aria-label="SSH host alias"
-            placeholder="SSH host alias"
-            value={hostInput}
-            onChange={(event) => setHostInput(event.target.value)}
-            className="rounded-control border border-separator bg-input-fill px-3 py-1.5 type-body"
-          />
+        <div className="flex flex-wrap gap-2">
           <button
             className={buttonClass}
-            disabled={!state.loaded || state.refreshing || !hostInput.trim()}
+            onClick={() => {
+              setSettingsError(null)
+              void openSettingsWindow("sources").catch((error: unknown) =>
+                setSettingsError(String(error)),
+              )
+            }}
           >
-            Add host
+            Manage hosts in Settings
           </button>
           <input
             aria-label="Filter remote sessions"
@@ -91,7 +89,12 @@ export function RemoteSessionsView() {
             onChange={(event) => setFilter(event.target.value)}
             className="min-w-0 flex-1 rounded-control border border-separator bg-input-fill px-3 py-1.5 type-body"
           />
-        </form>
+        </div>
+        {settingsError && (
+          <p role="alert" className="type-body text-label-secondary">
+            {settingsError}
+          </p>
+        )}
         {state.error && (
           <p role="alert" className="type-body text-label-secondary">
             {state.error}
@@ -107,90 +110,75 @@ export function RemoteSessionsView() {
           )}
           {state.loaded && !state.hosts.length && (
             <p className="type-body text-label-secondary">
-              Add an SSH alias with the remote helper installed, then refresh to discover
-              sessions.
+              Add a remote host in Settings → Sources, then refresh to discover sessions.
             </p>
           )}
-          {state.hosts.map((host) => {
-            const result = state.snapshots.get(host)
-            const snapshot = result?.snapshot
-            const sessions =
-              snapshot?.sessions.filter((session) =>
-                `${session.title} ${session.cwd ?? ""} ${session.agent} ${host}`
-                  .toLowerCase()
-                  .includes(needle),
-              ) ?? []
-            return (
-              <section key={host} className="mb-5 space-y-2" aria-label={host}>
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="type-headline">{host}</h2>
-                  <button
-                    className={buttonClass}
-                    disabled={state.refreshing || analyzing}
-                    onClick={() => {
-                      void store
-                        .save(state.hosts.filter((item) => item !== host))
-                        .then(() => {
-                          if (selected?.host === host) {
-                            request.current++
-                            setSelected(null)
-                            setAnalysis(null)
-                          }
-                        })
-                        .catch(() => undefined)
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-                <p className="type-caption text-label-secondary">
-                  {result?.error
-                    ? "Unreachable · cached data"
-                    : result?.connected
-                      ? "Last connection succeeded"
-                      : "Cached snapshot"}{" "}
-                  · Updated {date(snapshot?.collectedAt)}
-                </p>
-                {result?.error && (
-                  <p role="alert" className="break-words type-caption text-label-secondary">
-                    {result.error}
-                  </p>
-                )}
-                {snapshot?.truncated && (
+          {state.hosts
+            .filter((host) => !hostFilter || host === hostFilter)
+            .map((host) => {
+              const result = state.snapshots.get(host)
+              const snapshot = result?.snapshot
+              const sessions =
+                snapshot?.sessions.filter((session) =>
+                  `${session.title} ${session.cwd ?? ""} ${session.agent} ${host}`
+                    .toLowerCase()
+                    .includes(needle),
+                ) ?? []
+              return (
+                <section key={host} className="mb-5 space-y-2" aria-label={host}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="type-headline">{host}</h2>
+                  </div>
                   <p className="type-caption text-label-secondary">
-                    Showing the 200 most recently modified transcripts.
+                    {result?.error
+                      ? "Unreachable · cached data"
+                      : result?.connected
+                        ? "Last connection succeeded"
+                        : "Cached snapshot"}{" "}
+                    · Updated {date(snapshot?.collectedAt)}
                   </p>
-                )}
-                {!!snapshot?.skipped && (
-                  <p className="type-caption text-label-secondary">
-                    {snapshot.skipped} unreadable or unrecognised transcripts skipped.
-                  </p>
-                )}
-                {!sessions.length && (
-                  <p className="type-body text-label-secondary">
-                    {snapshot ? "No matching recent sessions." : "Refresh to collect sessions."}
-                  </p>
-                )}
-                {sessions.map((session) => (
-                  <button
-                    key={JSON.stringify([session.agent, session.sessionId])}
-                    disabled={analyzing}
-                    onClick={() => void select(host, session)}
-                    className={`block w-full rounded-control p-3 text-left hover:bg-surface-hover ${selected?.host === host && selected.session.agent === session.agent && selected.session.sessionId === session.sessionId ? "bg-surface-selected" : "bg-surface-card"}`}
-                  >
-                    <span className="block truncate type-body">{session.title}</span>
-                    <span className="block truncate type-caption text-label-secondary">
-                      {session.agent} · {session.surface} ·{" "}
-                      {session.cwd ?? "Repository unknown"}
-                    </span>
-                    <span className="block type-caption text-label-secondary">
-                      Last file change {date(session.updatedAt)}
-                    </span>
-                  </button>
-                ))}
-              </section>
-            )
-          })}
+                  {result?.error && (
+                    <p role="alert" className="break-words type-caption text-label-secondary">
+                      {result.error}
+                    </p>
+                  )}
+                  {snapshot?.truncated && (
+                    <p className="type-caption text-label-secondary">
+                      Showing the 200 most recently modified transcripts.
+                    </p>
+                  )}
+                  {!!snapshot?.skipped && (
+                    <p className="type-caption text-label-secondary">
+                      {snapshot.skipped} unreadable or unrecognised transcripts skipped.
+                    </p>
+                  )}
+                  {!sessions.length && (
+                    <p className="type-body text-label-secondary">
+                      {snapshot
+                        ? "No matching recent sessions."
+                        : "Refresh to collect sessions."}
+                    </p>
+                  )}
+                  {sessions.map((session) => (
+                    <button
+                      key={JSON.stringify([session.agent, session.sessionId])}
+                      disabled={analyzing}
+                      onClick={() => void select(host, session)}
+                      className={`block w-full rounded-control p-3 text-left hover:bg-surface-hover ${selected?.host === host && selected.session.agent === session.agent && selected.session.sessionId === session.sessionId ? "bg-surface-selected" : "bg-surface-card"}`}
+                    >
+                      <span className="block truncate type-body">{session.title}</span>
+                      <span className="block truncate type-caption text-label-secondary">
+                        {host} · {session.agent} · {session.surface} ·{" "}
+                        {session.cwd ?? "Repository unknown"}
+                      </span>
+                      <span className="block type-caption text-label-secondary">
+                        Last file change {date(session.updatedAt)}
+                      </span>
+                    </button>
+                  ))}
+                </section>
+              )
+            })}
         </div>
         <div className="space-y-4 overflow-auto p-5">
           {!selected && (

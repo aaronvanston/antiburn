@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-host-settings",
+  "description": "Let Settings manage remote hosts and explicitly test their session collection over SSH.",
+  "windows": ["settings"],
+  "permissions": [
+    "allow-get-remote-hosts",
+    "allow-set-remote-hosts",
+    "allow-get-remote-sessions"
+  ]
+}

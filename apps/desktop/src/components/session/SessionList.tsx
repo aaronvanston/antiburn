@@ -88,6 +88,7 @@ export interface SessionListEntry {
 }
 
 export interface SessionListProps {
+  machineLabel?: string | undefined
   snoozedDetectors?: ReadonlySet<BurnCheckDetectorId>
   /** Sessions to show. Ordering and grouping are this component's job. */
   entries: SessionListEntry[]
@@ -276,6 +277,7 @@ function groupHeadingId(label: string): string {
 }
 
 export interface SessionRowProps {
+  machineLabel?: string | undefined
   snoozedDetectors?: ReadonlySet<BurnCheckDetectorId>
   entry: SessionListEntry
   hygiene: SessionHygienePayload
@@ -315,6 +317,7 @@ export interface SessionRowProps {
  * keeps the same controls on one line.
  */
 export function SessionRow({
+  machineLabel,
   entry,
   hygiene,
   onOpen,
@@ -544,6 +547,10 @@ export function SessionRow({
 
       <div className="col-2 min-w-0">{titleContent}</div>
 
+      {machineLabel && (
+        <span className="col-2 type-caption text-label-secondary">{machineLabel}</span>
+      )}
+
       {(hasContextIdentity || entry.timestamp) && (
         <div
           className="relative z-10 col-2 flex w-full min-w-0 items-baseline gap-x-2"
@@ -632,6 +639,7 @@ export function SessionRow({
  * ordering, grouping, the sticky group label, and row presentation.
  */
 export function SessionList({
+  machineLabel,
   snoozedDetectors = new Set(),
   entries,
   days,
@@ -963,6 +971,7 @@ export function SessionList({
                               </h3>
                             ) : (
                               <SessionRow
+                                machineLabel={machineLabel}
                                 entry={virtualItem.item.entry}
                                 active={active}
                                 selected={virtualItem.item.key === selectedKey}

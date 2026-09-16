@@ -1,6 +1,6 @@
 # Remote sessions in this fork
 
-This fork adds a read-only Remote sessions pane to the main desktop window.
+This fork adds read-only remote machines to the Sessions view in the main desktop window.
 A small Linux helper uses the existing `antiburn-local` engine to discover
 Claude Code and Codex transcripts and calculate metrics where the files live.
 The desktop invokes it over the user's existing SSH connection. No server,
@@ -8,7 +8,11 @@ listener, credential forwarding, provider login, or background daemon is needed.
 
 ## Current behaviour
 
-- Add an existing SSH config alias, then press **Refresh hosts**. Up to eight aliases are supported.
+- Open **Settings → Sources → Remote hosts** to add or remove SSH aliases. Changes save automatically; up to eight aliases are supported.
+- Use **Test connection** beside a host to check SSH and collect its recent sessions. The UI shows connection errors beside that host.
+- In **Sessions**, use **Machine** to choose **This machine**, **All remote hosts**, or a specific host. Remote rows and analysis identify the source host.
+- **Manage hosts…** opens Sources in Settings. The session view reloads configuration and cached lists when its window regains focus.
+- Press **Refresh hosts** to collect remote sessions again. A selected host refreshes only that host.
 - Discovery returns at most 200 transcripts per host from the engine's seven-day recency window.
   A truncated list is labelled. Unreadable or unidentified sources are counted as skipped.
 - Select a session to calculate its parent-transcript tokens, API-equivalent cost,

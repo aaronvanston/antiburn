@@ -153,6 +153,7 @@ function mockCommands(overrides: Record<string, unknown> = {}) {
       case "scan_now":
       case "cancel_scan":
         return Promise.resolve(SCAN_STATUS)
+      case "get_remote_hosts":
       case "list_repositories":
       case "list_scan_roots":
       case "refresh_repositories":
@@ -174,6 +175,14 @@ describe("SettingsView", () => {
     platform.mac = false
     delete document.documentElement.dataset["theme"]
     mockCommands()
+  })
+
+  it("provides remote host management in Sources", async () => {
+    render(<SettingsView />)
+    fireEvent.click(screen.getByRole("tab", { name: "Sources" }))
+    expect(await screen.findByText("No remote hosts configured.")).toBeVisible()
+    expect(screen.getByRole("textbox", { name: "SSH host alias" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Add host" })).toBeDisabled()
   })
 
   it("opens the Insights pane from the sidebar and loads its report", async () => {

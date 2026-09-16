@@ -1,4 +1,4 @@
-import { Flame, House, MessagesSquare, Settings, Server } from "lucide-react"
+import { Flame, House, MessagesSquare, Settings } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import type { SessionListEntry } from "../components/session/SessionList"
@@ -20,7 +20,7 @@ import {
   useSessionHygiene,
   type SessionHygieneSnapshot,
 } from "../lib/useSessionHygiene"
-import { MainActivityView } from "./main-window/MainActivityView"
+import { MachineSessionsView } from "./remote/MachineSessionsView"
 import { MainActivitySession } from "./main-window/MainActivitySession"
 import { BurnChecksView } from "./main-window/BurnChecksView"
 import { BurnChecksSession } from "./main-window/BurnChecksSession"
@@ -28,8 +28,6 @@ import { MainWindowLayout } from "./main-window/MainWindowLayout"
 import { MainWindowNavigationSession } from "./main-window/MainWindowNavigationSession"
 import { MainOverviewSession } from "./main-window/MainOverviewSession"
 import { OverviewView } from "./main-window/OverviewView"
-
-import { RemoteSessionsView } from "./remote/RemoteSessionsView"
 
 export interface MainWindowSection extends SidebarNavItem {
   render: (context: { active: boolean }) => ReactNode
@@ -92,6 +90,7 @@ function sessionFilterChildren(
 /** A section supplies its panes without changing the main window's native lifecycle. */
 export function MainWindowView({ sections }: { sections?: readonly MainWindowSection[] }) {
   const [settingsError, setSettingsError] = useState(false)
+  const [machine, setMachine] = useState("local")
   async function openSettings(): Promise<void> {
     setSettingsError(false)
     try {
@@ -142,8 +141,12 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
           active={active}
           session={overviewSession}
           onOpenBurnChecks={() => selectSection("burnChecks")}
-          onOpenSessions={() => selectSection("activity")}
+          onOpenSessions={() => {
+            setMachine("local")
+            selectSection("activity")
+          }}
           onSelectSession={(entry) => {
+            setMachine("local")
             // Select first, so Sessions mounts with the subject already set
             // and loads its analysis on activation.
             selectSection("activity")
@@ -162,20 +165,17 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       id: "activity",
       label: "Sessions",
       icon: MessagesSquare,
-      children: sessionFilterChildren(activity.entries, hygieneBySession),
+      children:
+        machine === "local" ? sessionFilterChildren(activity.entries, hygieneBySession) : [],
       render: ({ active }) => (
-        <MainActivityView
+        <MachineSessionsView
+          machine={machine}
+          onMachineChange={setMachine}
           active={active}
           session={activitySession}
           hygieneBySession={hygieneBySession}
         />
       ),
-    },
-    {
-      id: "remote",
-      label: "Remote sessions",
-      icon: Server,
-      render: () => <RemoteSessionsView />,
     },
   ]
   const [customSelectedId, setCustomSelectedId] = useState(() => availableSections[0]?.id ?? "")
@@ -191,7 +191,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       setCustomVisited((previous) => new Set(previous).add(id))
       return
     }
-    if (id === "overview" || id === "burnChecks" || id === "remote") {
+    if (id === "overview" || id === "burnChecks") {
       navigationSession.select(id)
       return
     }
@@ -200,6 +200,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       activitySession.setFilter({ kind: "all" })
       return
     }
+    setMachine("local")
     // Every other id is a Sessions filter child, encoded by sessionFilterId.
     navigationSession.select("activity")
     activitySession.setFilter(parseSessionFilterId(id))
@@ -209,7 +210,7 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
   // Highlight the active filter's own row while inside Sessions, so the
   // matching child reads as selected instead of the parent row.
   const navValue =
-    !sections && selected?.id === "activity"
+    !sections && selected?.id === "activity" && machine === "local"
       ? sessionFilterId(activity.filter)
       : (selected?.id ?? "")
   return (

@@ -16,6 +16,7 @@ import { scanStatusStore, withKnownAgents } from "../../lib/scanStatusStore"
 import type { LocalRepositoryItem } from "../../lib/types/repository"
 import { useFolderPermissionFlow } from "../../lib/useFolderPermissionFlow"
 import { scanStatusLabel } from "../popover/ScanStatusBar"
+import { RemoteHostsSettings } from "./RemoteHostsSettings"
 import { SourcesSession } from "./SourcesSession"
 import { useAppSettings } from "./useAppSettings"
 
@@ -119,6 +120,7 @@ export function SourcesPane({ discoveryPaused }: SourcesPaneProps) {
           />
         ) : null}
 
+        <RemoteHostsSettings />
         <SectionGroup
           title="Scanning"
           trailing={
