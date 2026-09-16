@@ -2099,7 +2099,7 @@ pub(crate) fn unsupported_evidence_pass() -> EvidencePass {
     unavailable_evidence_pass(PassOutcome::Unsupported, None, None)
 }
 
-fn unavailable_evidence_pass(
+pub(crate) fn unavailable_evidence_pass(
     outcome: PassOutcome,
     source_path: Option<String>,
     fingerprint: Option<String>,

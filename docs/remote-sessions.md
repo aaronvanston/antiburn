@@ -17,7 +17,9 @@ view display them alongside local sessions. No server or background daemon is ne
 - Discovery covers up to 200 recent sessions per host over seven days. The UI
   reports truncated lists and skipped sources. Archived-source discovery is unchanged.
 - Claude bundles preserve child transcripts and metadata sidecars, plus a declared
-  fork parent's transcript when available. Existing engine coverage limits still apply.
+  fork parent's transcript when available. Inferred Claude forks link to the same
+  host's cached parent, so inherited messages are not counted twice. Existing engine
+  coverage limits still apply.
 - Sync skips unchanged bundles; a changed bundle is transferred in full. New copies
   are staged and validated before replacing the index. Failed transfers retain the
   previous usable copy. Successfully imported sessions remain visible after partial failure.

@@ -146,6 +146,14 @@ fn run_record_pass_with(
 pub fn spawn(app: &tauri::AppHandle) -> tauri::async_runtime::JoinHandle<()> {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let store = app.state::<Store>().inner().clone();
+        let restored = tauri::async_runtime::spawn_blocking(move || {
+            crate::remote_cache::restore_fork_companions(&store)
+        })
+        .await;
+        if !matches!(restored, Ok(Ok(_))) {
+            tracing::warn!(event = "remote_fork_companion_restore_failed", result = ?restored);
+        }
         let mut workers = JoinSet::new();
         for _ in 0..WORKER_CONCURRENCY {
             workers.spawn(run_worker(app.clone()));

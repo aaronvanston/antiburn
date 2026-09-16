@@ -605,6 +605,7 @@ Imported Claude Code and Codex transcripts enter the same evidence worker as
 native transcripts, under a separate SSH environment key. Per-session findings,
 badges and clean-result eligibility use the existing format contracts and companion
 coverage; importing does not upgrade partial evidence to clean. Companion metadata
-and available declared fork parents retain their normal layout. The global Burn
+and available fork parents retain their normal layout, including parents inferred
+from published rows on the same SSH host. The global Burn
 Checks report and configuration remediation remain native-scoped. Remote account
 allowances are not inferred from local credentials. See [remote sessions](remote-sessions.md).

@@ -261,6 +261,67 @@ pub async fn sync_session(
     result
 }
 
+fn prepare_fork_parent(
+    store: &Store,
+    record: &SessionRecord,
+    dir: &Path,
+    manifest: &BundleManifest,
+    parent: Option<&str>,
+) -> Result<bool> {
+    let Some(parent) = parent.filter(|_| record.key.agent == "claude-code") else {
+        return Ok(false);
+    };
+    ensure!(
+        parent != record.key.session_id,
+        "A session cannot be its own fork parent"
+    );
+    if manifest.fork_parent_session_id.as_deref() == Some(parent)
+        && manifest.files.iter().any(|file| file.fork_parent)
+    {
+        return Ok(false);
+    }
+    let key = SessionKey::new(&record.key.environment_key, &record.key.agent, parent);
+    let Some(parent_record) = store.session(&key)? else {
+        return Ok(false);
+    };
+    let (_, parent_manifest) = manifest_for(&parent_record)?;
+    let target = dir.join(parent_manifest.file_name(0));
+    if parent_fingerprint(&target).ok()
+        == Some(parent_fingerprint(Path::new(&parent_record.source_label))?)
+    {
+        return Ok(false);
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let temp = dir.join(format!("fork-parent-{nonce}.tmp"));
+    // Immutable cached generations can share the parent file without duplicating its content.
+    fs::hard_link(&parent_record.source_label, &temp)?;
+    if let Err(error) = fs::rename(&temp, target) {
+        let _ = fs::remove_file(temp);
+        return Err(error.into());
+    }
+    Ok(true)
+}
+
+pub fn restore_fork_companions(store: &Store) -> Result<usize> {
+    let mut repaired = 0;
+    for record in store.recent_sessions(0, 10_000)? {
+        if record.key.remote_host().is_none() || record.key.agent != "claude-code" {
+            continue;
+        }
+        let Some(parent) = store.fork_parent(&record.key)? else {
+            continue;
+        };
+        let (dir, manifest) = manifest_for(&record)?;
+        if prepare_fork_parent(store, &record, &dir, &manifest, Some(&parent))? {
+            store.requeue_session_evidence(&record.key)?;
+            repaired += 1;
+        }
+    }
+    Ok(repaired)
+}
+
 pub fn run_pass(
     record: SessionRecord,
     signal: PassSignal,
@@ -289,6 +350,13 @@ pub fn run_pass(
             })
             .collect();
         let parent = store.fork_parent(&record.key).ok().flatten();
+        if prepare_fork_parent(&store, &record, &dir, &manifest, parent.as_deref()).is_err() {
+            return analysis::unavailable_evidence_pass(
+                analysis::PassOutcome::Unreadable(analysis::UnreadableReason::ClaimFailed),
+                None,
+                None,
+            );
+        }
         let writer: Arc<dyn TurnRowStore> =
             Arc::new(FencedTurnRowStore::new(store, record.key.clone(), fence));
         analysis::analyze_located_for_evidence(
@@ -439,6 +507,92 @@ mod tests {
         assert!(
             encoded.contains("Read"),
             "tool analysis must survive import"
+        );
+    }
+
+    #[tokio::test]
+    async fn inferred_forks_exclude_inherited_usage_from_the_same_host_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_in_memory(temp.path()).unwrap();
+        let inherited = r#"{"type":"assistant","uuid":"inherited","timestamp":"2026-09-15T10:00:00Z","message":{"id":"first","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Inherited"}],"usage":{"input_tokens":10,"output_tokens":2}}}
+"#;
+        let own = r#"{"type":"assistant","uuid":"own","timestamp":"2026-09-15T10:01:00Z","message":{"id":"second","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"New work"}],"usage":{"input_tokens":5,"output_tokens":1}}}
+"#;
+        let mut records = Vec::new();
+        for (host, id, data) in [
+            ("one", "ancestor", inherited.to_owned()),
+            ("one", "synthetic", format!("{inherited}{own}")),
+            ("two", "synthetic", format!("{inherited}{own}")),
+        ] {
+            let dir = temp.path().join(host).join(id);
+            private_dir(&dir).unwrap();
+            let mut manifest = manifest(data.as_bytes());
+            manifest.session.session_id = id.to_owned();
+            let bundle = dir.join("bundle");
+            transfer(&bundle, &manifest, data.as_bytes(), false);
+            unpack(&bundle, &dir, &manifest.session).unwrap();
+            let path = dir.join(manifest.file_name(0));
+            let record = SessionRecord {
+                key: SessionKey::for_origin("claude-code", id, None, Some(host)),
+                source_kind: "file".into(),
+                source_label: path.to_string_lossy().into_owned(),
+                wsl_distro: None,
+                title: None,
+                title_source: None,
+                cwd: None,
+                surface: "cli".into(),
+                updated_at_epoch: Some(1),
+                activity_cursor: "fixture".into(),
+                activity_source: "mtime".into(),
+                subagent_count: 0,
+                fork_parent_session_id: None,
+                source_fingerprint: Some(parent_fingerprint(&path).unwrap()),
+            };
+            store
+                .upsert_sessions(std::slice::from_ref(&record), &["claude-code"])
+                .unwrap();
+            records.push(record);
+        }
+        store
+            .record_fork_parent(&records[1].key, "ancestor")
+            .unwrap();
+        assert_eq!(restore_fork_companions(&store).unwrap(), 1);
+        assert_eq!(restore_fork_companions(&store).unwrap(), 0);
+        for (record, expected) in [(&records[1], 5), (&records[2], 15)] {
+            let (dir, manifest) = manifest_for(record).unwrap();
+            prepare_fork_parent(&store, record, &dir, &manifest, Some("ancestor")).unwrap();
+            let pass = analysis::analyze_located_for_evidence(
+                crate::agents::kind_from_slug("claude-code").unwrap(),
+                "synthetic",
+                analysis::ClaimedSource {
+                    fingerprint: record.source_fingerprint.clone(),
+                    generation: 0,
+                },
+                PassSignal::new(),
+                Some(antiburn_local::analysis::MemoryTurnRowStore::new(
+                    "claude-code",
+                    "synthetic",
+                )),
+                Some("ancestor".into()),
+                analysis::LocatedTranscripts {
+                    source: SessionSource::File(PathBuf::from(&record.source_label)),
+                    children: vec![],
+                },
+            )
+            .await;
+            assert!(matches!(pass.outcome, analysis::PassOutcome::Published));
+            assert_eq!(
+                pass.analysis.metrics.unwrap().billable_input_tokens,
+                expected
+            );
+        }
+        fs::remove_dir_all(Path::new(&records[0].source_label).parent().unwrap()).unwrap();
+        assert!(
+            Path::new(&records[1].source_label)
+                .parent()
+                .unwrap()
+                .join("ancestor.jsonl")
+                .exists()
         );
     }
 
