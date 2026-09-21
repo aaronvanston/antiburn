@@ -54,6 +54,58 @@ Remove an unused host in Settings to reclaim space. A session larger than the bu
 limit reports an error; it is not silently truncated. Unused generations for a session
 are removed on its next sync. Background scans use the saved frequency and do not require an open window.
 
+## UI walkthrough
+
+These are captures of the installed macOS app with identifying text covered by
+opaque replacements. Host aliases, session titles, project labels and sync times
+use demo labels; charts, controls and analysis remain from the captured interface.
+No raw captures or private paths are included. Native macOS popup menus are not
+included by the capture API, so the exact menu choices are transcribed as labelled
+references beneath the setup and machine-filter images.
+
+### Host setup and rescan frequency
+
+Add or remove SSH hosts, choose the automatic interval, and run an optional scan
+from **Settings → Sources → Remote hosts**. Frequency choices are every minute,
+five minutes, fifteen minutes, thirty minutes, hourly, or manual.
+
+![Anonymised remote-host setup and rescan options](images/remote-sessions/01-host-settings.png)
+
+### Background progress
+
+Progress and last-sync status stay in Settings. Host actions are disabled while a
+scan runs; cached sessions remain readable.
+
+![Anonymised background scan progress](images/remote-sessions/02-background-progress.png)
+
+### Unified sessions and context
+
+Local and remote sessions share the normal list, filters and analysis. Each row
+identifies its source, and remote details identify the session as a synced copy.
+
+![Anonymised all-machine sessions and context analysis](images/remote-sessions/03-all-machines-context.png)
+
+### Machine filter
+
+The machine dropdown offers All machines, This machine, All remote hosts and each
+configured host. Selecting a host keeps the standard session-analysis interface.
+
+![Anonymised single-host filter and machine menu options](images/remote-sessions/04-machine-filter.png)
+
+### Costs and session checks
+
+Remote sessions retain token categories, estimated cost, efficiency and supported
+per-session Burn Checks.
+
+![Anonymised remote-session costs and checks](images/remote-sessions/05-remote-cost-and-checks.png)
+
+### Tools
+
+The normal Tools tab shows loaded tools, skills and MCP entries, their token
+footprint and usage evidence for the remote session.
+
+![Anonymised remote-session tools](images/remote-sessions/06-remote-tools.png)
+
 ## Build and install the Linux helper
 
 Use Rust 1.97 or newer and a C compiler on the build machine:
