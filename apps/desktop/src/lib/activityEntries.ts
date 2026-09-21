@@ -44,6 +44,7 @@ export function toActivityEntry(
     isActive: payload.isActive,
     surface: surfaceOf(payload),
     wslDistro: payload.wslDistro,
+    ...(payload.remoteHost ? { remoteHost: payload.remoteHost } : {}),
     ...(payload.title ? { title: payload.title } : {}),
     hasForkParent: payload.hasForkParent,
     forkChildCount: payload.forkChildCount,
@@ -84,11 +85,13 @@ export function indexOfSession(
   agent: string,
   sessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): number {
   return entries.findIndex(
     (entry) =>
       entry.agent === agent &&
       entry.sessionId === sessionId &&
-      (entry.wslDistro ?? null) === (wslDistro ?? null),
+      (entry.wslDistro ?? null) === (wslDistro ?? null) &&
+      (entry.remoteHost ?? null) === (remoteHost ?? null),
   )
 }

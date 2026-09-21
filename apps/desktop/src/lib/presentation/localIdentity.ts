@@ -12,10 +12,7 @@
  *   case-insensitive in practice, so `Ubuntu` and `UBUNTU` are one environment
  *   while `Ubuntu` and `Debian` stay two.
  *
- * Everything here is derived from what is on this machine — the agent, the
- * session id, the WSL distribution, and the repository's own stable key. There
- * is no account, tenant, or remote-cache dimension, because a local key has
- * nothing to be scoped to.
+ * SSH host aliases scope imported sessions to their source machine.
  */
 
 import type { LocalSessionIdentity } from "../types/session"
@@ -31,7 +28,8 @@ export const NATIVE_ENVIRONMENT_KEY = "native"
  * key a session is cached under does not change when the system language does
  * (the Turkish dotless-i is the classic way that goes wrong).
  */
-export function environmentKey(wslDistro?: string | null): string {
+export function environmentKey(wslDistro?: string | null, remoteHost?: string | null): string {
+  if (remoteHost) return `ssh:${remoteHost}`
   const distro = wslDistro?.trim()
   return distro ? `wsl:${distro.toLocaleLowerCase("en-US")}` : NATIVE_ENVIRONMENT_KEY
 }
@@ -51,13 +49,19 @@ export function localSessionKey(
   agent: string,
   sessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): string {
-  return JSON.stringify([environmentKey(wslDistro), agent, sessionId])
+  return JSON.stringify([environmentKey(wslDistro, remoteHost), agent, sessionId])
 }
 
 /** {@link localSessionKey} for an identity record. */
 export function sessionIdentityKey(identity: LocalSessionIdentity): string {
-  return localSessionKey(identity.agent, identity.sessionId, identity.wslDistro)
+  return localSessionKey(
+    identity.agent,
+    identity.sessionId,
+    identity.wslDistro,
+    identity.remoteHost,
+  )
 }
 
 /** True when two session identities name the same local transcript. */

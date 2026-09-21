@@ -75,6 +75,7 @@ export interface SessionListEntry {
   /** Where the session was discovered from. */
   surface?: AgentSurface | undefined
   wslDistro?: string | null | undefined
+  remoteHost?: string | null | undefined
   /** Resolved session title; falls back to a short id, then the agent name. */
   title?: string | undefined
   /** Whether this session was forked from another. */
@@ -88,6 +89,7 @@ export interface SessionListEntry {
 }
 
 export interface SessionListProps {
+  machineLabel?: string | undefined
   snoozedDetectors?: ReadonlySet<BurnCheckDetectorId>
   /** Sessions to show. Ordering and grouping are this component's job. */
   entries: SessionListEntry[]
@@ -276,6 +278,7 @@ function groupHeadingId(label: string): string {
 }
 
 export interface SessionRowProps {
+  machineLabel?: string | undefined
   snoozedDetectors?: ReadonlySet<BurnCheckDetectorId>
   entry: SessionListEntry
   hygiene: SessionHygienePayload
@@ -315,6 +318,7 @@ export interface SessionRowProps {
  * keeps the same controls on one line.
  */
 export function SessionRow({
+  machineLabel,
   entry,
   hygiene,
   onOpen,
@@ -544,6 +548,10 @@ export function SessionRow({
 
       <div className="col-2 min-w-0">{titleContent}</div>
 
+      {machineLabel && (
+        <span className="col-2 type-caption text-label-secondary">{machineLabel}</span>
+      )}
+
       {(hasContextIdentity || entry.timestamp) && (
         <div
           className="relative z-10 col-2 flex w-full min-w-0 items-baseline gap-x-2"
@@ -632,6 +640,7 @@ export function SessionRow({
  * ordering, grouping, the sticky group label, and row presentation.
  */
 export function SessionList({
+  machineLabel,
   snoozedDetectors = new Set(),
   entries,
   days,
@@ -675,7 +684,7 @@ export function SessionList({
     at: entry.timestamp,
     isActive: entry.isActive,
     key: entry.sessionId
-      ? localSessionKey(entry.agent, entry.sessionId, entry.wslDistro)
+      ? localSessionKey(entry.agent, entry.sessionId, entry.wslDistro, entry.remoteHost)
       : `${entry.agent}|${index}`,
   }))
 
@@ -963,6 +972,7 @@ export function SessionList({
                               </h3>
                             ) : (
                               <SessionRow
+                                machineLabel={virtualItem.item.entry.remoteHost ?? machineLabel}
                                 entry={virtualItem.item.entry}
                                 active={active}
                                 selected={virtualItem.item.key === selectedKey}
@@ -985,6 +995,7 @@ export function SessionList({
                                         agent: virtualItem.item.entry.agent,
                                         sessionId: virtualItem.item.entry.sessionId,
                                         wslDistro: virtualItem.item.entry.wslDistro ?? null,
+                                        remoteHost: virtualItem.item.entry.remoteHost,
                                       })
                                     : INITIAL_SESSION_HYGIENE
                                 }
@@ -1005,13 +1016,16 @@ export function SessionList({
                                       limitBadge: sessionLimitBadge(
                                         selectedMetric,
                                         virtualItem.item.entry.agent,
-                                        liveUsage,
+                                        virtualItem.item.entry.remoteHost
+                                          ? undefined
+                                          : liveUsage,
                                         virtualItem.item.entry.sessionId
                                           ? allocationBySession.get(
                                               `${localSessionKey(
                                                 virtualItem.item.entry.agent,
                                                 virtualItem.item.entry.sessionId,
                                                 virtualItem.item.entry.wslDistro,
+                                                virtualItem.item.entry.remoteHost,
                                               )}:${selectedMetric === "weeklyPercent" ? "weekly" : "fiveHour"}`,
                                             )
                                           : undefined,

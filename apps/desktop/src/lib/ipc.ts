@@ -200,6 +200,7 @@ export interface ActivityEntryPayload {
   isActive: boolean
   surface: string
   wslDistro: string | null
+  remoteHost?: string | null | undefined
   title: string | null
   hasForkParent: boolean
   forkChildCount: number
@@ -216,6 +217,7 @@ export interface SessionIdentityPayload {
   agent: string
   sessionId: string
   wslDistro: string | null
+  remoteHost?: string | null | undefined
 }
 
 /** One revisioned request to show a session in the retained main window. */
@@ -224,7 +226,7 @@ export interface MainWindowSessionRequest {
   target: SessionIdentityPayload
 }
 
-export type MainWindowSectionId = "overview" | "activity" | "burnChecks"
+export type MainWindowSectionId = "overview" | "activity" | "burnChecks" | "remote"
 
 /** One revisioned request to select a retained main-window section. */
 export interface MainWindowSectionRequest {
@@ -276,6 +278,7 @@ export interface SessionAnalysisPayload {
   supportsAnalysis: boolean
   title: string | null
   wslDistro: string | null
+  remoteHost?: string | null | undefined
   isActive: boolean
   /** Cost of the parent transcript plus every sub-agent it launched. */
   cost: SessionCostComponents | null
@@ -327,6 +330,7 @@ export interface RepositoryItemPayload {
   worktreeCount: number
   sessionCount: number
   wslDistro: string | null
+  remoteHost?: string | null | undefined
   enabled: boolean
 }
 
@@ -933,12 +937,14 @@ export async function getSessionAnalysis(
   agent: string,
   sessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): Promise<SessionAnalysisPayload | null> {
   if (!hasShell()) return null
   return invoke<SessionAnalysisPayload>("get_session_analysis", {
     agent,
     sessionId,
     wslDistro: wslDistro ?? null,
+    ...(remoteHost ? { remoteHost } : {}),
   })
 }
 
@@ -948,6 +954,7 @@ export async function getSubagentAnalysis(
   parentSessionId: string,
   subagentId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): Promise<SessionAnalysisPayload | null> {
   if (!hasShell()) return null
   return invoke<SessionAnalysisPayload>("get_subagent_analysis", {
@@ -955,6 +962,7 @@ export async function getSubagentAnalysis(
     parentSessionId,
     subagentId,
     wslDistro: wslDistro ?? null,
+    ...(remoteHost ? { remoteHost } : {}),
   })
 }
 
@@ -1243,12 +1251,14 @@ export async function deleteSessionData(
   agent: string,
   sessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): Promise<boolean> {
   if (!hasShell()) return false
   return invoke<boolean>("delete_session_data", {
     agent,
     sessionId,
     wslDistro: wslDistro ?? null,
+    ...(remoteHost ? { remoteHost } : {}),
   })
 }
 

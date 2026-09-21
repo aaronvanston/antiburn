@@ -1,5 +1,9 @@
 # antiburn
 
+This fork adds SSH-based remote session discovery and analysis. See the
+[remote setup guide](docs/remote-sessions.md) to build **Antiburn Remote** and
+install the Linux helper. The upstream installer below installs the upstream app.
+
 > Tiny, fast, local burn checks for all your coding sessions.
 
 <picture>

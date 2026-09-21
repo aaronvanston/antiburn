@@ -176,7 +176,7 @@ describe("MainWindowView", () => {
   it("opens Overview by default and keeps Checks and Sessions in the sidebar", () => {
     setWindowWidth(1000)
     render(<MainWindowView />)
-    // Overview, Checks, Sessions, and Sessions' five fixed filter
+    // Overview, Checks, Sessions, and five fixed filter
     // children (no harness rows yet, since no entries have loaded).
     expect(screen.getAllByRole("tab")).toHaveLength(8)
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(

@@ -43,6 +43,8 @@ pub struct ActivityEntry {
     /// `cli`, `ide_desktop`, or `unknown`.
     pub surface: String,
     pub wsl_distro: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
     pub title: Option<String>,
     /// Whether this session was branched from another local session.
     pub has_fork_parent: bool,
@@ -65,6 +67,8 @@ pub struct SessionIdentity {
     pub agent: String,
     pub session_id: String,
     pub wsl_distro: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
 }
 
 /// One end of a local fork relation.
@@ -1275,6 +1279,8 @@ pub struct SessionHygieneRequest {
     pub agent: String,
     pub session_id: String,
     pub wsl_distro: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
 }
 
 /// One session hygiene status on the IPC boundary.

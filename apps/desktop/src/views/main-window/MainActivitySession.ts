@@ -66,6 +66,7 @@ export function subjectForEntry(entry: SessionListEntry): SessionSubject {
     repo: entry.repo,
     timestamp: entry.timestamp,
     wslDistro: entry.wslDistro ?? null,
+    ...(entry.remoteHost ? { remoteHost: entry.remoteHost } : {}),
     title: entry.title,
   }
 }
@@ -74,7 +75,12 @@ export function orderedActivityEntries(snapshot: MainActivitySnapshot): SessionL
   return groupActivityByDay(
     (snapshot.entries ?? []).map((entry) => ({
       entry,
-      key: localSessionKey(entry.agent, entry.sessionId ?? "", entry.wslDistro),
+      key: localSessionKey(
+        entry.agent,
+        entry.sessionId ?? "",
+        entry.wslDistro,
+        entry.remoteHost,
+      ),
       at: entry.timestamp,
       isActive: entry.isActive,
     })),
@@ -253,11 +259,21 @@ export class MainActivitySession {
           if (generation !== this.generation || !this.snapshot.active) return
           this.listVersion += 1
           const entries = this.snapshot.entries
-          const key = localSessionKey(entry.agent, entry.sessionId, entry.wslDistro)
+          const key = localSessionKey(
+            entry.agent,
+            entry.sessionId,
+            entry.wslDistro,
+            entry.remoteHost,
+          )
           if (
             entries?.some(
               (item) =>
-                localSessionKey(item.agent, item.sessionId ?? "", item.wslDistro) === key,
+                localSessionKey(
+                  item.agent,
+                  item.sessionId ?? "",
+                  item.wslDistro,
+                  item.remoteHost,
+                ) === key,
             )
           ) {
             const threshold = costOutlierThreshold(
@@ -265,7 +281,12 @@ export class MainActivitySession {
             )
             this.update({
               entries: entries.map((item) =>
-                localSessionKey(item.agent, item.sessionId ?? "", item.wslDistro) === key
+                localSessionKey(
+                  item.agent,
+                  item.sessionId ?? "",
+                  item.wslDistro,
+                  item.remoteHost,
+                ) === key
                   ? toActivityEntry(entry, threshold)
                   : item,
               ),
@@ -279,6 +300,7 @@ export class MainActivitySession {
               subject.agent,
               subject.subagent?.parentSessionId ?? subject.sessionId,
               subject.wslDistro,
+              subject.remoteHost,
             ) === key
           )
             this.refreshAnalysis()
@@ -420,11 +442,17 @@ export class MainActivitySession {
           subject &&
           !entries.some(
             (entry) =>
-              localSessionKey(entry.agent, entry.sessionId ?? "", entry.wslDistro) ===
+              localSessionKey(
+                entry.agent,
+                entry.sessionId ?? "",
+                entry.wslDistro,
+                entry.remoteHost,
+              ) ===
               localSessionKey(
                 subject.agent,
                 subject.subagent?.parentSessionId ?? subject.sessionId,
                 subject.wslDistro,
+                subject.remoteHost,
               ),
           )
         )

@@ -49,6 +49,10 @@
     "allow-report-main-window-render-status",
     "allow-request-main-window-recovery",
     "allow-reveal-source",
-    "allow-set-settings"
+    "allow-set-settings",
+    "allow-get-remote-hosts",
+    "allow-get-remote-sessions",
+    "allow-analyze-remote-session",
+    "allow-get-remote-sync-status"
   ]
 }

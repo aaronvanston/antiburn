@@ -1,6 +1,7 @@
 import { Flame, House, MessagesSquare, Settings } from "lucide-react"
 import { useState, useSyncExternalStore, type ReactNode } from "react"
 
+import { sessionsOnMachine } from "../lib/sessionMachine"
 import type { SessionListEntry } from "../components/session/SessionList"
 import {
   SidebarNav,
@@ -20,7 +21,7 @@ import {
   useSessionHygiene,
   type SessionHygieneSnapshot,
 } from "../lib/useSessionHygiene"
-import { MainActivityView } from "./main-window/MainActivityView"
+import { MachineSessionsView } from "./remote/MachineSessionsView"
 import { MainActivitySession } from "./main-window/MainActivitySession"
 import { BurnChecksView } from "./main-window/BurnChecksView"
 import { BurnChecksSession } from "./main-window/BurnChecksSession"
@@ -90,6 +91,7 @@ function sessionFilterChildren(
 /** A section supplies its panes without changing the main window's native lifecycle. */
 export function MainWindowView({ sections }: { sections?: readonly MainWindowSection[] }) {
   const [settingsError, setSettingsError] = useState(false)
+  const [machine, setMachine] = useState("all")
   async function openSettings(): Promise<void> {
     setSettingsError(false)
     try {
@@ -140,8 +142,12 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
           active={active}
           session={overviewSession}
           onOpenBurnChecks={() => selectSection("burnChecks")}
-          onOpenSessions={() => selectSection("activity")}
+          onOpenSessions={() => {
+            setMachine("local")
+            selectSection("activity")
+          }}
           onSelectSession={(entry) => {
+            setMachine("local")
             // Select first, so Sessions mounts with the subject already set
             // and loads its analysis on activation.
             selectSection("activity")
@@ -160,9 +166,17 @@ export function MainWindowView({ sections }: { sections?: readonly MainWindowSec
       id: "activity",
       label: "Sessions",
       icon: MessagesSquare,
-      children: sessionFilterChildren(activity.entries, hygieneBySession),
+      children: sessionFilterChildren(
+        activity.entries ? sessionsOnMachine(activity.entries, machine) : null,
+        hygieneBySession,
+      ),
       render: ({ active }) => (
-        <MainActivityView
+        <MachineSessionsView
+          machine={machine}
+          onMachineChange={(next) => {
+            activitySession.clearSelection()
+            setMachine(next)
+          }}
           active={active}
           session={activitySession}
           hygieneBySession={hygieneBySession}

@@ -31,8 +31,8 @@ use antiburn_local::analysis::{
 };
 use antiburn_local::discovery::source_version::claude_sidecar_fingerprint;
 use antiburn_local::discovery::{
-    ACTIVE_SESSION_WINDOW_SECS, Explorers, FORK_OBSERVATION_KEY, FingerprintInputs,
-    ForkObservation, SessionSource, SourceStat, session_source_content,
+    ACTIVE_SESSION_WINDOW_SECS, Explorers, FingerprintInputs, SessionSource, SourceStat,
+    session_source_content,
 };
 use antiburn_local::model::AgentKind;
 use antiburn_local::pricing::ModelTokens;
@@ -1530,6 +1530,44 @@ pub async fn analyze_for_evidence(
     let Some(source) = locate(agent, session_id, wsl_distro).await else {
         return unavailable_evidence_pass(PassOutcome::SourceMissing, None, None);
     };
+    let mut paths = Explorers::DISK
+        .list_subagents_in_environment(&agent, session_id, wsl_distro)
+        .await;
+    paths.sort();
+    let mut children = Vec::new();
+    for path in paths {
+        if let Some(id) = Explorers::DISK.subagent_id(&agent, &path) {
+            let label = Explorers::DISK.subagent_label(&agent, &path).await;
+            children.push((id, label, path));
+        }
+    }
+    analyze_located_for_evidence(
+        agent,
+        session_id,
+        claimed,
+        signal,
+        turn_row_store,
+        fork_parent_session_id,
+        LocatedTranscripts { source, children },
+    )
+    .await
+}
+
+pub struct LocatedTranscripts {
+    pub source: SessionSource,
+    pub children: Vec<(String, String, std::path::PathBuf)>,
+}
+
+pub async fn analyze_located_for_evidence(
+    agent: AgentKind,
+    session_id: &str,
+    claimed: ClaimedSource,
+    signal: PassSignal,
+    turn_row_store: Option<Arc<dyn TurnRowStore>>,
+    fork_parent_session_id: Option<String>,
+    transcripts: LocatedTranscripts,
+) -> EvidencePass {
+    let LocatedTranscripts { source, children } = transcripts;
     let Some(raw) = raw_source(agent, &source).await else {
         // Only a provider-database source reaches here: `raw_source` reads
         // its content directly, so a `None` means that read failed. Treated
@@ -1550,13 +1588,7 @@ pub async fn analyze_for_evidence(
         fork_parent_session_id: fork_parent_session_id.clone(),
     };
 
-    // Sub-agent transcripts, resolved before the analysis so all of them ride
-    // the same batch. The engine short-circuits for vendors that record no
-    // orchestration, so this needs no per-agent gate of its own.
-    let mut subagent_paths = Explorers::DISK
-        .list_subagents_in_environment(&agent, session_id, wsl_distro)
-        .await;
-    subagent_paths.sort();
+    let subagent_paths: Vec<_> = children.iter().map(|(_, _, path)| path.clone()).collect();
     let database_claim = matches!(&source, SessionSource::ProviderDb { .. })
         .then(|| claimed.fingerprint.clone())
         .flatten();
@@ -1574,15 +1606,11 @@ pub async fn analyze_for_evidence(
         combined_fingerprint(agent, &source, &subagent_paths)
     };
     let mut subagents: Vec<(String, String, SessionInput)> = Vec::new();
-    for path in &subagent_paths {
-        let Some(subagent_id) = Explorers::DISK.subagent_id(&agent, path) else {
-            continue;
-        };
-        let source = SessionSource::File(path.clone());
+    for (subagent_id, label_text, path) in children {
+        let source = SessionSource::File(path);
         let Some(raw) = raw_source(agent, &source).await else {
             continue;
         };
-        let label_text = Explorers::DISK.subagent_label(&agent, path).await;
         subagents.push((
             subagent_id.clone(),
             label_text,
@@ -2071,7 +2099,7 @@ pub(crate) fn unsupported_evidence_pass() -> EvidencePass {
     unavailable_evidence_pass(PassOutcome::Unsupported, None, None)
 }
 
-fn unavailable_evidence_pass(
+pub(crate) fn unavailable_evidence_pass(
     outcome: PassOutcome,
     source_path: Option<String>,
     fingerprint: Option<String>,
@@ -2265,49 +2293,7 @@ pub fn analysis_supported(agent: AgentKind) -> bool {
     supports_analysis(agent)
 }
 
-/// How many leading transcript lines are searched for fork evidence.
-/// The evidence is in a metadata header near the start of the transcript.
-const FORK_OBSERVATION_LINES: usize = 5;
-
-/// How deep the search descends into a header record. The observation sits at
-/// the top level or one nesting down (`metadata`, `raw`); four is slack.
-const FORK_OBSERVATION_DEPTH: usize = 4;
-
-/// Read a declared fork parent from a bounded transcript preview.
-pub fn fork_parent_from_content(content: &str) -> Option<String> {
-    content
-        .lines()
-        .take(FORK_OBSERVATION_LINES)
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .find_map(|value| find_fork_parent(&value, FORK_OBSERVATION_DEPTH))
-}
-
-/// Read a fork parent from vendor metadata or a normalized observation.
-fn find_fork_parent(value: &serde_json::Value, depth: usize) -> Option<String> {
-    if depth == 0 {
-        return None;
-    }
-    let object = value.as_object()?;
-    if object.get("type").and_then(serde_json::Value::as_str) == Some("session_meta")
-        && let Some(parent_id) = object
-            .get("payload")
-            .and_then(|payload| payload.get("forked_from_id"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|parent_id| !parent_id.is_empty())
-    {
-        return Some(parent_id.to_string());
-    }
-    if let Some(observation) = object.get(FORK_OBSERVATION_KEY)
-        && let Ok(observation) = serde_json::from_value::<ForkObservation>(observation.clone())
-        && !observation.parent_agent_session_id.is_empty()
-    {
-        return Some(observation.parent_agent_session_id);
-    }
-    object
-        .values()
-        .find_map(|nested| find_fork_parent(nested, depth - 1))
-}
+pub use antiburn_local::discovery::fork::fork_parent_from_content;
 
 /// Every model that contributed billable tokens, in a stable order.
 pub fn sorted_models(breakdown: &HashMap<String, ModelTokens>) -> Vec<String> {

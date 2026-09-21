@@ -90,6 +90,7 @@ dependencies = [
  "antiburn-local",
  "antiburn-main-window",
  "antiburn-nudge",
+ "antiburn-remote",
  "antiburn-sound",
  "antiburn-trace",
  "anyhow",
@@ -207,6 +208,18 @@ dependencies = [
  "tracing",
  "windows 0.62.2",
  "zbus",
+]
+
+[[package]]
+name = "antiburn-remote"
+version = "0.1.0"
+dependencies = [
+ "antiburn-local",
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
 ]
 
 [[package]]

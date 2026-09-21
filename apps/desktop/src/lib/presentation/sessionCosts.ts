@@ -23,6 +23,7 @@ export type LocalCostSubject =
       scope: "topLevel" | "subagents" | "inclusive"
       agent: string
       parentSessionId: string
+      remoteHost?: string | null
       wslDistro?: string | null
     }
   | {
@@ -30,6 +31,7 @@ export type LocalCostSubject =
       agent: string
       parentSessionId: string
       subagentId: string
+      remoteHost?: string | null
       wslDistro?: string | null
     }
 
@@ -70,13 +72,28 @@ export interface LocalSessionCostScopes {
   children: LocalSessionCost[]
 }
 
+function costIdentity(
+  agent: string,
+  parentSessionId: string,
+  wslDistro?: string | null,
+  remoteHost?: string | null,
+) {
+  return {
+    agent,
+    parentSessionId,
+    ...(wslDistro ? { wslDistro } : {}),
+    ...(remoteHost ? { remoteHost } : {}),
+  }
+}
+
 /** The named session's own transcript, excluding anything it launched. */
 export function topLevelCostSubject(
   agent: string,
   parentSessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): LocalCostSubject {
-  return { scope: "topLevel", agent, parentSessionId, ...(wslDistro ? { wslDistro } : {}) }
+  return { scope: "topLevel", ...costIdentity(agent, parentSessionId, wslDistro, remoteHost) }
 }
 
 /** Every sub-agent the named session launched, together. */
@@ -84,8 +101,9 @@ export function subagentsCostSubject(
   agent: string,
   parentSessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): LocalCostSubject {
-  return { scope: "subagents", agent, parentSessionId, ...(wslDistro ? { wslDistro } : {}) }
+  return { scope: "subagents", ...costIdentity(agent, parentSessionId, wslDistro, remoteHost) }
 }
 
 /** The named session plus every sub-agent it launched. */
@@ -93,8 +111,9 @@ export function inclusiveCostSubject(
   agent: string,
   parentSessionId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): LocalCostSubject {
-  return { scope: "inclusive", agent, parentSessionId, ...(wslDistro ? { wslDistro } : {}) }
+  return { scope: "inclusive", ...costIdentity(agent, parentSessionId, wslDistro, remoteHost) }
 }
 
 /** One named sub-agent of the named session. */
@@ -103,6 +122,7 @@ export function subagentCostSubject(
   parentSessionId: string,
   subagentId: string,
   wslDistro?: string | null,
+  remoteHost?: string | null,
 ): LocalCostSubject {
   return {
     scope: "subagent",
@@ -110,6 +130,7 @@ export function subagentCostSubject(
     parentSessionId,
     subagentId,
     ...(wslDistro ? { wslDistro } : {}),
+    ...(remoteHost ? { remoteHost } : {}),
   }
 }
 
@@ -123,7 +144,7 @@ export function subagentCostSubject(
  */
 export function costSubjectKey(subject: LocalCostSubject): string {
   return JSON.stringify([
-    environmentKey(subject.wslDistro),
+    environmentKey(subject.wslDistro, subject.remoteHost),
     subject.agent,
     subject.parentSessionId,
     subject.scope,

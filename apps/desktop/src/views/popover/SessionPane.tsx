@@ -129,7 +129,12 @@ function toLocalCost(
 
   if (subject.subagent) {
     const cost = localCost(
-      topLevelCostSubject(subject.agent, subject.sessionId, subject.wslDistro),
+      topLevelCostSubject(
+        subject.agent,
+        subject.sessionId,
+        subject.wslDistro,
+        subject.remoteHost,
+      ),
       payload.cost,
       parentTokens,
       model,
@@ -139,7 +144,12 @@ function toLocalCost(
   }
 
   const cost = localCost(
-    inclusiveCostSubject(subject.agent, subject.sessionId, subject.wslDistro),
+    inclusiveCostSubject(
+      subject.agent,
+      subject.sessionId,
+      subject.wslDistro,
+      subject.remoteHost,
+    ),
     payload.cost,
     payload.inclusiveTokens ?? ZERO_TOKENS,
     model,
@@ -150,7 +160,12 @@ function toLocalCost(
   const parent =
     subagentCount > 0
       ? localCost(
-          topLevelCostSubject(subject.agent, subject.sessionId, subject.wslDistro),
+          topLevelCostSubject(
+            subject.agent,
+            subject.sessionId,
+            subject.wslDistro,
+            subject.remoteHost,
+          ),
           payload.topLevelCost,
           parentTokens,
           model,
@@ -160,7 +175,12 @@ function toLocalCost(
   const subagents =
     subagentCount > 0
       ? localCost(
-          subagentsCostSubject(subject.agent, subject.sessionId, subject.wslDistro),
+          subagentsCostSubject(
+            subject.agent,
+            subject.sessionId,
+            subject.wslDistro,
+            subject.remoteHost,
+          ),
           payload.subagentsCost,
           payload.subagentsTokens ?? ZERO_TOKENS,
           null,
@@ -214,7 +234,12 @@ export function SessionPane({
       ? await requestConfirmation()
       : await withPopoverHold(requestConfirmation)
     if (!proceed) return
-    await deleteSessionData(subject.agent, subject.sessionId, subject.wslDistro)
+    await deleteSessionData(
+      subject.agent,
+      subject.sessionId,
+      subject.wslDistro,
+      subject.remoteHost,
+    )
     onDeleted()
   }, [subject, onDeleted, embedded])
 
@@ -233,6 +258,7 @@ export function SessionPane({
     agent: subject.agent,
     sessionId: subject.sessionId,
     wslDistro: subject.wslDistro ?? null,
+    ...(subject.remoteHost ? { remoteHost: subject.remoteHost } : {}),
   }
   const hygieneBySession = useSessionHygiene(active ? [hygieneIdentity] : [])
   const hygiene = sessionHygieneFor(hygieneBySession, hygieneIdentity)
@@ -262,6 +288,7 @@ export function SessionPane({
         agent: target.identity.agent,
         sessionId: target.identity.sessionId,
         wslDistro: target.identity.wslDistro ?? null,
+        ...(target.identity.remoteHost ? { remoteHost: target.identity.remoteHost } : {}),
         title,
       })
     },
@@ -276,6 +303,7 @@ export function SessionPane({
         ...(subject.repo ? { repo: subject.repo } : {}),
         ...(subject.timestamp ? { timestamp: subject.timestamp } : {}),
         wslDistro: subject.wslDistro ?? null,
+        ...(subject.remoteHost ? { remoteHost: subject.remoteHost } : {}),
         title: label,
         subagent: {
           parentSessionId: subject.sessionId,
@@ -292,6 +320,7 @@ export function SessionPane({
       subject.timestamp,
       subject.title,
       subject.wslDistro,
+      subject.remoteHost,
     ],
   )
 
@@ -303,6 +332,7 @@ export function SessionPane({
       ...(subject.repo ? { repo: subject.repo } : {}),
       ...(subject.timestamp ? { timestamp: subject.timestamp } : {}),
       wslDistro: subject.wslDistro ?? null,
+      ...(subject.remoteHost ? { remoteHost: subject.remoteHost } : {}),
       ...(subject.subagent.parentTitle ? { title: subject.subagent.parentTitle } : {}),
     })
   }, [onOpenSession, subject])
@@ -321,6 +351,7 @@ export function SessionPane({
         ...(subject.timestamp ? { timestamp: subject.timestamp } : {}),
         ...(title ? { title } : {}),
         wslDistro: subject.wslDistro ?? null,
+        ...(subject.remoteHost ? { remoteHost: subject.remoteHost } : {}),
         ...(subject.subagent
           ? {
               subagent: subject.subagent.parentTitle

@@ -340,3 +340,16 @@ Agent characterization, resume, replay, and desktop companion tests check
 behavior separately. The
 [dated confirmation ledger](check-coverage.md#confirmation-ledger) contains the
 pinned upstream research and approved source-scoped limits.
+
+## Remote collection in this fork
+
+The optional SSH helper discovers the existing Claude Code and Codex file-backed
+sources on a user-owned Linux host. It copies bounded transcript bundles into a
+private desktop cache for the ordinary evidence worker and session views. Claude
+child transcripts, metadata sidecars and an available declared fork-parent file
+retain their expected relative layout. Inferred Claude forks use immutable links
+to the same host's cached parent transcript. Original IDs are scoped by SSH host alias.
+Discovery covers at most 200 recent sessions per host over seven days; it adds no
+archived-source discovery or new source shapes. Transcript bodies cross SSH.
+Existing format, fork-evidence and clean-result limits remain in force. See
+[remote sessions](remote-sessions.md) for privacy, transport and resource limits.

@@ -598,3 +598,14 @@ do not assert a completed audit of all their native sources.
 The matrix is manually reviewed; the inventory test does not generate or prove
 every cell. Unknown changed evidence-bearing shapes must make affected evidence
 partial or unavailable, not pass through a generic reader as clean.
+
+## Remote collection in this fork
+
+Imported Claude Code and Codex transcripts enter the same evidence worker as
+native transcripts, under a separate SSH environment key. Per-session findings,
+badges and clean-result eligibility use the existing format contracts and companion
+coverage; importing does not upgrade partial evidence to clean. Companion metadata
+and available fork parents retain their normal layout, including parents inferred
+from published rows on the same SSH host. The global Burn
+Checks report and configuration remediation remain native-scoped. Remote account
+allowances are not inferred from local credentials. See [remote sessions](remote-sessions.md).
