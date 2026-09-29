@@ -168,6 +168,11 @@ Settings teardown, and the memory rules behind those policies.
   sidebar Settings action opens the existing Settings window. Command+,
   (Control+, on Windows and Linux) opens it from the main window, onboarding,
   and popover; see the [main-window validation runbook](../../docs/runbooks/main-window.md).
+- **Session links.** `antiburn://session/<id>` opens the main window on one
+  cached session, or on a calm not-found state in Sessions. The shell
+  validates the link strictly and only navigates. `session_link.rs` owns the
+  handler. Debug bundles register `antiburn-debug` instead. See
+  [session links](../../docs/session-links.md).
 - **Tray item.** Primary click toggles the popover. Secondary click opens a
   menu with Open antiburn, Pin Window, Settings, and Quit. Native application
   menus also provide Quit. On macOS, the antiburn application menu provides

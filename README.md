@@ -75,6 +75,10 @@ cargo test
 See the [desktop guide](apps/desktop/README.md) for app commands and the
 [debugging guide](docs/debugging.md) for isolated profiles and developer tools.
 
+## Session links
+
+Other apps can open a session in antiburn with `antiburn://session/<session-id>`. See [session links](docs/session-links.md) for the format, the optional agent hint, and how to detect support.
+
 ## Privacy
 
 antiburn uses no account, server, or backend. It hits agent provider APIs from your machine, using the same methods your harnesses already do.

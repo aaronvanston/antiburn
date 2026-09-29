@@ -626,3 +626,94 @@ fn sessions_with_missing_source_returns_only_that_failure_reason() {
     let ids: Vec<_> = missing.iter().map(|key| key.session_id.as_str()).collect();
     assert_eq!(ids, vec!["returned"]);
 }
+
+#[test]
+fn session_keys_for_id_put_native_first_and_filter_by_agent() {
+    let store = store();
+    let native = session("linked", 1_000);
+    let mut wsl = native.clone();
+    wsl.key.environment_key = "wsl:ubuntu".into();
+    wsl.wsl_distro = Some("Ubuntu".into());
+    let mut remote = native.clone();
+    remote.key.environment_key = "ssh:host-1".into();
+    let mut codex = native.clone();
+    codex.key.agent = "codex".into();
+    let other = session("other", 1_000);
+    store
+        .upsert_sessions(
+            &[wsl, remote, codex, other, native],
+            &crate::agents::evidence_cohort(),
+        )
+        .unwrap();
+
+    let keys = |agent: Option<&str>| {
+        store
+            .session_keys_for_id("linked", agent)
+            .unwrap()
+            .into_iter()
+            .map(|key| (key.environment_key, key.agent))
+            .collect::<Vec<_>>()
+    };
+    let key = |environment: &str, agent: &str| (environment.to_owned(), agent.to_owned());
+
+    assert_eq!(
+        keys(None),
+        [
+            key("native", "claude-code"),
+            key("native", "codex"),
+            key("ssh:host-1", "claude-code"),
+            key("wsl:ubuntu", "claude-code"),
+        ]
+    );
+    assert_eq!(keys(Some("codex")), [key("native", "codex")]);
+    assert!(keys(Some("cursor")).is_empty());
+    assert!(
+        store
+            .session_keys_for_id("LINKED", None)
+            .unwrap()
+            .is_empty(),
+        "the id matches exactly"
+    );
+}
+
+#[test]
+fn session_keys_for_id_are_bounded() {
+    let store = store();
+    let records = (0..SESSION_KEYS_FOR_ID_LIMIT + 4)
+        .map(|index| {
+            let mut record = session("everywhere", 1_000);
+            record.key.environment_key = format!("ssh:host-{index:02}");
+            record
+        })
+        .collect::<Vec<_>>();
+    store
+        .upsert_sessions(&records, &crate::agents::evidence_cohort())
+        .unwrap();
+
+    let keys = store.session_keys_for_id("everywhere", None).unwrap();
+    assert_eq!(keys.len() as i64, SESSION_KEYS_FOR_ID_LIMIT);
+    assert_eq!(
+        keys.first().map(|key| key.environment_key.as_str()),
+        Some("ssh:host-00")
+    );
+}
+
+#[test]
+fn session_keys_for_id_read_only_a_covering_index() {
+    use rusqlite::types::Value;
+    let store = store();
+    let connection = store.lock();
+    for agent in [Value::Null, Value::Text("codex".into())] {
+        let plan = plan_for(
+            &connection,
+            SESSION_KEYS_FOR_ID_SQL,
+            &[
+                Value::Text("linked".into()),
+                agent,
+                Value::Integer(SESSION_KEYS_FOR_ID_LIMIT),
+            ],
+        );
+        assert!(plan.contains("COVERING INDEX"), "session link plan: {plan}");
+        assert!(SESSION_KEYS_FOR_ID_SQL.contains("LIMIT ?3"));
+    }
+}

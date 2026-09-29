@@ -3,5 +3,12 @@
   "identifier": "ai.antiburn.desktop.debug",
   "bundle": {
     "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["antiburn-debug"]
+      }
+    }
   }
 }

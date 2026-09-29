@@ -64,6 +64,26 @@ pub struct SessionTarget {
     remote_host_id: Option<String>,
 }
 
+impl SessionTarget {
+    /// Build the exact target for one cached session.
+    pub(crate) fn for_record(record: &crate::store::SessionRecord) -> Self {
+        Self {
+            agent: record.key.agent.clone(),
+            session_id: record.key.session_id.clone(),
+            wsl_distro: record.wsl_distro.clone(),
+            remote_host_id: record.key.remote_host_id().map(str::to_owned),
+        }
+    }
+}
+
+/// A fixed state that the renderer shows with a destination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NavigationNotice {
+    /// A session link named a session that the local index does not hold.
+    SessionNotFound,
+}
+
 /// One exact destination requested from outside the retained renderer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +92,8 @@ pub struct NavigationDestination {
     target: Option<SessionTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     remote_host_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notice: Option<NavigationNotice>,
 }
 
 /// Revisioned request shared by the event and renderer recovery paths.
@@ -910,16 +932,39 @@ fn existing_session_targets(
 }
 
 fn route_session_target(app: &AppHandle, target: SessionTarget) -> Result<(), String> {
-    ::tracing::info!(
-        event = "main_window_open_source",
-        source = "popover_session"
-    );
-    let state = app.state::<MainWindowState>();
-    let request = state.request_navigation_target(NavigationDestination {
+    route_destination(app, activity_destination(Some(target)), "popover_session")
+}
+
+/// Open the main window on the session that a session link resolved to.
+///
+/// `None` opens Sessions with the not-found notice and no selected session.
+pub(crate) fn route_session_link(
+    app: &AppHandle,
+    target: Option<SessionTarget>,
+) -> Result<(), String> {
+    route_destination(app, activity_destination(target), "session_link")
+}
+
+/// Build a Sessions destination. A missing target carries the not-found notice.
+fn activity_destination(target: Option<SessionTarget>) -> NavigationDestination {
+    NavigationDestination {
         section: MainWindowSection::Activity,
-        target: Some(target),
+        notice: target
+            .is_none()
+            .then_some(NavigationNotice::SessionNotFound),
+        target,
         remote_host_id: None,
-    });
+    }
+}
+
+fn route_destination(
+    app: &AppHandle,
+    destination: NavigationDestination,
+    source: &'static str,
+) -> Result<(), String> {
+    ::tracing::info!(event = "main_window_open_source", source);
+    let state = app.state::<MainWindowState>();
+    let request = state.request_navigation_target(destination);
     if let Err(error) = open(app, OpenTrigger::Interaction) {
         state.clear_navigation_target(request.revision);
         return Err(error.to_string());
@@ -1133,24 +1178,17 @@ fn section_navigation_destination(
         section,
         target: None,
         remote_host_id,
+        notice: None,
     })
 }
 
 fn route_section_target(app: &AppHandle, destination: NavigationDestination) -> Result<(), String> {
-    let state = app.state::<MainWindowState>();
     let source = if destination.remote_host_id.is_some() {
         "settings_remote_host"
     } else {
         "popover_section"
     };
-    let request = state.request_navigation_target(destination);
-    ::tracing::info!(event = "main_window_open_source", source);
-    if let Err(error) = open(app, OpenTrigger::Interaction) {
-        state.clear_navigation_target(request.revision);
-        return Err(error.to_string());
-    }
-    app.emit_to(LABEL, NAVIGATION_TARGET_EVENT, request)
-        .map_err(|error| error.to_string())
+    route_destination(app, destination, source)
 }
 
 /// Peek at the latest destination after the main renderer installs its listener.
@@ -2120,6 +2158,7 @@ mod tests {
             section: MainWindowSection::Activity,
             target: Some(target(id)),
             remote_host_id: None,
+            notice: None,
         }
     }
 
@@ -2128,6 +2167,7 @@ mod tests {
             section,
             target: None,
             remote_host_id: None,
+            notice: None,
         }
     }
 
@@ -2536,6 +2576,65 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_session_link_serializes_as_a_sessions_notice() {
+        let state = state();
+        let request = state.request_navigation_target(activity_destination(None));
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "revision": 1,
+                "destination": {
+                    "section": "activity",
+                    "target": null,
+                    "notice": "sessionNotFound",
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn a_found_session_link_has_no_notice() {
+        let destination = activity_destination(Some(target("found")));
+
+        assert_eq!(destination, session_destination("found"));
+        assert!(
+            serde_json::to_value(destination)
+                .unwrap()
+                .get("notice")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_record_target_keeps_the_exact_environment() {
+        let native = stored_session("shared", None);
+        let wsl = stored_session("shared", Some("Ubuntu"));
+        let mut remote = stored_session("shared", None);
+        remote.key = SessionKey::for_origin("codex", "shared", None, Some("host-1")).unwrap();
+
+        assert_eq!(SessionTarget::for_record(&native), target("shared"));
+        assert_eq!(
+            SessionTarget::for_record(&wsl),
+            SessionTarget {
+                agent: "codex".to_owned(),
+                session_id: "shared".to_owned(),
+                wsl_distro: Some("Ubuntu".to_owned()),
+                remote_host_id: None,
+            }
+        );
+        assert_eq!(
+            SessionTarget::for_record(&remote),
+            SessionTarget {
+                agent: "codex".to_owned(),
+                session_id: "shared".to_owned(),
+                wsl_distro: None,
+                remote_host_id: Some("host-1".to_owned()),
+            }
+        );
+    }
+
+    #[test]
     fn existing_targets_use_exact_environment_identity() {
         let store = Store::open_in_memory(std::path::Path::new("/tmp/navigation-existence"))
             .expect("open store");
@@ -2892,6 +2991,7 @@ mod tests {
                 remote_host_id: None,
             }),
             remote_host_id: None,
+            notice: None,
         });
 
         assert!(external.revision > sample.revision);

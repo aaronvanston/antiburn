@@ -10,11 +10,15 @@ export interface MainWindowSessionIdentity {
 
 export type MainWindowSectionId = "overview" | "activity" | "burnChecks"
 
+/** A fixed state that the shell asks the renderer to show with a destination. */
+export type MainWindowNavigationNotice = "sessionNotFound"
+
 /** One exact destination requested from outside the retained main renderer. */
 interface MainWindowNavigationDestination {
   section: MainWindowSectionId
   target: MainWindowSessionIdentity | null
   remoteHostId?: string | null
+  notice?: MainWindowNavigationNotice
 }
 
 /** One revisioned request shared by event and renderer recovery paths. */

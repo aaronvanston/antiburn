@@ -111,6 +111,10 @@ pub enum EventName {
     /// A remote synchronization pass reached a terminal result.
     #[cfg(feature = "analytics")]
     RemoteSyncCompleted,
+    /// A session link opened the main window, on the named session or on
+    /// the not-found state.
+    #[cfg(feature = "analytics")]
+    SessionLinkOpened,
     /// An explicit project folder action completed.
     #[cfg(feature = "analytics")]
     ProjectFolderAction,
@@ -176,6 +180,7 @@ pub const EVERY_EVENT: &[EventName] = &[
     EventName::RemoteHostConnectionChecked,
     EventName::RemoteHostChanged,
     EventName::RemoteSyncCompleted,
+    EventName::SessionLinkOpened,
     EventName::ProjectFolderAction,
     EventName::QuotaIncidentsObserved,
     EventName::ProviderIncidentsObserved,
@@ -221,6 +226,7 @@ impl EventName {
             EventName::RemoteHostConnectionChecked => "antiburn.remote_host_connection_checked",
             EventName::RemoteHostChanged => "antiburn.remote_host_changed",
             EventName::RemoteSyncCompleted => "antiburn.remote_sync_completed",
+            EventName::SessionLinkOpened => "antiburn.session_link_opened",
             EventName::QuotaIncidentsObserved => "antiburn.quota_incidents_observed",
             EventName::ProviderIncidentsObserved => "antiburn.provider_incidents_observed",
             EventName::ProviderIncidentsIngested => "antiburn.provider_incidents_ingested",
@@ -789,6 +795,27 @@ pub enum RemoteSyncOutcome {
 pub enum RemoteSyncOrigin {
     Manual,
     Automatic,
+}
+
+/// The result of one session link, without the session identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionLinkOutcome {
+    /// The local index held the named session, and the main window opened on it.
+    Found,
+    /// The local index did not hold one session for the link, and the main
+    /// window opened on the not-found state.
+    NotFound,
+}
+
+#[cfg(feature = "analytics")]
+impl SessionLinkOutcome {
+    /// The closed `label` value for `antiburn.session_link_opened`.
+    pub fn label(self) -> &'static str {
+        match self {
+            SessionLinkOutcome::Found => "found",
+            SessionLinkOutcome::NotFound => "not_found",
+        }
+    }
 }
 
 #[cfg(feature = "analytics")]
@@ -1819,6 +1846,7 @@ mod tests {
                 | EventName::RemoteHostConnectionChecked
                 | EventName::RemoteHostChanged
                 | EventName::RemoteSyncCompleted
+                | EventName::SessionLinkOpened
                 | EventName::QuotaIncidentsObserved
                 | EventName::ProviderIncidentsObserved
                 | EventName::ProviderIncidentsIngested
@@ -1831,7 +1859,7 @@ mod tests {
         }
         assert_eq!(
             EVERY_EVENT.len(),
-            38,
+            39,
             "a variant was added to the match above but not to EVERY_EVENT"
         );
         assert!(EVERY_EVENT.iter().copied().all(listed));
@@ -2207,6 +2235,16 @@ mod tests {
         for name in EVERY_EVENT {
             assert!(name.as_str().starts_with("antiburn."), "{}", name.as_str());
         }
+    }
+
+    #[test]
+    fn a_session_link_outcome_is_one_closed_label() {
+        assert_eq!(SessionLinkOutcome::Found.label(), "found");
+        assert_eq!(SessionLinkOutcome::NotFound.label(), "not_found");
+        assert_eq!(
+            EventName::SessionLinkOpened.as_str(),
+            "antiburn.session_link_opened"
+        );
     }
 
     #[test]

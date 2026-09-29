@@ -542,6 +542,46 @@ unconfigured-build, environment-disablement, queue, and delivery rules remain
 unchanged. Validation must exercise the actual operation boundaries and their
 failure/cancellation branches as well as the closed wire schema.
 
+## Session links measurement
+
+Question: when another app opens a session with an `antiburn://session/<id>`
+link, does antiburn find that session? The metric is the share of
+`antiburn.session_link_opened` events with `label=not_found` among all
+session-link events from reporting installations. A high share supports work on
+discovery coverage or on the guidance that
+[session-links.md](session-links.md) gives to link authors (for example, the
+`agent` hint). It does not count people, source apps, or sessions.
+
+The native shell owns the trigger. It records one event after a link passes
+strict validation, the local index lookup completes, and the main window
+accepts the navigation. This is a completed outcome, not intent: a rejected
+link, a lookup failure, a failed window open, and a link that arrives while
+setup is incomplete emit nothing. The `found` value means the index held one
+session for the link; `not_found` also covers an ID that more than one agent
+uses without an `agent` hint.
+
+The event carries only the closed `label` (`found` or `not_found`) through
+`SessionLinkOutcome`. No session ID, agent slug, hint, raw link, environment,
+remote host, or caller identity is serialized, and no new envelope field is
+added.
+
+Each accepted link produces at most one event. Several links in one delivery
+open only the last valid link. The shell does not retry a link, and the
+renderer does not emit this event, so remounts, Back and Forward, renderer
+recovery, and hidden-window prewarm add nothing. A cold start reads the
+starting link once. Volume is bounded by explicit link opens, which browsers
+and the operating system gate behind a user action or a prompt.
+
+This is a new event name. `docs/analytics.md` lists it, and the catalog tests
+(`no_variant_escapes_the_catalog`, `the_documented_catalog_matches_the_code`)
+enforce the listing. Segment at the first app version that ships session links.
+
+Validation: `session_link.rs` tests prove that only the strict link form is
+accepted and that the lookup resolves found, missing, and ambiguous IDs
+correctly. `a_session_link_outcome_is_one_closed_label` pins the two label
+values. As with the other emitters, no Tauri `AppHandle` mock exists, so the
+consent-gated wrapper is checked by review.
+
 ## Event review contract
 
 Every added or changed event must document:

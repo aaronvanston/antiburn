@@ -55,6 +55,15 @@ Activity destination with a validated remote host ID. The renderer opens that
 host’s list with other facets cleared and no selected session. The link explicitly
 retains the user’s Sessions date range; the count represents all cached sessions.
 
+Session links (`antiburn://session/<id>`, see [session-links.md](session-links.md))
+use the same revisioned native route. The shell resolves the link against the local
+index before it sends the request. A found session sends its exact target. A missing
+or ambiguous session sends a Sessions destination with no target and the
+`sessionNotFound` notice. The renderer keeps the current facets, selects no session,
+skips the automatic default selection, and shows the notice in the detail pane, or
+above the list in compact layouts. The notice belongs to its history entry, so Back
+and Forward restore it. Selecting any session clears it.
+
 ### Feature-owned search metadata
 
 Settings panes, Settings controls, agent session filters, and checks own their

@@ -21,6 +21,7 @@ import {
   onSessionUpdated,
   onLiveUsageChanged,
   type AppSettings,
+  type MainWindowNavigationNotice,
   type SessionAnalysisPayload,
   type LiveUsageSummaryPayload,
   type SessionLimitAllocationSummaryPayload,
@@ -71,6 +72,8 @@ export interface MainActivitySnapshot {
   remoteHostsLoaded: boolean
   /** A newer shell target must reveal the compact detail pane, even for the same session. */
   detailRevealRevision: number
+  /** A shell notice shown while no session is selected, such as a link to a missing session. */
+  notice: MainWindowNavigationNotice | null
 }
 
 export function subjectForEntry(entry: SessionListEntry): SessionSubject {
@@ -135,6 +138,7 @@ export class MainActivitySession {
     subject: SessionSubject | null,
     origin: SurfaceOrigin = "automatic",
     reportFilterSelection = false,
+    notice: MainWindowNavigationNotice | null = null,
   ): void {
     this.restoringNavigation = true
     try {
@@ -185,6 +189,11 @@ export class MainActivitySession {
         (this.snapshot.subject || (reportFilterSelection && next.source?.kind === "selected"))
       )
         this.clearSelection()
+      const nextNotice = subject ? null : notice
+      // A notice stands in for the selection, so the list must not replace it
+      // with a default session when it loads.
+      if (nextNotice) this.defaultSelectionPending = false
+      if (this.snapshot.notice !== nextNotice) this.update({ notice: nextNotice })
     } finally {
       this.restoringNavigation = false
     }
@@ -210,6 +219,7 @@ export class MainActivitySession {
     remoteHosts: [],
     remoteHostsLoaded: false,
     detailRevealRevision: 0,
+    notice: null,
   }
   private listeners = new Set<() => void>()
   private activeListeners = new Set<() => void>()
@@ -681,6 +691,7 @@ export class MainActivitySession {
       loading: true,
       refreshing: false,
       sessionQuota: null,
+      notice: null,
     })
     this.refreshAnalysis()
     this.refreshSessionQuota()
@@ -702,6 +713,7 @@ export class MainActivitySession {
       loading: false,
       refreshing: false,
       sessionQuota: null,
+      notice: null,
     })
   }
 

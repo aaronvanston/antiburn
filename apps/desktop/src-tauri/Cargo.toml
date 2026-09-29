@@ -122,13 +122,18 @@ sha2 = "0.11"
 # to declare the feature.
 tauri = { version = "2", features = ["image-png", "tray-icon", "macos-private-api"] }
 tauri-plugin-dialog = "2"
+# Receives `antiburn://session/<id>` links. The bundle configuration registers
+# the scheme; the shell never calls the plugin's runtime registration, which
+# writes to the registry or desktop files and runs helper programs on Linux.
+tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
 # The plugin prevents browser-only menus and shortcuts in application webviews.
 # The explicit policy in `src/webview_defaults.rs` keeps focus traversal intact.
 tauri-plugin-prevent-default = "5"
 # Must be registered before other plugins so a repeated launch exits before it
-# can start another background scan scheduler.
-tauri-plugin-single-instance = "2"
+# can start another background scan scheduler. On Windows and Linux a session
+# link starts a second process; `deep-link` forwards its link to this one.
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # Emits structured shell events through the process subscriber.
 tracing = "0.1"
 # RFC 3339 stamps for the store's own timestamps.
