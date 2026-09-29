@@ -123,7 +123,7 @@ export function MainActivityView({
       }
       emptyMessage="No sessions yet"
       detailEmptyMessage="Select a session to view its details."
-      detailEmptyContent={<SessionEmptyDetail />}
+      detailEmptyContent={<SessionEmptyDetail notice={state.notice} />}
       detailOwnsViewport
       renderCollection={({ openDetail, compact }) => (
         <div className="session-filter-collection flex min-h-0 min-w-0 flex-1 flex-col">
@@ -148,6 +148,11 @@ export function MainActivityView({
               onChangeTimeRange={() => void changeTimeRange()}
               triggerRef={filterButtonRef}
             />
+          )}
+          {compact && state.notice === "sessionNotFound" && (
+            <p role="status" className="px-4 py-2 type-callout text-label-secondary">
+              antiburn has not discovered the linked session on this device.
+            </p>
           )}
           {rangeError && (
             <p role="status" className="px-4 py-2 type-callout text-label-secondary">

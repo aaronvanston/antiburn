@@ -347,6 +347,24 @@ const ACTIVE_NATIVE_FILE_SOURCE_LABELS_SQL: &str = "SELECT source_label
         AND environment_key = 'native'
         AND source_kind = 'file'";
 
+/// [`Store::session_keys_for_id`]'s query. `?1` is the agent-owned session
+/// id, `?2` an optional agent slug, and `?3` the row limit.
+///
+/// It reads only key columns, so SQLite scans one covering index and reads no
+/// table rows. No index starts with `session_id`. A session link is a rare,
+/// explicit action, so it does not justify the write cost of one more index
+/// on every scan upsert. The native environment sorts first.
+const SESSION_KEYS_FOR_ID_SQL: &str = "SELECT environment_key, agent, session_id
+       FROM session
+      WHERE session_id = ?1
+        AND (?2 IS NULL OR agent = ?2)
+      ORDER BY environment_key <> 'native', environment_key, agent
+      LIMIT ?3";
+
+/// The most keys [`Store::session_keys_for_id`] returns. One id normally has
+/// one row per environment that holds a copy of the same transcript.
+const SESSION_KEYS_FOR_ID_LIMIT: i64 = 16;
+
 /// Build the indexed query for one chunk of native file source labels.
 fn native_file_session_activity_keys_sql(source_label_count: usize) -> String {
     let placeholders = vec!["?"; source_label_count].join(", ");
@@ -1393,6 +1411,31 @@ impl Store {
                 session_from_row,
             )
             .optional()?)
+    }
+
+    /// Return cached session keys whose agent-owned id is `session_id`.
+    ///
+    /// `agent` limits the match to one agent slug. Native sessions come
+    /// first, then other environments in key order. The result has at most
+    /// [`SESSION_KEYS_FOR_ID_LIMIT`] keys.
+    pub fn session_keys_for_id(
+        &self,
+        session_id: &str,
+        agent: Option<&str>,
+    ) -> Result<Vec<SessionKey>> {
+        let connection = self.lock();
+        let mut statement = connection.prepare(SESSION_KEYS_FOR_ID_SQL)?;
+        let rows = statement.query_map(
+            params![session_id, agent, SESSION_KEYS_FOR_ID_LIMIT],
+            |row| {
+                Ok(SessionKey::new(
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Return native file activity keys grouped by their requested transcript

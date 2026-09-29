@@ -243,6 +243,50 @@ describe("MainActivityView", () => {
     })
   })
 
+  it.each([
+    { width: 1200, layout: "detail pane" },
+    { width: 550, layout: "compact list" },
+  ])(
+    "says calmly that a linked session was not found in the $layout layout",
+    async ({ width }) => {
+      vi.stubGlobal("innerWidth", width)
+      try {
+        mocks.listRecentSessions.mockResolvedValue([entry("listed")])
+        const { session } = renderActivity()
+        act(() =>
+          session.restoreNavigation(
+            session.getSnapshot().filters,
+            null,
+            "user",
+            false,
+            "sessionNotFound",
+          ),
+        )
+        await ready(session)
+
+        expect(await screen.findByText("listed")).toBeVisible()
+        if (width > 900) {
+          expect(screen.getByRole("heading", { name: "Session not found" })).toBeVisible()
+          expect(screen.queryByText("No session selected")).toBeNull()
+        } else {
+          expect(
+            screen.getByText("antiburn has not discovered the linked session on this device."),
+          ).toBeVisible()
+        }
+
+        act(() => session.selectEntry(session.getSnapshot().entries![0]!))
+        // The compact layout keeps the list in front until the reader opens the detail.
+        expect(await screen.findByText("Detail: listed")).toBeInTheDocument()
+        expect(screen.queryByText("Session not found")).toBeNull()
+        expect(
+          screen.queryByText("antiburn has not discovered the linked session on this device."),
+        ).toBeNull()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+  )
+
   it("preserves an open detail when filters exclude it and leaves filters accessible", async () => {
     mocks.listRecentSessions.mockResolvedValue([entry("open-session", { agent: "codex" })])
     const { session } = renderActivity()

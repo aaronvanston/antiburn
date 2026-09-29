@@ -1160,6 +1160,44 @@ describe("MainActivitySession", () => {
     })
   })
 
+  it("shows a session-link notice in place of the default selection", async () => {
+    const session = new MainActivitySession()
+    sessions.push(session)
+    session.restoreNavigation(parseSessionFilters("all"), null, "user", true, "sessionNotFound")
+    session.subscribe(() => undefined)
+    await ready(session)
+
+    expect(session.getSnapshot().notice).toBe("sessionNotFound")
+    expect(session.getSnapshot().subject).toBeNull()
+    expect(mocks.loadSessionAnalysis).not.toHaveBeenCalled()
+
+    session.refreshList()
+    await vi.waitFor(() => expect(mocks.listRecentSessions).toHaveBeenCalledTimes(2))
+    expect(session.getSnapshot().subject).toBeNull()
+    expect(session.getSnapshot().notice).toBe("sessionNotFound")
+
+    session.selectEntry(session.getSnapshot().entries![0]!)
+    expect(session.getSnapshot().subject?.sessionId).toBe("one")
+    expect(session.getSnapshot().notice).toBeNull()
+  })
+
+  it("drops a session-link notice when navigation restores a session or clears it", async () => {
+    const { session } = start()
+    await ready(session)
+    const filters = session.getSnapshot().filters
+
+    session.restoreNavigation(filters, null, "user", false, "sessionNotFound")
+    expect(session.getSnapshot().notice).toBe("sessionNotFound")
+    session.restoreNavigation(filters, { agent: "codex", sessionId: "found", wslDistro: null })
+    expect(session.getSnapshot().notice).toBeNull()
+    expect(session.getSnapshot().subject?.sessionId).toBe("found")
+
+    session.restoreNavigation(filters, null, "user", false, "sessionNotFound")
+    expect(session.getSnapshot().notice).toBe("sessionNotFound")
+    session.restoreNavigation(filters, null)
+    expect(session.getSnapshot().notice).toBeNull()
+  })
+
   it("retains the explicit date-range preference when browsing a remote host", async () => {
     mocks.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, activityWindowDays: 1 })
     mocks.listRecentSessions.mockResolvedValue([

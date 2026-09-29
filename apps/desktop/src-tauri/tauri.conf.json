@@ -56,6 +56,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["antiburn"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/antiburn/antiburn/releases/latest/download/latest.json"

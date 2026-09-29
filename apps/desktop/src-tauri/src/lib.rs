@@ -90,6 +90,7 @@ mod runtime_pricing;
 mod runtime_pricing_config;
 mod scan;
 mod session_lifecycle;
+mod session_link;
 mod session_projection;
 mod settings;
 mod startup_registration;
@@ -200,6 +201,11 @@ pub fn run() {
                 if launch_intent::from_args(&args) == launch_intent::LaunchIntent::Background {
                     return;
                 }
+                // This plugin already gave the link to the deep-link plugin,
+                // and the link opens the main window itself.
+                if session_link::forwards_link(app, &args) {
+                    return;
+                }
                 let repeated = app.state::<RepeatedLaunch>();
                 repeated.pending.store(true, Ordering::Release);
                 if repeated.setup_ready.load(Ordering::Acquire) {
@@ -220,7 +226,10 @@ pub fn run() {
                         }
                     });
                 }
-            })),
+            }))
+            // Directly after single-instance, so that a link forwarded by a
+            // second process always finds the deep-link state.
+            .plugin(tauri_plugin_deep_link::init()),
     )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_clipboard_manager::init())
@@ -427,6 +436,10 @@ pub fn run() {
                 );
             }
         }
+        // Last, so that a link that started the app finds every managed
+        // state. A link only navigates. It does not change the launch intent,
+        // so a background start stays hidden until a link arrives.
+        session_link::install(app.handle());
 
         Ok(())
     });

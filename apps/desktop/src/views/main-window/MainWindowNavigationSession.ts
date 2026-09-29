@@ -4,6 +4,7 @@ import {
   noteInteraction,
   onMainWindowNavigationTarget,
   peekMainWindowNavigationTarget,
+  type MainWindowNavigationNotice,
   type MainWindowNavigationRequest,
   type MainWindowSectionId,
   type MainWindowSessionIdentity,
@@ -32,6 +33,8 @@ export type MainDestination = {
   filters?: SessionFilters
   subject?: SessionSubject | null
   check?: keyof typeof CHECK_LABELS
+  /** A shell notice for Sessions without a selected session, such as a link to a missing session. */
+  notice?: MainWindowNavigationNotice
 }
 
 export type MainWindowNavigationSnapshot = {
@@ -58,6 +61,7 @@ function normalizeDestination(destination: MainDestination): MainDestination {
         },
       ),
       subject: destination.subject ?? null,
+      ...(destination.notice && !destination.subject ? { notice: destination.notice } : {}),
     }
   }
   if (destination.section === "burnChecks") {
@@ -74,6 +78,7 @@ function destinationKey(destination: MainDestination): string {
     destination.filters ? serializeSessionFilters(destination.filters) : null,
     destination.subject ? sessionKey(destination.subject) : null,
     destination.check ?? null,
+    destination.notice ?? null,
   ])
 }
 
@@ -203,6 +208,7 @@ export class MainWindowNavigationSession {
           destination.subject ?? null,
           origin,
           reportFilterSelection,
+          destination.notice ?? null,
         )
       }
     } finally {
@@ -394,14 +400,20 @@ export class MainWindowNavigationSession {
         subject: null,
       }
     }
+    const filters = activity?.filters ?? {
+      source: { kind: "all" },
+      agents: [],
+      result: "all",
+      spend: "all",
+    }
+    if (request.destination.notice) {
+      // The shell found no session for a link. Keep the current filters and
+      // show the notice in place of a selected session.
+      return { section: "activity", filters, subject: null, notice: request.destination.notice }
+    }
     return {
       section: "activity",
-      filters: activity?.filters ?? {
-        source: { kind: "all" },
-        agents: [],
-        result: "all",
-        spend: "all",
-      },
+      filters,
       subject: request.destination.target ?? activity?.subject ?? null,
     }
   }

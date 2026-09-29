@@ -164,6 +164,9 @@ pub fn record_remote_sync_completed(
 }
 
 #[cfg(not(feature = "analytics"))]
+pub fn record_session_link_opened(_app: &tauri::AppHandle, _outcome: event::SessionLinkOutcome) {}
+
+#[cfg(not(feature = "analytics"))]
 pub fn prepare_onboarding_restart() {}
 
 #[cfg(not(feature = "analytics"))]
@@ -526,6 +529,19 @@ mod enabled {
                 label: Some(label),
                 detail: Some(detail),
                 bucket: Some(event::bucket(cached_sessions as u64)),
+                ..Facts::default()
+            },
+        );
+    }
+
+    /// Record only whether a session link found its session. The session
+    /// ID, the agent, the hint, and the link itself never enter the event.
+    pub fn record_session_link_opened(app: &tauri::AppHandle, outcome: event::SessionLinkOutcome) {
+        record(
+            app,
+            EventName::SessionLinkOpened,
+            Facts {
+                label: Some(outcome.label()),
                 ..Facts::default()
             },
         );

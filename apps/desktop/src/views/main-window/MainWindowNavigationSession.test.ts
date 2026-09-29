@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { MainWindowNavigationRequest } from "../../lib/ipc"
+import type { MainWindowNavigationNotice, MainWindowNavigationRequest } from "../../lib/ipc"
 import type { SessionFilters } from "../../lib/sessionFilters"
 import type { SessionSubject } from "../../lib/sessionSubject"
 import type { MainActivitySession } from "./MainActivitySession"
@@ -50,6 +50,8 @@ class FakeActivitySession {
       filters: SessionFilters,
       selected: SessionSubject | null,
       _origin: "user" | "automatic",
+      _reportFilterSelection?: boolean,
+      _notice?: MainWindowNavigationNotice | null,
     ) => {
       this.snapshot = { filters, subject: selected }
     },
@@ -403,6 +405,60 @@ describe("MainWindowNavigationSession", () => {
     })
     expect(activity.getSnapshot().subject).toBeNull()
     stop()
+  })
+
+  it("opens Sessions with a notice when a session link finds no session", async () => {
+    const { activity, session } = setup()
+    const filters: SessionFilters = { agents: ["codex"], result: "all", spend: "all" }
+    activity.filter(filters)
+    activity.select(subject("current"))
+    const stop = session.subscribe(() => undefined)
+    await vi.waitFor(() => expect(mocks.handler).not.toBeNull())
+
+    mocks.handler!({
+      revision: 1,
+      destination: { section: "activity", target: null, notice: "sessionNotFound" },
+    })
+
+    expect(session.getSnapshot().destination).toEqual({
+      section: "activity",
+      filters,
+      subject: null,
+      notice: "sessionNotFound",
+    })
+    expect(activity.getSnapshot()).toEqual({ filters, subject: null })
+    expect(activity.restoreNavigation.mock.lastCall?.[4]).toBe("sessionNotFound")
+    expect(mocks.acknowledge).toHaveBeenCalledWith(7, 1)
+
+    session.back()
+    expect(session.getSnapshot().destination.subject).toEqual(subject("current"))
+    expect(activity.restoreNavigation.mock.lastCall?.[4]).toBeNull()
+    session.forward()
+    expect(session.getSnapshot().destination.notice).toBe("sessionNotFound")
+
+    mocks.handler!({
+      revision: 2,
+      destination: { section: "activity", target: subject("found") },
+    })
+    expect(session.getSnapshot().destination).toEqual({
+      section: "activity",
+      filters,
+      subject: subject("found"),
+    })
+    stop()
+  })
+
+  it("keeps a notice only on Sessions without a selected session", () => {
+    const { session } = setup()
+
+    session.navigate({
+      section: "activity",
+      subject: subject("one"),
+      notice: "sessionNotFound",
+    })
+    expect(session.getSnapshot().destination.notice).toBeUndefined()
+    session.navigate({ section: "overview", notice: "sessionNotFound" })
+    expect(session.getSnapshot().destination).toEqual({ section: "overview" })
   })
 
   it("keeps the newest target across event and peek ordering races", async () => {
